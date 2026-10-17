@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#215181">
+<title>Remises TOQUE! · Tu remís a un click</title>
+<meta name="description" content="Pedí tu remís desde el celular, seguí el viaje en tiempo real y manejá con nosotros.">
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<style>
+:root{--pri:#215181;--pri2:#183c62;--verde:#5fa52f;--verde2:#4a8a22;--txt:#1d2a2b;--suave:#5e6f70;--fondo:#f2f5f6;--borde:#dbe4e5}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--txt);background:#fff;line-height:1.5}
+a{color:inherit;text-decoration:none}
+.w{max-width:1120px;margin:0 auto;padding:0 20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;padding:14px 28px;font-size:16px;font-weight:700;cursor:pointer;background:var(--verde);color:#fff;transition:background .15s,transform .15s}
+.btn:hover{background:var(--verde2);transform:translateY(-1px)}
+.btn.sec{background:#fff;color:var(--pri2);border:2px solid var(--pri)}.btn.sec:hover{background:#eef4fa}
+.btn.chico{padding:9px 20px;font-size:14px}
+/* header */
+.sup{background:var(--pri2);color:#d6e6f5;font-size:13px}
+.sup .w{display:flex;gap:6px 22px;flex-wrap:wrap;align-items:center;min-height:38px;padding-top:4px;padding-bottom:4px}
+.sup a:hover{color:#fff}.sup .tel{margin-left:auto;font-weight:600}
+header.top{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--borde)}
+header.top .w{display:flex;align-items:center;gap:22px;height:68px}
+header.top img{height:46px}
+header.top nav{display:flex;gap:6px;margin-left:10px}
+header.top nav a,header.top nav button{background:none;border:0;font:inherit;font-weight:600;color:var(--txt);padding:8px 12px;border-radius:8px;cursor:pointer}
+header.top nav a:hover,header.top nav button:hover{background:var(--fondo)}
+.esp{flex:1}
+.dd{position:relative}
+.dd .menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--borde);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.14);min-width:220px;padding:6px;z-index:60}
+.dd.abierto .menu{display:block}
+.dd .menu a{display:block;padding:10px 12px;border-radius:8px;font-weight:600}.dd .menu a:hover{background:var(--fondo)}
+.dd.izq .menu{left:0;right:auto}
+.burger{display:none;background:none;border:0;font-size:26px;cursor:pointer}
+/* hero */
+.hero{background:linear-gradient(135deg,#183c62,#215181 62%,#3f7d2a);color:#fff;overflow:hidden}
+.hero .w{display:grid;grid-template-columns:1.1fr .9fr;gap:30px;align-items:center;padding-top:64px;padding-bottom:64px}
+.hero h1{font-size:clamp(34px,5vw,56px);line-height:1.08;margin:0 0 16px;letter-spacing:-.02em}
+.hero h1 em{font-style:normal;color:#b5e68a}
+.hero p{font-size:19px;color:#dce9f6;max-width:520px;margin:0 0 26px}
+.hero .acc{display:flex;gap:12px;flex-wrap:wrap}
+.hero .btn.sec{background:transparent;color:#fff;border-color:#fff}.hero .btn.sec:hover{background:rgba(255,255,255,.12)}
+.hero img.logo{width:min(380px,100%);justify-self:center;filter:drop-shadow(0 12px 30px rgba(0,0,0,.25))}
+/* secciones */
+section{padding:72px 0}
+section.gris{background:var(--fondo)}
+h2{font-size:clamp(26px,3.6vw,38px);line-height:1.15;margin:0 0 12px;color:var(--pri2);letter-spacing:-.01em}
+.lead{color:var(--suave);font-size:18px;max-width:560px;margin:0 0 24px}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+.dos.inv>:first-child{order:2}
+/* celular */
+.cel{width:250px;margin:0 auto;border:8px solid #12212e;border-radius:34px;background:#fff;box-shadow:0 24px 50px rgba(15,40,70,.28);overflow:hidden}
+.cel .barra{background:var(--pri);color:#fff;padding:14px 16px;font-weight:700;font-size:14px}
+.cel .mapa{height:150px;background:linear-gradient(#e7eef7,#dfe9d6);position:relative}
+.cel .mapa:before,.cel .mapa:after{content:"";position:absolute;background:#fff;opacity:.9}
+.cel .mapa:before{left:-10px;right:-10px;top:60px;height:14px;transform:rotate(-8deg)}
+.cel .mapa:after{top:-10px;bottom:-10px;left:96px;width:14px;transform:rotate(12deg)}
+.cel .pin{position:absolute;left:84px;top:52px;width:26px;height:26px;border-radius:50% 50% 50% 0;background:var(--verde);transform:rotate(-45deg);border:3px solid #fff;z-index:2;box-shadow:0 3px 8px rgba(0,0,0,.3)}
+.cel .campo{margin:10px 14px 0;padding:11px 12px;border:1px solid var(--borde);border-radius:10px;font-size:13px;color:var(--suave)}
+.cel .campo b{display:block;color:var(--txt);font-size:14px}
+.cel .ok{margin:12px 14px 16px;background:var(--verde);color:#fff;border-radius:999px;text-align:center;padding:11px;font-weight:700;font-size:14px}
+/* tarjetas */
+.hero .w.hero-vid{display:block;padding-top:0;padding-bottom:56px}.hero .vid figcaption{color:#fff}
+.w.dos .vid,.w .dos .vid{align-self:center}
+.videos{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px;margin-top:28px;align-items:start}
+.videos.uno{max-width:860px;margin-left:auto;margin-right:auto;grid-template-columns:1fr}
+.vid{margin:0}.vid .mar{position:relative;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#0d1f33;box-shadow:0 10px 30px rgba(20,50,80,.18)}
+.vid.vert .mar{aspect-ratio:9/16;max-width:360px;margin:0 auto}
+.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+.vid figcaption{margin-top:10px;font-weight:700;color:#1d2a2b;text-align:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;margin-top:28px}
+.card{background:#fff;border:2px solid var(--borde);border-radius:18px;padding:26px 22px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s,transform .15s,box-shadow .15s}
+a.card:hover{border-color:var(--verde);transform:translateY(-3px);box-shadow:0 14px 30px rgba(20,60,100,.12)}
+.card .ico{font-size:40px;line-height:1}
+.card b{font-size:20px;color:var(--pri2)}
+.card span.d{color:var(--suave);font-size:15px}
+.card .mas{margin-top:8px;font-weight:700;color:var(--verde2)}
+ul.lista{list-style:none;padding:0;margin:0 0 26px;display:grid;gap:12px}
+ul.lista li{display:flex;gap:12px;align-items:flex-start;font-size:17px}
+ul.lista li:before{content:"✓";flex:none;width:26px;height:26px;border-radius:50%;background:#e6f3da;color:var(--verde2);display:grid;place-items:center;font-weight:800;font-size:14px;margin-top:1px}
+.foto{border-radius:24px;min-height:300px;display:grid;place-items:center;font-size:96px;background:linear-gradient(135deg,#dbe9f7,#e6f3da)}
+.seg{background:linear-gradient(135deg,#183c62,#215181);color:#fff;border-radius:26px;padding:48px 36px;display:grid;grid-template-columns:auto 1fr auto;gap:26px;align-items:center}
+.seg .e{font-size:64px}.seg h2{color:#fff;margin:0 0 6px}.seg p{margin:0;color:#dce9f6}
+.seg a.btn{background:#fff;color:var(--pri2)}
+.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+/* footer */
+footer{background:var(--pri2);color:#c8d9ea;padding:44px 0 30px}
+footer .w{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+footer img{height:54px}
+footer .enl{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:14px}footer .enl a:hover{color:#fff}
+footer small{color:#c8d9ea;font-size:14px}
+.foto-img{width:100%;border-radius:24px;max-height:380px;object-fit:cover}
+.wa{position:fixed;right:18px;bottom:18px;z-index:80;width:58px;height:58px;border-radius:50%;background:#25d366;display:grid;place-items:center;box-shadow:0 8px 22px rgba(0,0,0,.28);transition:transform .15s}
+.wa:hover{transform:scale(1.07)}
+@media (max-width:860px){
+  .sup .w>a:not(.tel){display:none}
+  header.top nav{display:none}header.top.abierto nav{display:flex;flex-direction:column;position:absolute;left:0;right:0;top:68px;background:#fff;padding:10px 20px 16px;border-bottom:1px solid var(--borde);margin:0}
+  header.top .w{gap:10px}header.top img{height:40px}header.top .btn.reg{display:none}
+  .hero .w{grid-template-columns:1fr;padding-top:44px;padding-bottom:44px;text-align:center}.hero p{margin-left:auto;margin-right:auto}.hero .acc{justify-content:center}.hero img.logo{width:220px;order:-1}
+  section{padding:48px 0}.dos{grid-template-columns:1fr;gap:28px}.dos.inv>:first-child{order:0}
+  .seg{grid-template-columns:1fr;text-align:center;padding:34px 22px}
+}
+</style>
+</head>
+<body>
+<header class="top" id="top"><div class="w">
+  <a href="index.html"><img src="img/logo.png" alt="Remises TOQUE!"></a>
+  <span class="esp"></span>
+  <a class="btn chico sec reg" href="conductor.html#alta">Registrate como conductor</a>
+  <div class="dd" id="dd"><button class="btn chico" id="ddb" aria-haspopup="true">Ingresar ▾</button>
+    <div class="menu"><a href="pasajero.html#/ingresar">Soy pasajero</a><a href="pasajero.html#/empresas">Soy empresa</a><a href="conductor.html">Soy conductor</a><a href="panel.html#/login">Soy operador</a></div></div>
+</div></header>
+
+<main id="secciones"></main>
+
+<a class="wa" id="wa" href="#" target="_blank" rel="noopener" hidden aria-label="Escribinos por WhatsApp"><svg viewBox="0 0 32 32" width="28" height="28" fill="#fff" aria-hidden="true"><path d="M16 3C9 3 3.3 8.6 3.3 15.5c0 2.4.7 4.7 1.9 6.6L3 29l7.1-2.1c1.8 1 3.8 1.5 5.9 1.5 7 0 12.7-5.6 12.7-12.5S23 3 16 3zm0 22.8c-1.9 0-3.7-.5-5.300-1.500l-.4-.2-4.200 1.200 1.300-4-.3-.4c-1.100-1.700-1.700-3.600-1.700-5.600C5.400 9.700 10.200 5.200 16 5.200s10.600 4.500 10.600 10.300S21.800 25.800 16 25.800zm5.800-7.700c-.3-.2-1.900-.9-2.200-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.200-.2.200-.4.200-.7.100-.3-.2-1.400-.5-2.600-1.600-1-.9-1.600-1.900-1.800-2.200-.2-.3 0-.5.1-.7l.5-.5c.1-.2.2-.3.3-.5.100-.2.100-.4 0-.5-.1-.2-.7-1.700-1-2.300-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.400-.3.300-1 1-1 2.400s1.100 2.800 1.200 3c.2.200 2.100 3.200 5.100 4.400 3 1.200 3 .8 3.600.8.600-.1 1.900-.8 2.200-1.500.3-.7.3-1.400.2-1.500-.1-.1-.3-.2-.6-.4z"/></svg></a>
+
+<footer><div class="w">
+  <a href="index.html"><img src="img/logo-blanco.png" alt="Remises TOQUE!"></a>
+  <small id="pie">© 2026 Remises TOQUE!, desarrollado por Danderfert, J. Cesar</small>
+</div></footer>
+
+<script src="config.js?v=2026101621"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="js/backend.js?v=2026101627"></script>
+<script src="js/landing.js?v=2026101629"></script>
+<script>
+const $ = s => document.querySelector(s), L = window.RODAR_LANDING, E = L.esc;
+let empresa = {};
+function pintar(cfg) {
+  const c = L.normalizar(cfg), vis = c.secciones.filter(x => x.visible !== false);
+  $('#secciones').innerHTML = vis.map(L.seccion).join('');
+  // videos propios: sin sonido y reproduciéndose solos (algunos celulares necesitan el empujón)
+  document.querySelectorAll('.vid video').forEach(v => { v.muted = true; v.defaultMuted = true; const p = v.play(); if (p && p.catch) p.catch(() => { }); });
+  const w = L.waLink(c.whatsapp, c.whatsapp_texto), wa = $('#wa'); if (w) { wa.href = w; wa.hidden = false; } else wa.hidden = true;
+}
+$('#ddb').onclick = e => { e.stopPropagation(); $('#dd').classList.toggle('abierto'); };
+document.addEventListener('click', () => $('#dd').classList.remove('abierto'));
+pintar(null);
+if (window.RODAR && RODAR.listo) Promise.all([RODAR.llamar('/api/pub/config', 'GET', null, null).catch(() => ({})), RODAR.llamar('/api/pub/landing', 'GET', null, null).catch(() => null)]).then(([emp, cfg]) => {
+  empresa = emp || {};
+  if (empresa.nombre) document.title = empresa.nombre + ' · Tu remís a un click';
+  pintar(cfg);
+  if (location.hash.length > 1) { const el = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (el) el.scrollIntoView(); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#215181">
+<title>Manual del conductor · Remises TOQUE!</title>
+<link rel="icon" type="image/png" href="img/conductor-192.png">
+<link rel="stylesheet" href="css/manual.css?v=2026101621">
+<script>
+  // Manual para conductores registrados: se abre desde el menú de la app (con la sesión iniciada en este celular).
+  try { if (!localStorage.getItem('rodar_cond_token') && !localStorage.getItem('rodar_cond_recordar')) document.documentElement.classList.add('sin-sesion'); } catch (e) { }
+</script>
+<style>.sin-sesion .manual{display:none}.bloqueo{display:none}.sin-sesion .bloqueo{display:block}</style>
+</head>
+<body>
+<header class="cab">
+  <a href="index.html"><img src="img/logo-blanco.png" alt="Remises TOQUE!"></a>
+  <h1>Manual del conductor</h1>
+  <p>Todo lo que necesitás para trabajar con la app: estados, viajes, cobro, soporte y seguridad.</p>
+  <span class="rol">🚕 App del conductor</span>
+</header>
+
+<div class="bloqueo">
+  <div style="font-size:44px">🔒</div>
+  <h2 style="color:#183c62;margin:8px 0">Manual para conductores</h2>
+  <p>Este manual está disponible para los conductores registrados. Ingresá a la app y abrilo desde el menú <b>☰ → Manual de uso</b>.</p>
+  <p><a class="boton v" style="padding:8px 16px;text-decoration:none" href="conductor.html">Ingresar a la app</a></p>
+  <p style="font-size:14px">¿Todavía no manejás con nosotros? <a href="conductor.html#alta">Quiero ser conductor</a></p>
+</div>
+
+<div class="w manual">
+  <div class="barra"><a class="prim" href="conductor.html">Volver a la app</a><button onclick="print()">🖨 Imprimir</button></div>
+
+  <nav class="indice"><b>Contenido</b><ol>
+    <li><a href="#antes">Antes de empezar</a></li><li><a href="#ingresar">Ingresar a la app</a></li>
+    <li><a href="#pantalla">La pantalla principal</a></li><li><a href="#estados">Tus estados</a></li>
+    <li><a href="#ofertas">Recibir y aceptar viajes</a></li><li><a href="#buscar">Ir a buscar al pasajero</a></li>
+    <li><a href="#viaje">Durante el viaje y el tarifador</a></li><li><a href="#cobro">Finalizar y cobrar</a></li>
+    <li><a href="#calle">Viaje de calle</a></li><li><a href="#paradas">Paradas</a></li>
+    <li><a href="#fuera">Fuera de servicio</a></li><li><a href="#soporte">Soporte con la central</a></li>
+    <li><a href="#radio">Radio</a></li><li><a href="#sos">Botón SOS</a></li>
+    <li><a href="#menu">El menú ☰</a></li><li><a href="#base">Saldo y pago de la base</a></li>
+    <li><a href="#fondo">Celular bloqueado y segundo plano</a></li><li><a href="#faq">Problemas frecuentes</a></li>
+  </ol></nav>
+
+  <section id="antes"><h2><span class="n">1</span>Antes de empezar</h2>
+    <ul>
+      <li>La central te da tu <b>usuario</b> (normalmente tu DNI) y tu <b>contraseña</b>, y te asigna uno o más móviles.</li>
+      <li>Instalá la app: en Android, menú ⋮ de Chrome → <i>Agregar a pantalla de inicio</i>; en iPhone, Compartir ⬆️ → <i>Agregar a inicio</i>.</li>
+      <li>Al abrirla, aceptá los permisos de <b>ubicación</b> (ideal: <i>Permitir siempre</i>), <b>notificaciones</b> y <b>micrófono</b> (para la radio).</li>
+    </ul>
+  </section>
+
+  <section id="ingresar"><h2><span class="n">2</span>Ingresar a la app</h2>
+    <ol class="pasos">
+      <li>Escribí tu DNI o usuario y tu contraseña. Dejá marcado <b>Recordarme en este celular</b>.</li>
+      <li>Tocá <span class="boton v">Ingresar</span>.</li>
+      <li>Si tenés más de un móvil asignado, elegí con cuál vas a trabajar.</li>
+    </ol>
+    <p>La próxima vez solo te pide la contraseña. Si el celular es de otra persona, tocá <b>No soy yo</b>.</p>
+  </section>
+
+  <section id="pantalla"><h2><span class="n">3</span>La pantalla principal</h2>
+    <table>
+      <tr><th>Dónde</th><th>Qué es</th></tr>
+      <tr><td>Arriba</td><td>Tu número de móvil, tu nombre, tu <b>saldo</b> y tu <b>estado</b> en color. Los botones <span class="boton r">Salir</span> y <span class="boton">☰</span> (menú).</td></tr>
+      <tr><td>Mapa</td><td>Tu posición, las paradas y las zonas. Arriba a la izquierda, <span class="boton">💬</span> abre el chat con la central (con un número rojo si tenés mensajes sin leer).</td></tr>
+      <tr><td>Abajo en el mapa</td><td><span class="boton a">🎙</span> radio y <span class="boton r">SOS</span> emergencia.</td></tr>
+      <tr><td>Panel inferior</td><td>Lo que tenés que hacer ahora: esperar viajes, ir a buscar al pasajero, el tarifador, etc.</td></tr>
+    </table>
+  </section>
+
+  <section id="estados"><h2><span class="n">4</span>Tus estados</h2>
+    <table>
+      <tr><td><span class="est" style="background:#2f9e57">LIBRE</span></td><td>Disponible: te pueden llegar viajes.</td></tr>
+      <tr><td><span class="est" style="background:#2f6fd6">EN PARADA</span></td><td>Estás en la cola de una parada; recibís viajes por orden de llegada.</td></tr>
+      <tr><td><span class="est" style="background:#e8892b">CONFIRMADO</span></td><td>Aceptaste un viaje y vas a buscar al pasajero.</td></tr>
+      <tr><td><span class="est" style="background:#d64545">CON PASAJERO</span></td><td>Viaje en curso.</td></tr>
+      <tr><td><span class="est" style="background:#4b5556">FUERA DE SERVICIO</span></td><td>No recibís viajes (descanso, combustible, etc.).</td></tr>
+      <tr><td><span class="est" style="background:#b0003a">EMERGENCIA</span></td><td>Activaste el SOS: la central está avisada.</td></tr>
+    </table>
+  </section>
+
+  <section id="ofertas"><h2><span class="n">5</span>Recibir y aceptar viajes</h2>
+    <p>Cuando la central te ofrece un viaje, suena, vibra y aparece una ventana con la dirección, la distancia, el destino y el precio estimado. Una barra muestra el tiempo que tenés para responder.</p>
+    <ul>
+      <li><span class="boton v">Aceptar</span>: el viaje es tuyo y pasás a <b>Confirmado</b>.</li>
+      <li><span class="boton r">Rechazar</span>: se ofrece a otro móvil.</li>
+      <li>Si no respondés a tiempo, pasa a otro móvil.</li>
+    </ul>
+    <p><b>Viajes a oferta:</b> a veces un viaje se publica para todos los móviles libres. Aparece en el panel con el botón <span class="boton v">Postularme</span>; la central se lo asigna a uno de los postulados.</p>
+    <div class="tip">💡 Con la app minimizada te llega una <b>notificación</b>: tocala para volver a la app.</div>
+  </section>
+
+  <section id="buscar"><h2><span class="n">6</span>Ir a buscar al pasajero</h2>
+    <ol class="pasos">
+      <li>El panel muestra la dirección, las referencias, el nombre y el teléfono del pasajero (tocá el número para llamar).</li>
+      <li><span class="boton">Navegar</span> abre Google Maps con el recorrido.</li>
+      <li>Al llegar, tocá <span class="boton a">Llegué</span>: el pasajero recibe el aviso.</li>
+      <li>Si te lo pide, escribí el <b>PIN</b> de 4 números que te dice el pasajero.</li>
+      <li>Cuando sube, tocá <span class="boton v">▶ Iniciar viaje</span>.</li>
+    </ol>
+    <p>Si no podés hacer el viaje, tocá <span class="boton">Cancelar viaje</span> y escribí el motivo.</p>
+  </section>
+
+  <section id="viaje"><h2><span class="n">7</span>Durante el viaje y el tarifador</h2>
+    <p>La app mide los kilómetros con el GPS y el tiempo de espera, y calcula el importe con la tarifa vigente. Lo ves en grande en el panel.</p>
+    <div class="ojo">⚠️ No cierres la app durante el viaje. Si se suspende, al volver se recupera sola y el servidor completa el recorrido con las posiciones registradas.</div>
+  </section>
+
+  <section id="cobro"><h2><span class="n">8</span>Finalizar y cobrar</h2>
+    <ol class="pasos">
+      <li>Al llegar al destino tocá <span class="boton r">Finalizar</span> y confirmá el total.</li>
+      <li>Aparece una pantalla grande con lo que tiene que pagar el pasajero y la forma de pago.</li>
+      <li>Si lo pide, tocá <span class="boton">Ticket PDF</span> para darle el comprobante.</li>
+      <li>Cuando cobraste, tocá <span class="boton v">Ya cobré · Listo</span>. Volvés a estar libre.</li>
+    </ol>
+  </section>
+
+  <section id="calle"><h2><span class="n">9</span>Viaje de calle</h2>
+    <p>Si te para alguien en la calle, tocá <span class="boton">Viaje de calle</span> y confirmá: arranca el tarifador desde tu ubicación. Se finaliza y se cobra igual que cualquier viaje.</p>
+  </section>
+
+  <section id="paradas"><h2><span class="n">10</span>Paradas</h2>
+    <p>Estando libre cerca de una parada, tocá <span class="boton a">Entrar a parada</span>: quedás en la cola y ves tu puesto. Para irte, tocá <span class="boton">Salir de parada</span>.</p>
+  </section>
+
+  <section id="fuera"><h2><span class="n">11</span>Fuera de servicio</h2>
+    <p>Estando libre, tocá <span class="boton">FUERA DE SERVICIO</span> (abajo en el panel) o el menú ☰ → <b>Fuera de servicio</b>. El cambio es inmediato: mientras estés así no te llegan viajes.</p>
+    <p>Para volver a trabajar, tocá el botón verde <span class="boton v">▶️ Ponerme libre</span>.</p>
+  </section>
+
+  <section id="soporte"><h2><span class="n">12</span>Soporte con la central</h2>
+    <ul>
+      <li>Tocá <span class="boton">💬</span> en el mapa o el menú ☰ → <b>Soporte con la central</b>.</li>
+      <li>Escribí tu mensaje o usá una respuesta rápida, y tocá <b>Enter</b> en el teclado o <span class="boton a">Enviar</span>.</li>
+      <li>Cuando la central te contesta, <b>suena dos veces</b> y aparece un aviso arriba de la pantalla: <b>tocalo y se abre el chat</b>.</li>
+      <li>Con la app minimizada te llega una notificación: al tocarla se abre la app directamente en el chat.</li>
+    </ul>
+    <p>Los <b>mensajes para toda la flota</b> aparecen como aviso 📢; tocalo para leerlo completo.</p>
+  </section>
+
+  <section id="radio"><h2><span class="n">13</span>Radio</h2>
+    <p><b>Mantené apretado</b> el botón <span class="boton a">🎙</span> mientras hablás y soltalo para enviar. Los mensajes de la central y de otros móviles se escuchan solos.</p>
+  </section>
+
+  <section id="sos"><h2><span class="n">14</span>Botón SOS</h2>
+    <p>Ante una emergencia, <b>mantené apretado</b> <span class="boton r">SOS</span> durante <b>2 segundos</b>. La central recibe la alerta con tu ubicación. Cuando todo esté bien, tocá <b>Cancelar emergencia / volver a libre</b>.</p>
+    <div class="ojo">⚠️ Usalo solo en emergencias reales.</div>
+    <p>Si en el mapa ves zonas marcadas en rojo, son <b>zonas peligrosas</b>: la app te avisa al entrar.</p>
+  </section>
+
+  <section id="menu"><h2><span class="n">15</span>El menú ☰</h2>
+    <table>
+      <tr><td><b>💬 Soporte con la central</b></td><td>Chat con la central.</td></tr>
+      <tr><td><b>👤 Mi perfil</b></td><td>Tu nombre, teléfono, email y datos de recupero. El DNI y el auto los cambia la central.</td></tr>
+      <tr><td><b>👛 Mi billetera virtual</b></td><td>Tu alias o CVU para recibir pagos.</td></tr>
+      <tr><td><b>🧾 Mis viajes</b></td><td>Tus viajes de los últimos 7 días, con el ticket de cada uno.</td></tr>
+      <tr><td><b>💲 Pagar base</b></td><td>Tu saldo, tus movimientos y la carga de saldo.</td></tr>
+      <tr><td><b>🔑 Cambiar clave</b></td><td>Cambiá tu contraseña.</td></tr>
+      <tr><td><b>⏸️ Fuera de servicio</b></td><td>Pausá o retomá la recepción de viajes.</td></tr>
+      <tr><td><b>📘 Manual de uso</b></td><td>Este manual.</td></tr>
+      <tr><td><b>🚪 Cerrar sesión</b></td><td>Salís y quedás desconectado. No se puede con un viaje en curso.</td></tr>
+    </table>
+  </section>
+
+  <section id="base"><h2><span class="n">16</span>Saldo y pago de la base</h2>
+    <p>Arriba ves tu saldo. Si dice <b>SIN SALDO</b> o <b>BLOQUEADO</b>, tenés que pagar la base para seguir recibiendo viajes.</p>
+    <ol class="pasos">
+      <li>Menú ☰ → <b>Pagar base</b>.</li>
+      <li>Escribí el monto o tocá uno de los montos rápidos (toda la deuda, una cuota).</li>
+      <li>Tocá <span class="boton a">💳 Pagar con Mercado Pago</span>. Si la app muestra los pasos para transferir: copiá el alias, tocá <b>Abrir Mercado Pago</b>, transferí el monto y tocá <b>Ya transferí</b>.</li>
+      <li>El saldo se acredita cuando la central confirma el pago.</li>
+    </ol>
+  </section>
+
+  <section id="fondo"><h2><span class="n">17</span>Celular bloqueado y segundo plano</h2>
+    <h3>📲 App Android (recomendada)</h3>
+    <p>Con la app <b>TOQUE! Conductor</b> instalada, el <b>GPS sigue funcionando con el celular bloqueado</b> y los viajes y mensajes llegan como notificación. Mientras estás en servicio ves un aviso fijo en la barra: "Remises TOQUE! · En servicio".</p>
+    <ol class="pasos">
+      <li>Desde el celular, en la pantalla de ingreso o en el menú ☰, tocá <span class="boton v">📲 Descargar app del conductor</span>.</li>
+      <li>Abrí el archivo <b>toque-conductor.apk</b>. Si el celular lo pide, permití <b>instalar apps de esta fuente</b>.</li>
+      <li>Abrí <b>TOQUE! Conductor</b>, ingresá y aceptá los permisos de <b>ubicación</b>, <b>notificaciones</b> y <b>sin restricción de batería</b>.</li>
+    </ol>
+    <div class="ojo">⚠️ Para salir usá <b>Cerrar sesión</b>. Con la tecla Atrás o el botón de inicio la app queda funcionando en segundo plano. No la cierres deslizándola desde las apps recientes.</div>
+    <h3>🔔 Desde el navegador o en iPhone</h3>
+    <p>Si usás la app web instalada, permití las <b>notificaciones</b>: los <b>viajes ofrecidos</b>, las <b>asignaciones</b> y los <b>mensajes de la central</b> te llegan aunque el celular esté bloqueado o la app cerrada. Al tocar el aviso se abre la app. El indicador de abajo a la derecha muestra 🔔 cuando están activas.</p>
+    <p>El navegador no puede mandar el GPS con la pantalla apagada: al abrir la app se actualiza enseguida y el viaje cobra el recorrido real registrado.</p>
+    <div class="tip">En iPhone, las notificaciones funcionan solo con la app agregada a la pantalla de inicio (Compartir ⬆️ → Agregar a inicio), iOS 16.4 o más nuevo.</div>
+  </section>
+
+  <section id="faq"><h2><span class="n">18</span>Problemas frecuentes</h2>
+    <dl class="faq">
+      <dt>No me llegan viajes.</dt><dd>Revisá que estés <b>LIBRE</b> o <b>EN PARADA</b>, que tengas saldo, que el GPS esté activo y que no estés penalizado (se ve arriba, junto al saldo).</dd>
+      <dt>Dice "GPS…" o no aparezco en el mapa.</dt><dd>Activá la ubicación del celular y dale permiso a la app. Salí a un lugar abierto.</dd>
+      <dt>No suena cuando llega un viaje o un mensaje.</dt><dd>Tocá la pantalla una vez al abrir la app (el navegador lo exige para habilitar el sonido) y revisá el volumen y las notificaciones.</dd>
+      <dt>Me olvidé la contraseña.</dt><dd>Pedile a la central que te la resetee.</dd>
+    </dl>
+  </section>
+</div>
+<footer><img src="img/logo.png" alt="Remises TOQUE!">© 2026 Remises TOQUE!, desarrollado por Danderfert, J. Cesar</footer>
+</body>
+</html>

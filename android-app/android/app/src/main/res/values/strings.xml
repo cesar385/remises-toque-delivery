@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TOQUE! Conductor</string>
+    <string name="title_activity_main">TOQUE! Conductor</string>
+    <string name="package_name">com.remisestoque.conductor</string>
+    <string name="custom_url_scheme">com.remisestoque.conductor</string>
+    <!-- Aviso fijo mientras la app manda la ubicación en segundo plano -->
+    <string name="capacitor_background_geolocation_notification_channel_name">En servicio (ubicación)</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_stat_toque</string>
+    <string name="capacitor_background_geolocation_notification_color">#5fa52f</string>
+</resources>

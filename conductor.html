@@ -1,0 +1,1212 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#215181">
+<link rel="manifest" href="manifest-conductor.json">
+<link rel="apple-touch-icon" href="img/conductor-180.png">
+<link rel="icon" type="image/png" href="img/conductor-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TOQUE! Conductor">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Remises TOQUE! · Conductor</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="css/app.css?v=2026101631">
+<style>
+  body{background:#0e1a2b;color:#fff;overscroll-behavior:none}
+  .app{position:fixed;inset:0;display:flex;flex-direction:column;max-width:560px;margin:0 auto;background:#13233a}
+  .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0f1f35;padding-top:max(10px,env(safe-area-inset-top))}
+  .hd .num{background:var(--pri);border-radius:10px;padding:6px 10px;font-weight:800;font-size:18px}
+  .hd .est{padding:5px 10px;border-radius:14px;font-weight:700;font-size:13px}
+  .hd .salir-b{margin-left:auto;background:#d64545;border:0;color:#fff;border-radius:10px;height:40px;padding:0 12px;font-weight:700;font-size:14px}
+  .hd .menu-b{margin-left:0;background:var(--acento);border:0;color:#fff;border-radius:10px;width:44px;height:40px;font-size:22px}
+  #mapa{flex:1;min-height:200px}
+  .panel{background:#fff;color:var(--texto);border-radius:18px 18px 0 0;padding:14px;padding-bottom:max(14px,env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.3)}
+  .panel h2{margin:0 0 6px;font-size:18px}
+  .grande{width:100%;justify-content:center;font-size:16px;min-height:52px;border-radius:12px;margin-top:8px}
+  .dos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .tarifador{text-align:center;background:#0f1f35;color:#fff;border-radius:14px;padding:12px;margin:8px 0}
+  .tarifador .monto{font-size:40px;font-weight:800;color:#a6e06b}
+  .lateral{position:fixed;inset:0;background:rgba(10,25,40,0);z-index:900;display:none;transition:background .2s}
+  .lateral.ab{display:block}.lateral.vis{background:rgba(10,25,40,.55)}
+  .lateral .caja{position:absolute;right:0;top:0;bottom:0;width:min(340px,88vw);background:#f6f8fa;color:var(--texto);overflow:auto;padding-bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(100%);transition:transform .2s ease-out;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
+  .lateral.vis .caja{transform:none}
+  .lateral .mh{position:relative;background:linear-gradient(135deg,#183c62,#215181);color:#fff;padding:18px 16px 16px;padding-top:calc(18px + env(safe-area-inset-top))}
+  .lateral .mx{position:absolute;right:10px;top:calc(8px + env(safe-area-inset-top));background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:50%;width:36px;height:36px;font-size:24px;line-height:1;cursor:pointer}
+  .lateral .mp{display:flex;gap:12px;align-items:center;padding-right:40px}.lateral .mp b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lateral .mp small{opacity:.8}
+  .lateral .av{flex:none;width:50px;height:50px;border-radius:50%;background:#7ac143;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.35)}
+  .lateral .mest{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}.lateral .mest .pill{color:#fff;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800}.lateral .ms{font-size:14px}
+  .lateral .mfs{display:block;width:calc(100% - 24px);margin:12px;min-height:50px;border:2px solid #4b5556;background:#fff;color:#4b5556;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer}
+  .lateral .mfs.lib{border-color:#2f9e57;background:#2f9e57;color:#fff}
+  .lateral .mg{font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#7a8a96;padding:12px 18px 6px}
+  .lateral a{display:flex;align-items:center;gap:12px;margin:0 12px 6px;padding:10px 12px;background:#fff;border-radius:14px;color:var(--texto);text-decoration:none;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .lateral a:active{background:#eef3f8}
+  .lateral .mi{flex:none;width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px}
+  .lateral .mt{flex:1;min-width:0}.lateral .mt b{display:block;font-size:15.5px;font-weight:700}.lateral .mt small{display:block;color:#7a8a96;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lateral .mc{color:#b3bfc8;font-size:24px;line-height:1}
+  .lateral a.msal{margin-top:14px}.lateral a.msal b{color:#c0392b}
+  .lateral .mpie{text-align:center;color:#9aa7b1;font-size:12px;margin-top:10px}
+  .hoja{position:fixed;inset:0;background:#f6f8fa;color:var(--texto);z-index:950;display:flex;flex-direction:column;animation:hojaIn .18s ease-out}
+  @keyframes hojaIn{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
+  .hoja .ht{background:linear-gradient(135deg,#183c62,#215181);color:#fff;padding:12px 12px;display:flex;gap:10px;align-items:center;padding-top:max(12px,env(safe-area-inset-top));box-shadow:0 2px 10px rgba(0,0,0,.15)}
+  .hoja .ht b{flex:1;font-size:18px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hoja .hv,.hoja .hx{flex:none;background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:50%;width:40px;height:40px;font-size:28px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 0 3px}
+  .hoja .hv{font-size:34px;padding:0 3px 5px 0}
+  .hoja .hb{flex:1;overflow:auto;padding:12px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+  .hoja .hc{background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .hoja.h-viajes .hc{background:none;box-shadow:none;padding:0}
+  .vjres{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#0f1f35;color:#fff;border-radius:16px;padding:14px 10px;text-align:center}
+  .vjres small{display:block;font-size:11.5px;opacity:.75;text-transform:uppercase;letter-spacing:.5px}.vjres b{display:block;font-size:20px;margin-top:2px;color:#a6e06b}
+  .vjsub{text-align:center;color:#7a8a96;font-size:13px;margin:8px 0 2px}
+  .vjg{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#7a8a96;padding:14px 4px 6px}.vjg span{color:#2f9e57;letter-spacing:0;font-size:13px}
+  .vj{background:#fff;border-radius:16px;padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.08)}.vj.an{opacity:.7}
+  .vj1{display:flex;align-items:center;gap:8px}.vjh{font-weight:800;font-size:17px}.vjn{color:#7a8a96;font-size:13px}
+  .vje{color:#fff;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:800}.vjm{margin-left:auto;font-size:19px;color:#183c62}
+  .vjr{margin:10px 0 8px;padding-left:4px;font-size:15px;line-height:1.35}.vjr div{display:flex;gap:10px;align-items:flex-start;position:relative;padding:3px 0}
+  .vjr i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}.vjr i.o{background:#2f9e57}.vjr i.d{background:#d64545}
+  .vjr div:first-child::after{content:"";position:absolute;left:4px;top:17px;bottom:-6px;border-left:2px dotted #c3ccd3}
+  .vj2{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.vj2 .ch{background:#f0f3f6;border-radius:999px;padding:4px 10px;font-size:12.5px;color:#4b5a66}
+  .vjt{margin-left:auto;background:#e8f1fb;color:#215181;border:0;border-radius:10px;padding:8px 12px;font-weight:800;font-size:13.5px;cursor:pointer}
+  .vjvac{background:#fff;border-radius:16px;padding:26px 16px;text-align:center;color:#4b5a66;margin-top:10px}.vjvac p{margin:6px 0 0;font-size:14px}
+  .hoja.chat-h .hc{flex:1;display:flex;flex-direction:column;min-height:0;background:#fff;padding:10px}
+  .oferta{position:fixed;inset:0;z-index:980;background:rgba(0,0,0,.6);display:flex;align-items:flex-end}
+  .oferta .c{background:#fff;color:var(--texto);width:100%;max-width:560px;margin:0 auto;border-radius:20px 20px 0 0;padding:18px}
+  .cuenta{height:8px;background:#eee;border-radius:4px;overflow:hidden;margin:10px 0}.cuenta div{height:100%;background:var(--acento);transition:width 1s linear}
+  .ptt-c{position:absolute;left:12px;bottom:12px;z-index:700;width:64px;height:64px;border-radius:50%;background:var(--acento);border:0;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.4);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .ptt-c.grabando{background:var(--rojo)}
+  .habla{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:800;background:#1f2b2c;color:#fff;border-radius:22px;padding:8px 16px;font-weight:700;display:none;box-shadow:0 4px 14px rgba(0,0,0,.35);max-width:90%;text-align:center}
+  .habla.on{display:block;animation:pulso 1s infinite alternate}
+  @keyframes pulso{from{background:#1f2b2c}to{background:#b4232f}}
+  .bg-ind{position:fixed;right:8px;bottom:8px;z-index:900;border:0;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff;background:#2f9e57;opacity:.92}
+  .bg-ind.aviso{background:#d98a00}
+
+  .sos{position:absolute;right:12px;bottom:12px;z-index:700;width:58px;height:58px;border-radius:50%;background:#b0003a;color:#fff;border:3px solid #fff;font-weight:800}
+  .aviso-pel{position:absolute;top:8px;left:72px;right:8px;z-index:700;background:#b0003a;color:#fff;padding:8px 12px;border-radius:10px;display:none;text-align:center;font-weight:700}
+  .login-cond{color:var(--texto)}
+  .login-cond .caja{max-width:400px}
+  .login-cond .sub-l{color:var(--suave);margin:6px 0 16px;text-align:center;font-size:14px}
+  .login-cond input{font-size:16px;min-height:46px}
+  .login-cond .hola{background:#eef4fa;border-radius:12px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;color:var(--texto)}
+  .login-cond .hola b{font-size:17px;color:var(--pri-2)}
+  .login-cond .hola a{margin-left:auto;color:var(--pri-2);font-size:14px;font-weight:600}
+  .login-cond .pass{position:relative}.login-cond .pass button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:20px;padding:6px;cursor:pointer}
+  .login-cond .err{background:#fde8eb;color:#9b1c2e;border-radius:10px;padding:9px 12px;margin-top:10px;display:none;font-size:14px}
+  .login-cond .rec{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--suave);font-size:14px}
+  .login-cond .rec input{width:20px;height:20px;min-height:0}
+  .login-cond .tips{margin-top:14px;padding:10px 12px;border:1px dashed #c8d6e0;border-radius:12px;font-size:13px;color:var(--suave);line-height:1.5}
+  .login-cond #inst:not(:empty){margin-top:10px}
+  .lista-moviles button{width:100%;margin-top:8px;justify-content:space-between;min-height:50px}
+  .centrar{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:700;display:none;background:#215181;color:#fff;border:0;border-radius:999px;padding:10px 18px;font-weight:800;font-size:15px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+  .centrar.on{display:block}
+  .mov-yo{position:relative;width:36px;height:36px}.mov-yo .marcador-movil{position:relative;z-index:1}
+  .mov-yo .rumbo{position:absolute;left:50%;top:50%;width:0;height:0;margin:-31px 0 0 -9px;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid #215181;transform-origin:9px 31px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+  .tk-ov{position:fixed;inset:0;z-index:5000;background:#eef2f4;display:flex;flex-direction:column}
+  .tk-ov .tk-bar{display:flex;gap:8px;padding:10px;padding-top:calc(10px + env(safe-area-inset-top));background:#215181}
+  .tk-ov .tk-bar button{flex:1;min-height:48px;border:0;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer}
+  .tk-ov .tk-imp{background:#7ac143;color:#fff}.tk-ov .tk-vol{background:#fff;color:#215181}
+  .tk-ov iframe{flex:1;border:0;width:100%;background:#eef2f4}
+  .demo{position:absolute;top:8px;right:8px;z-index:700;background:rgba(255,255,255,.9);color:#000;border-radius:8px;padding:4px 8px;font-size:11px}
+  /* celular acostado (soporte en el auto): mapa a la izquierda, controles a la derecha */
+  @media (orientation:landscape) and (max-height:520px){
+    .app{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) min(46%,420px);grid-template-rows:auto minmax(0,1fr)}
+    .app>.hd{grid-column:1/-1;padding-top:max(6px,env(safe-area-inset-top));padding-bottom:6px}
+    .app>.panel{border-radius:0;overflow:auto;box-shadow:-4px 0 14px rgba(0,0,0,.25);padding-right:max(14px,env(safe-area-inset-right))}
+    .app>div:nth-child(2){min-height:0}
+    .grande{min-height:46px}
+    .oferta .c{max-width:520px;border-radius:20px;margin-bottom:10px}
+  }
+  .rotar{position:fixed;inset:0;background:#0f1f35;z-index:2000;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;font-size:18px}
+  /* soporte: botón flotante, aviso emergente y chat */
+  .chat-c{position:absolute;left:12px;top:12px;z-index:700;width:52px;height:52px;border-radius:50%;background:#fff;color:var(--pri);border:0;font-size:24px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .badge-n{position:absolute;top:-4px;right:-4px;min-width:22px;height:22px;border-radius:11px;background:#d64545;color:#fff;font-size:12px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 5px;border:2px solid #fff}
+  .badge-n.on{display:flex}
+  .lateral a .badge-n{position:static;display:none;margin-left:8px;border:0}.lateral a .badge-n.on{display:inline-flex}
+  .pop{position:fixed;left:10px;right:10px;top:max(10px,env(safe-area-inset-top));z-index:1500;background:#fff;color:var(--texto);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45);display:flex;gap:12px;align-items:center;padding:12px 14px;border-left:6px solid var(--acento);cursor:pointer;animation:popIn .25s ease-out;max-width:560px;margin:0 auto}
+  .pop .ic{font-size:28px}.pop .tx{flex:1;min-width:0}.pop .tx b{display:block;font-size:15px}.pop .tx span{display:block;font-size:14px;opacity:.85;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .pop .tx small{color:var(--pri);font-weight:700}.pop .x{background:none;border:0;font-size:24px;color:#888;padding:0 4px}
+  @keyframes popIn{from{transform:translateY(-120%);opacity:0}to{transform:none;opacity:1}}
+  .chat{display:flex;flex-direction:column;height:100%}
+  .chat .msgs{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 10px}
+  .chat .msgs .burbuja{max-width:82%;font-size:15px;white-space:pre-wrap;word-wrap:break-word}
+  .chat .msgs .burbuja .de{display:block;font-size:11px;font-weight:700;color:var(--pri);margin-bottom:2px}
+  .chat .dia{align-self:center;font-size:11px;background:#eef3f3;border-radius:10px;padding:2px 10px;color:#667}
+  .chat .rapidas{display:flex;gap:6px;overflow-x:auto;padding:6px 0}
+  .chat .rapidas button{flex:none;border:1px solid #b8d3d5;background:#fff;color:var(--pri);border-radius:16px;padding:7px 12px;font-size:13px}
+  .chat form{display:flex;gap:8px;align-items:flex-end;padding-bottom:env(safe-area-inset-bottom)}
+  .chat textarea{flex:1;resize:none;min-height:46px;max-height:120px;border-radius:12px;padding:11px;font:inherit;font-size:16px;border:1px solid #ccd}
+  .chat form .btn{min-height:46px;border-radius:12px}
+  .hoja.chat-h .hb{display:flex;flex-direction:column;padding-bottom:8px}
+  /* fuera de servicio */
+  .fs-card{text-align:center;padding:6px 0 2px}
+  .fs-card .ic{font-size:40px;line-height:1}
+  .fs-card h2{margin:6px 0 4px}
+  .fs-card p{margin:0 0 12px;opacity:.8;font-size:14px}
+  .btn-fs{width:100%;margin:8px 0 22px;background:#fff;color:#4b5556;border:2px solid #4b5556;border-radius:12px;font-weight:800;min-height:46px;font-size:15px;letter-spacing:.04em}
+  /* avisos breves arriba, para no tapar los botones del panel */
+  #toasts{bottom:auto;top:calc(70px + env(safe-area-inset-top));z-index:1600}
+  .gps-av{position:fixed;left:8px;right:8px;top:calc(62px + env(safe-area-inset-top));z-index:1400;background:#fff4e5;color:#7a4a00;border:1px solid #f0c27a;border-radius:12px;padding:8px 10px;font-size:13.5px;display:none;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:560px;margin:0 auto}
+  .gps-av .t{flex:1}.gps-av .r{background:#e8892b;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:700;font-size:13px}.gps-av .x{background:none;border:0;font-size:22px;color:#7a4a00;padding:0 4px}
+  /* Mercado Pago */
+  .mp-box{background:#f4f8fb;border:1px solid #dbe6ef;border-radius:16px;padding:14px;margin:10px 0}
+  .mp-box label{font-weight:700;font-size:14px;color:#33475b}
+  .mp-monto{display:flex;align-items:center;background:#fff;border:2px solid #b9d3e8;border-radius:12px;padding:0 12px;margin:6px 0 8px}
+  .mp-monto span{font-size:26px;font-weight:800;color:#5e6f70}
+  .mp-monto input{border:0;outline:0;font-size:28px;font-weight:800;width:100%;min-height:54px;padding:0 6px;background:none;color:#1d2a2b}
+  .mp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .mp-chips button{border:1px solid #b9d3e8;background:#fff;border-radius:12px;padding:6px 10px;font-size:12px;color:#33475b;display:flex;flex-direction:column;align-items:flex-start;line-height:1.25}
+  .mp-chips button b{font-size:15px;color:#1d2a2b}.mp-chips button.on{border-color:#009ee3;background:#e6f6fd}
+  .btn-mp{width:100%;display:flex;align-items:center;gap:12px;background:#009ee3;color:#fff;border:0;border-radius:14px;padding:12px 16px;min-height:62px;text-align:left;cursor:pointer;box-shadow:0 6px 16px rgba(0,158,227,.35)}
+  .btn-mp:active{transform:scale(.98)}.btn-mp:disabled{opacity:.75}
+  .btn-mp .ic{font-size:26px}.btn-mp .tx{flex:1;min-width:0}.btn-mp .tx b{display:block;font-size:17px}.btn-mp .tx small{display:block;opacity:.9;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn-mp .fl{font-size:30px;line-height:1}
+  .mp-paso{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #eee}.mp-paso>div{flex:1;min-width:0}
+  .mp-guia{margin:4px 0 0;padding-left:20px;font-size:14px;line-height:1.5}.mp-guia li{margin:5px 0}
+  .mp-tecla{display:inline-block;background:#eaf6fd;color:#00609a;border:1px solid #b9e2f7;border-radius:8px;padding:1px 8px;font-weight:700;font-size:13px;white-space:nowrap}
+  .mp-paso i{flex:none;font-style:normal;width:28px;height:28px;border-radius:50%;background:#009ee3;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .btn-mp.verde{background:#2f9e57;box-shadow:0 6px 16px rgba(47,158,87,.35)}
+  .btn-mp.gris{background:#fff;color:#215181;border:2px solid #b9e2f7;box-shadow:none;min-height:56px}
+  .mp-paso:last-of-type{border-bottom:0}
+  .mp-nota{font-size:13px;color:#5b6b6b;line-height:1.4}
+  .mp-alias{font-size:22px;font-weight:800;user-select:all;margin:4px 0 8px;word-break:break-all}
+  /* alta de conductor */
+  .alta .paso{border:1px solid #e1e8e8;border-radius:14px;padding:12px;margin-bottom:12px}
+  .alta .paso h3{margin:0 0 8px;font-size:15px;display:flex;gap:8px;align-items:center}
+  .alta .paso h3 i{font-style:normal;background:var(--pri);color:#fff;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+  .alta .campo input,.alta .campo select{width:100%;font-size:16px}
+  .alta .ayuda{font-size:12px;opacity:.7;margin-top:2px}
+  .alta .doc{display:flex;align-items:center;gap:10px;border:1px dashed #b8d3d5;border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer}
+  .alta .doc input{display:none}.alta .doc .ic{font-size:24px}.alta .doc .tx{flex:1;min-width:0}.alta .doc .tx small{display:block;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .alta .doc.ok{border-style:solid;border-color:#2f9e57;background:#f0faf3}
+  .alta .err{color:#c0392b;font-size:12px;display:none}.alta .campo.mal input{border-color:#c0392b}.alta .campo.mal .err{display:block}
+  .alta .chk{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:6px 0 12px}
+  .alta-ok{text-align:center;padding:30px 10px}.alta-ok .ic{font-size:56px}
+</style>
+</head>
+<body>
+<div class="rotar">Girá el celular a vertical para usar la app.</div>
+<div id="root"></div>
+<script src="config.js?v=2026101631"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/backend.js?v=2026101631"></script>
+<script src="js/pwa.js?v=2026101631"></script>
+<script>
+const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pesos = n => n == null ? '—' : '$ ' + Math.round(n).toLocaleString('es-AR');
+const EST = { disponible: ['LIBRE', '#2f9e57'], confirmado: ['CONFIRMADO', '#e8892b'], con_pasajero: ['CON PASAJERO', '#d64545'], en_parada: ['EN PARADA', '#2f6fd6'], fuera_servicio: ['FUERA DE SERVICIO', '#4b5556'], desconectado: ['DESCONECTADO', '#8b9899'], emergencia: ['EMERGENCIA', '#b0003a'] };
+let TK = localStorage.getItem('rodar_cond_token');
+const S = { estado: null, pos: null, viaje: null, tarif: null, socket: null, mapa: null, mk: {}, audioOk: false };
+// ---------- App Android (Capacitor) ----------
+// Dentro de la app Android la misma página usa el GPS nativo en segundo plano (con un aviso fijo en la barra),
+// notificaciones del sistema y la tecla Atrás. En el navegador nada de esto se activa.
+const NATIVO = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const APK_URL = 'https://github.com/cesar385/remises-toque/releases/latest/download/toque-conductor.apk';
+const ES_ANDROID = /android/i.test(navigator.userAgent);
+const plug = n => (NATIVO && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null;
+let nativoListo = false;
+function nativoIniciar() {
+  if (!NATIVO || nativoListo) return; nativoListo = true;
+  const LN = plug('LocalNotifications'), App = plug('App');
+  if (LN) {
+    LN.requestPermissions().catch(() => { });
+    LN.createChannel({ id: 'toque-avisos', name: 'Viajes y mensajes', description: 'Viajes ofrecidos y mensajes de la central', importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#5fa52f' }).catch(() => { });
+    LN.addListener('localNotificationActionPerformed', a => { const ab = a && a.notification && a.notification.extra && a.notification.extra.abrir; refrescar(); if (ab) setTimeout(() => abrirDesdeAviso(ab), 300); });
+  }
+  if (App) {
+    App.addListener('appStateChange', st => { S.enFondo = !st.isActive; if (st.isActive) { refrescar(); revisarSoporte(); } });
+    // Atrás: cierra lo que esté abierto; si no hay nada, minimiza (cerrar la app cortaría el servicio)
+    App.addListener('backButton', () => {
+      if ($('.oferta')) return;
+      if ($('.hoja')) return $('.hoja').dataset.menu === '1' ? volverAlMenu() : cerrarHoja();
+      if ($('#lat') && $('#lat').classList.contains('ab')) return cerrarMenu();
+      App.minimizeApp();
+    });
+  }
+}
+// GPS nativo: sigue mandando la ubicación con la pantalla bloqueada
+function nativoGps(ok, fallo) {
+  const BGL = plug('BackgroundGeolocation'); if (!BGL || S.bgWatcher) return;
+  // Según la versión del puente de Android, addWatcher devuelve una promesa o directamente el id (texto): se aceptan las dos
+  S.bgWatcher = 'pend';
+  let w; try { w = BGL.addWatcher({ backgroundTitle: 'Remises TOQUE! · En servicio', backgroundMessage: 'Tu ubicación se envía a la central. Tocá para abrir la app.', requestPermissions: true, stale: false, distanceFilter: 0 },
+    (loc, err) => {
+      if (err) {
+        fallo({ code: err.code === 'NOT_AUTHORIZED' ? 1 : 2 });
+        if (err.code === 'NOT_AUTHORIZED' && confirm('La app necesita permiso de ubicación para recibir viajes. ¿Abrir los ajustes?')) BGL.openSettings();
+        return;
+      }
+      if (!loc) return;
+      ok({ coords: { latitude: loc.latitude, longitude: loc.longitude, speed: loc.speed || 0 } });
+      if (S.enFondo && Date.now() - (S.ultRevFondo || 0) > 10000) revisarFondo();
+    }); } catch (er) { S.bgWatcher = null; return; }
+  Promise.resolve(w).then(id => { S.bgWatcher = (id && (id.id || id)) || 'activo'; actualizarBg(); }).catch(() => { S.bgWatcher = null; });
+}
+// Con la app en segundo plano se consulta el estado cada ~10 s (el tiempo real puede cortarse) y se avisa con una notificación
+async function revisarFondo() {
+  S.ultRevFondo = Date.now();
+  const antes = S.estado && S.estado.viaje;
+  await refrescar();
+  const v = S.estado && S.estado.viaje;
+  if (v && v.estado === 'confirmado' && (!antes || antes.id !== v.id) && S.avisoAsig !== v.id) { S.avisoAsig = v.id; notificar('✅ Te asignaron un viaje', 'Viaje #' + v.id + ' · ' + (v.origen_dir || '') + '\nTocá para ver a dónde ir', '', 'rodar-asignado'); }
+  if (Date.now() - (S.ultRevSop || 0) > 30000) {
+    S.ultRevSop = Date.now();
+    try { const ms = await api('/api/conductor/soporte'); const u = ms.filter(m => m.de !== 'movil').pop(); const visto = +(lsGet(SOP_VISTO) || 0);
+      if (u && u.id > visto && u.id !== S.sopAvisado) { S.sopAvisado = u.id; notificar('💬 Mensaje de la Central', u.texto + '\nTocá para responder', '#soporte', 'rodar-soporte'); } } catch { }
+  }
+}
+const idDeTag = t => { let h = 7; for (const c of String(t || 'rodar')) h = (h * 31 + c.charCodeAt(0)) % 2000000000; return h; };
+
+async function api(url, body, method) {
+  try { return await RODAR.llamar(url, method || (body ? 'POST' : 'GET'), body, TK); }
+  catch (e) { if (e.status === 401 && TK) salir(true); throw e; }
+}
+// Ticket: se muestra dentro de la app (sin ventanas emergentes). "Imprimir / Guardar PDF" usa la impresión del navegador;
+// en la app Android (que no puede imprimir) abre el mismo ticket en Chrome, donde se imprime o se guarda como PDF.
+// "Volver" cierra el ticket y la pantalla de cobro y deja al conductor en su pantalla principal.
+async function ticket(id) {
+  let v; try { v = await api(`/api/viajes/${id}/ticket`); } catch (er) { return toast(er.message, 'error'); }
+  $$('.tk-ov').forEach(x => x.remove());
+  const ov = document.createElement('div'); ov.className = 'tk-ov';
+  ov.innerHTML = `<div class="tk-bar"><button class="tk-vol">← Volver</button><button class="tk-imp">🖨 Imprimir / PDF</button></div><iframe title="Ticket de viaje"></iframe>`;
+  document.body.append(ov);
+  const fr = $('iframe', ov);
+  fr.srcdoc = ticketHtml(v, {}).replace('<div class="barra">', '<div class="barra" style="display:none">');
+  const volver = () => { document.removeEventListener('visibilitychange', alVolver); ov.remove(); limpiarCobro(); cerrarHoja(); refrescar(); };
+  const alVolver = () => { if (!document.hidden && S.tkExterno) { S.tkExterno = false; volver(); } };
+  $('.tk-vol', ov).onclick = volver;
+  $('.tk-imp', ov).onclick = () => {
+    if (NATIVO) {
+      // Se abre fuera de la app (remisestoque.netlify.app es otro dominio, así Android lo manda a Chrome) con los datos en el enlace
+      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(v)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      S.tkExterno = true; document.addEventListener('visibilitychange', alVolver);
+      location.href = 'https://remisestoque.netlify.app/ticket.html#' + b64;
+      return;
+    }
+    try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch { const w = window.open('', '_blank'); if (w) { abrirTicket(w, v, { auto: true }); } }
+  };
+}
+function toast(m, t) { let c = $('#toasts'); if (!c) { c = document.createElement('div'); c.id = 'toasts'; document.body.append(c); } const e = document.createElement('div'); e.className = 'toast ' + (t || ''); e.textContent = m; c.append(e); setTimeout(() => e.remove(), 4000); }
+function vibrar(p) { try { navigator.vibrate && navigator.vibrate(p); } catch { } }
+let AC = null;
+function beep() { try { AC = AC || new AudioContext(); if (AC.state === 'suspended') AC.resume(); const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = 880; g.gain.value = 0.7; o.connect(g); g.connect(AC.destination); o.start(); setTimeout(() => { try { o.stop(); } catch { } }, 350); } catch { } }
+
+// ---------------- LOGIN ----------------
+const RECORDAR = 'rodar_cond_recordar';
+function leerRec() { try { return JSON.parse(localStorage.getItem(RECORDAR) || 'null'); } catch { return null; } }
+function pantallaLogin() {
+  const rec = leerRec();
+  $('#root').innerHTML = `<div class="login login-cond"><div class="caja">
+    <div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:220px;max-width:80%"></a></div>
+    <div class="rol-etiqueta">🚕 Conductores</div><div id="emp" style="display:none"></div>
+    <p class="sub-l">${rec ? 'Escribí tu contraseña para entrar.' : 'Ingresá con tu DNI o usuario y la contraseña que te dio la central.'}</p>
+    <form id="fl" autocomplete="on">
+      ${rec ? `<div class="hola"><div><div style="opacity:.75;font-size:13px">Hola de nuevo</div><b>${esc(rec.nombre || rec.usuario)}</b></div><a href="#" id="otro">No soy yo</a></div>
+        <input type="hidden" name="usuario" value="${esc(rec.usuario)}" autocomplete="username">`
+      : `<div class="campo"><label>DNI o usuario</label><input name="usuario" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" required></div>`}
+      <div class="campo" style="margin-top:10px"><label>Contraseña</label><div class="pass"><input name="password" id="pw" type="password" autocomplete="current-password" required><button type="button" id="ver" aria-label="Mostrar contraseña">👁</button></div></div>
+      ${rec ? '' : '<label class="rec"><input type="checkbox" id="recordar" checked> Recordarme en este celular</label>'}
+      <div class="err" id="err"></div>
+      <button class="btn" id="entrar" style="width:100%;justify-content:center;margin-top:12px">Ingresar</button>
+    </form>
+    <div id="lm" class="lista-moviles"></div>
+    <div id="inst"></div>
+    ${rec ? '' : `<div class="tips"><b>Primera vez:</b> la contraseña te la da la central. Al entrar, aceptá el permiso de <b>ubicación</b> para recibir viajes.</div>`}
+    <div class="otros-ingresos"><span>¿Querés manejar con nosotros?</span><a href="#" id="alta" class="dest">📝 Quiero ser conductor</a></div>
+    ${ES_ANDROID && !NATIVO ? `<div class="otros-ingresos"><span>App Android</span><a href="${APK_URL}" class="dest">📲 Descargar app del conductor</a></div>` : ''}
+    <div class="otros-ingresos"><span>Otros ingresos</span><a href="pasajero.html#/ingresar">🙂 Soy pasajero</a><a href="index.html">🏠 Página principal</a></div></div></div>`;
+  api('/api/pub/config').then(c => { if (c && c.nombre) $('#emp').textContent = c.nombre; }).catch(() => { });
+  botonInstalar($('#inst'), 'btn sec');
+  const err = m => { const e = $('#err'); e.textContent = m || ''; e.style.display = m ? 'block' : 'none'; };
+  (rec ? $('#pw') : $('[name=usuario]')).focus();
+  $('#ver').onclick = () => { const p = $('#pw'); p.type = p.type === 'password' ? 'text' : 'password'; $('#ver').textContent = p.type === 'password' ? '👁' : '🙈'; };
+  if ($('#otro')) $('#otro').onclick = e => { e.preventDefault(); localStorage.removeItem(RECORDAR); pantallaLogin(); };
+  async function entrar(cred, m) {
+    const r = await api('/api/login', { ...cred, tipo: 'app', movil: m.id });
+    TK = r.token; localStorage.setItem('rodar_cond_token', TK);
+    if (!rec ? $('#recordar').checked : true) localStorage.setItem(RECORDAR, JSON.stringify({ usuario: cred.usuario, nombre: [r.usuario.nombre, r.usuario.apellido].filter(Boolean).join(' '), movil: m.id }));
+    await api('/api/conductor/iniciar', {});
+    iniciar();
+  }
+  $('#fl').onsubmit = async e => {
+    e.preventDefault(); err('');
+    const cred = { usuario: (e.target.usuario.value || '').trim(), password: e.target.password.value };
+    const btn = $('#entrar'); btn.disabled = true; btn.textContent = 'Entrando…';
+    try {
+      const ms = await api('/api/conductor/moviles', cred);
+      if (!ms.length) throw new Error('No tenés móviles asignados. Pedile a la central que te asigne uno.');
+      const ultimo = rec && ms.find(m => m.id === rec.movil);
+      if (ms.length === 1) return await entrar(cred, ms[0]);
+      const orden = ultimo ? [ultimo, ...ms.filter(m => m !== ultimo)] : ms;
+      $('#fl').style.display = 'none';
+      $('#lm').innerHTML = '<p style="font-size:17px">¿Con qué móvil salís hoy?</p>' + orden.map(m => `<button class="btn ${m === ultimo ? '' : 'sec'}" data-m="${m.id}"><span>Móvil <b>${m.numero}</b> · ${esc(m.patente || '')}</span><span>${m === ultimo ? 'El de siempre' : (EST[m.estado] || [m.estado])[0]}</span></button>`).join('')
+        + '<button class="btn sec" id="volver" style="margin-top:14px;justify-content:center">← Volver</button>';
+      $('#volver').onclick = () => { $('#lm').innerHTML = ''; $('#fl').style.display = ''; btn.disabled = false; btn.textContent = 'Entrar'; };
+      $$('[data-m]').forEach(b => b.onclick = async () => { b.disabled = true; try { await entrar(cred, ms.find(m => m.id === +b.dataset.m)); } catch (er) { b.disabled = false; toast(er.message, 'error'); } });
+    } catch (er) {
+      err(/incorrect/i.test(er.message) ? 'El usuario o la contraseña no coinciden. Revisalos y probá de nuevo.' : er.message);
+      btn.disabled = false; btn.textContent = 'Entrar';
+    }
+  };
+  $('#alta').onclick = e => { e.preventDefault(); formAlta(); };
+}
+function formAlta() {
+  const anios = []; for (let a = new Date().getFullYear() + 1; a >= 1995; a--) anios.push(a);
+  const campo = (k, l, o = {}) => `<div class="campo" data-c="${k}"><label>${l}${o.req ? ' *' : ''}</label><input name="${k}" ${o.tipo ? `type="${o.tipo}"` : ''} ${o.im ? `inputmode="${o.im}"` : ''} ${o.ac ? `autocomplete="${o.ac}"` : ''} ${o.ph ? `placeholder="${o.ph}"` : ''} ${o.cap ? `autocapitalize="${o.cap}"` : ''} ${o.max ? `maxlength="${o.max}"` : ''}><div class="err">${o.err || 'Completá este dato'}</div>${o.ayuda ? `<div class="ayuda">${o.ayuda}</div>` : ''}</div>`;
+  const DOCS = [['dni_f', 'DNI (frente)', '🪪'], ['dni_d', 'DNI (dorso)', '🪪'], ['lic', 'Licencia de conducir', '🚦'], ['ced', 'Cédula del vehículo', '📄'], ['seg', 'Seguro del vehículo', '🛡️']];
+  const el = hoja('Quiero ser conductor', `<div class="alta"><p style="margin:0 0 12px">Completá tus datos. La central los revisa y se comunica con vos para darte el alta. Los campos con * son obligatorios.</p>
+    <form id="fa" novalidate>
+      <div class="paso"><h3><i>1</i>Tus datos</h3><div class="grid g2">
+        ${campo('nombre', 'Nombre', { req: 1, ac: 'given-name', cap: 'words' })}${campo('apellido', 'Apellido', { req: 1, ac: 'family-name', cap: 'words' })}
+        ${campo('dni', 'DNI', { req: 1, im: 'numeric', max: 10, ph: 'Sin puntos', err: 'Escribí un DNI válido (7 u 8 números)' })}
+        ${campo('telefono', 'Celular (WhatsApp)', { req: 1, tipo: 'tel', im: 'tel', ac: 'tel', ph: 'Ej: 3454 123456', err: 'Escribí un celular con código de área' })}
+        <div style="grid-column:1/-1">${campo('email', 'Email', { tipo: 'email', ac: 'email', cap: 'none', err: 'El email no parece válido' })}</div>
+      </div></div>
+      <div class="paso"><h3><i>2</i>Tu vehículo</h3>
+        <label class="chk"><input type="checkbox" id="sinAuto"> No tengo vehículo propio (quiero manejar un auto de la empresa)</label>
+        <div class="grid g2" id="auto">
+          ${campo('patente', 'Patente', { cap: 'characters', max: 9, ph: 'AB123CD', err: 'Patente no válida (ej: AB123CD o ABC123)' })}
+          <div class="campo" data-c="anio"><label>Año</label><select name="anio"><option value="">Elegí</option>${anios.map(a => `<option>${a}</option>`).join('')}</select></div>
+          ${campo('marca', 'Marca', { ph: 'Ej: Chevrolet', cap: 'words' })}${campo('modelo', 'Modelo', { ph: 'Ej: Prisma', cap: 'words' })}
+        </div></div>
+      <div class="paso"><h3><i>3</i>Documentación <small style="font-weight:400;opacity:.7">(opcional, agiliza el alta)</small></h3>
+        <p class="ayuda" style="margin:0 0 8px">Tocá cada recuadro para sacar una foto o elegir un archivo.</p>
+        ${DOCS.map(([k, t, ic]) => `<label class="doc" data-d="${k}"><span class="ic">${ic}</span><span class="tx"><b>${t}</b><small>Sin cargar</small></span><span class="est">＋</span><input type="file" name="${k}" accept="image/*,application/pdf"></label>`).join('')}
+      </div>
+      <label class="chk"><input type="checkbox" id="acepto"> Declaro que los datos son reales y acepto que la central me contacte por teléfono o WhatsApp.</label>
+      <button class="btn grande verde" style="width:100%" id="env">Enviar solicitud</button>
+    </form></div>`);
+  const f = $('#fa', el), archivos = {};
+  const mal = (k, si) => { const c = $(`[data-c="${k}"]`, f); if (c) c.classList.toggle('mal', !!si); return !!si; };
+  $('[name=patente]', f).oninput = e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+  $('[name=dni]', f).oninput = e => { e.target.value = e.target.value.replace(/\D/g, ''); };
+  $('#sinAuto', f).onchange = e => { $('#auto', f).style.display = e.target.checked ? 'none' : ''; };
+  $$('input', f).forEach(i => i.addEventListener('input', () => { const c = i.closest('.campo'); c && c.classList.remove('mal'); }));
+  $$('.doc input', f).forEach(inp => inp.onchange = async () => {
+    const lb = inp.closest('.doc'), fi = inp.files[0]; if (!fi) return;
+    $('small', lb).textContent = 'Procesando…';
+    try { archivos[inp.name] = await achicarArchivo(fi); lb.classList.add('ok'); $('.est', lb).textContent = '✔'; $('small', lb).textContent = fi.name; }
+    catch (er) { delete archivos[inp.name]; lb.classList.remove('ok'); $('.est', lb).textContent = '＋'; $('small', lb).textContent = er.message; toast(er.message, 'error'); }
+  });
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const d = Object.fromEntries([...new FormData(f)].filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.trim()]));
+    const tel = d.telefono.replace(/\D/g, ''), sinAuto = $('#sinAuto', f).checked;
+    let primero = null; const chk = (k, malo) => { if (mal(k, malo) && !primero) primero = k; };
+    chk('nombre', !d.nombre); chk('apellido', !d.apellido); chk('dni', !/^\d{7,8}$/.test(d.dni)); chk('telefono', tel.length < 10 || tel.length > 13);
+    chk('email', d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email));
+    chk('patente', !sinAuto && d.patente && !/^([A-Z]{3}\d{3}|[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]\d{3}[A-Z]{3})$/.test(d.patente));
+    if (primero) { const c = $(`[data-c="${primero}"] input`, f); c && c.focus(); c && c.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('Revisá los datos marcados en rojo', 'error'); }
+    if (!$('#acepto', f).checked) return toast('Marcá la casilla de declaración para enviar', 'error');
+    if (sinAuto) { ['patente', 'marca', 'modelo', 'anio'].forEach(k => delete d[k]); }
+    d.telefono = tel;
+    d.docs = DOCS.filter(([k]) => archivos[k]).map(([k, t]) => ({ tipo: t, archivo: archivos[k] }));
+    if (sinAuto) d.docs.push({ tipo: 'Sin vehículo propio', archivo: null });
+    const b = $('#env', f); b.disabled = true; b.textContent = 'Enviando…';
+    try {
+      await api('/api/solicitud-conductor', d);
+      $('.hc', el).innerHTML = `<div class="alta-ok"><div class="ic">✅</div><h2>¡Solicitud enviada!</h2><p>Gracias, ${esc(d.nombre)}. La central va a revisar tus datos y te va a contactar al <b>${esc(d.telefono)}</b>.</p><p style="opacity:.75;font-size:14px">Cuando te den el alta vas a recibir tu usuario y contraseña para ingresar en esta app.</p><button class="btn grande" onclick="cerrarHoja()">Volver</button></div>`;
+    } catch (er) { toast(er.message, 'error'); b.disabled = false; b.textContent = 'Enviar solicitud'; }
+  };
+}
+// Fotos: se achican a 1400 px en JPEG para que la solicitud viaje liviana. PDF: hasta 1,5 MB.
+function achicarArchivo(fi) {
+  if (!/^image\//.test(fi.type)) return RODAR.archivoADataURL(fi).then(r => r.archivo);
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(fi), im = new Image();
+    im.onload = () => { const k = Math.min(1, 1400 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', .72)); };
+    im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen. Probá con otra foto.')); };
+    im.src = u;
+  });
+}
+
+// ---------------- APP ----------------
+async function iniciar() {
+  let e;
+  try { e = await api('/api/conductor/estado'); } catch (er) { return pantallaLogin(); }
+  S.estado = e;
+  $('#root').innerHTML = `<div class="app"><div class="hd"><span class="num">${e.movil.numero}</span><div style="flex:1;min-width:0"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.conductor.nombre + ' ' + e.conductor.apellido)}</div><small id="saldo" style="opacity:.8"></small></div><span class="est" id="est"></span><button class="salir-b" id="sb">Salir</button><button class="menu-b" id="mb">☰</button></div>
+    <div style="position:relative;flex:1;display:flex"><div id="mapa"></div><div class="aviso-pel" id="pel"></div><button class="chat-c" id="chatb" title="Soporte con la central">💬<span class="badge-n" id="chatn"></span></button><button class="ptt-c" id="ptt">🎙</button><button class="sos" id="sos" title="Mantener 2 segundos">SOS</button><div class="demo" id="demo">GPS…</div><button class="centrar" id="centrar" aria-label="Centrar en mi móvil">◎ Centrar</button></div>
+    <div class="panel" id="panel"></div></div>
+    <div class="lateral" id="lat"></div>`;
+  // mapa
+  S.mapa = L.map('mapa', { zoomControl: false }).setView([e.empresa.lat, e.empresa.lng], 15);
+  S.mapa.on('dragstart', () => seguirMovil(false));
+  setTimeout(() => { const cb = $('#centrar'); if (cb) cb.onclick = () => seguirMovil(true); }, 0);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(S.mapa);
+  e.zonas.forEach(z => z.poligono.length > 2 && L.polygon(z.poligono, { color: z.color, weight: 1, fillOpacity: .05, interactive: false }).addTo(S.mapa));
+  e.paradas.forEach(p => p.lat && L.circleMarker([p.lat, p.lng], { radius: 7, color: '#2f6fd6', fillOpacity: .9 }).addTo(S.mapa).bindTooltip('Parada ' + p.nombre));
+  e.peligrosas.forEach(z => L.polygon(z.poligono, { color: '#d00', fillOpacity: .2, dashArray: '4' }).addTo(S.mapa));
+  if (e.movil.lat) S.pos = { lat: e.movil.lat, lng: e.movil.lng };
+  $('#mb').onclick = abrirMenu;
+  $('#chatb').onclick = () => menu('soporte');
+  S.fueraDesde = lsGet('rodar_fuera_desde'); pintarNoLeidos(); revisarSoporte(); activarPush(false); nativoIniciar();
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { if (ev.data && ev.data.abrir) abrirDesdeAviso(ev.data.abrir); });
+  $('#sb').onclick = () => { if (S.estado && S.estado.viaje) return toast('Terminá el viaje antes de cerrar sesión', 'error'); menu('cerrar'); };
+  $('#lat').onclick = ev => { if (ev.target.id === 'lat') cerrarMenu(); };
+  // SOS (mantener 2s)
+  let sosT; const sb = $('#sos');
+  const sosOn = ev => { ev.preventDefault(); sb.style.transform = 'scale(1.15)'; sosT = setTimeout(async () => { vibrar([300, 100, 300]); await api('/api/conductor/estado', { estado: 'emergencia' }).catch(() => { }); toast('Emergencia enviada a la central', 'error'); refrescar(); }, 2000); };
+  const sosOff = () => { clearTimeout(sosT); sb.style.transform = ''; };
+  sb.addEventListener('touchstart', sosOn); sb.addEventListener('mousedown', sosOn); ['touchend', 'mouseup', 'mouseleave'].forEach(x => sb.addEventListener(x, sosOff));
+  // cada parte arranca por separado: si una falla (p. ej. el GPS nativo), la radio y lo demás siguen funcionando
+  [conectar, gps, radio, segundoPlano].forEach(f => { try { f(); } catch (er) { console.error(er); toast('Error al iniciar ' + f.name + ': ' + er.message, 'error'); } });
+  if (/^#pago-/.test(location.hash)) { const ok = location.hash === '#pago-ok'; history.replaceState(null, '', location.pathname); toast(ok ? 'Pago recibido. Se acredita en unos segundos.' : location.hash === '#pago-error' ? 'El pago no se completó' : 'Pago pendiente de aprobación', ok ? 'ok' : 'error'); setTimeout(() => menu('saldo'), 1200); }
+  document.addEventListener('pointerdown', () => { S.audioOk = true; }, { once: true });
+  mantenerActivo();
+  pintar();
+  cobroPendiente();
+  if (['#soporte', '#mensaje', '#oferta'].includes(location.hash)) { const h = location.hash; history.replaceState(null, '', location.pathname); setTimeout(() => abrirDesdeAviso(h), 300); }
+}
+// ---------- Mantener la app activa (segundo plano) ----------
+// Un navegador no permite "forzar" una página en segundo plano: el sistema la suspende cuando se apaga la pantalla. Lo que sí se hace:
+//  1) Pantalla encendida (Wake Lock) mientras la app está abierta, y se vuelve a pedir si el sistema lo suelta.
+//  2) Un audio silencioso en bucle con control de reproducción: en Android el sistema considera la app "en uso" y no la suspende.
+//  3) Al volver a primer plano se recupera la posición al instante y se suma el tramo que faltaba.
+//  4) Aviso en pantalla si el GPS dejó de llegar. El servidor además recalcula la distancia con las posiciones recibidas.
+const ACTIVO = 'rodar_cond_activo';
+// El modo activo (pantalla encendida, audio de segundo plano y audio de radio) está siempre encendido: ya no se puede apagar desde el menú.
+const activoOn = () => true;
+async function pantallaEncendida() {
+  if (!activoOn()) return;
+  try {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible' && !(S.wl && !S.wl.released)) {
+      S.wl = await navigator.wakeLock.request('screen');
+      S.wl.addEventListener('release', () => { if (document.visibilityState === 'visible') setTimeout(pantallaEncendida, 500); });
+    }
+  } catch { }
+}
+function wavSilencioso() {
+  const n = 8000, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+// Un solo audio silencioso en toda la app (el de segundo plano más abajo): antes había dos y se pisaban entre sí.
+function audioActivo(encender) {
+  if (encender) return iniciarAudio();
+  try { BG.apagado = true; BG.audio && BG.audio.pause(); } catch { }
+  actualizarBg();
+}
+function mantenerActivo() {
+  if (S.activoIniciado) return; S.activoIniciado = true;
+  const arrancar = () => { if (activoOn()) { audioActivo(true); pantallaEncendida(); } };
+  // el navegador exige un toque del usuario para reproducir audio
+  document.addEventListener('pointerdown', arrancar, { once: true });
+  arrancar();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !S.estado) return;
+    pantallaEncendida(); if (activoOn()) audioActivo(true);
+    // recuperar posición y estado enseguida
+    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => { S.ultGps = Date.now(); S.gpsErr = null; nuevaPos(p.coords.latitude, p.coords.longitude, (p.coords.speed || 0) * 3.6); ultEnvio = 0; enviarPos(); }, er => { S.gpsErr = er ? er.code : 2; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 });
+    S.gpsVigilar && S.gpsVigilar();
+    try { refrescar(); } catch { }
+  });
+  // aviso si el GPS dejó de llegar
+  // Solo avisa si la ubicación realmente falla (permiso negado, GPS apagado o sin respuesta), no cuando el auto está quieto.
+  const av = document.createElement('div'); av.className = 'gps-av'; document.body.append(av);
+  let cerradoHasta = 0;
+  const pintarAv = () => {
+    const sin = S.ultGps ? (Date.now() - S.ultGps) / 1000 : 0;
+    const mal = S.estado && document.visibilityState === 'visible' && Date.now() > cerradoHasta && (S.gpsErr === 1 || (S.gpsErr != null && (S.ultGps ? sin > 90 : Date.now() - (S.gpsIni || Date.now()) > 30000)));
+    if (!mal) { av.style.display = 'none'; return; }
+    const txt = S.gpsErr === 1 ? 'La app no tiene permiso para usar tu ubicación. Activalo en Ajustes → Aplicaciones → permisos de Ubicación.'
+      : `No llega tu ubicación${S.ultGps ? ` desde hace ${sin >= 120 ? Math.round(sin / 60) + ' min' : Math.round(sin) + ' s'}` : ''}. Revisá que el GPS (Ubicación) del celular esté activado.`;
+    av.innerHTML = `<span>📍</span><span class="t">${txt}</span><button class="r">Reintentar</button><button class="x" aria-label="Cerrar">×</button>`;
+    $('.r', av).onclick = () => { $('.r', av).textContent = 'Buscando…'; S.gpsVigilar && S.gpsVigilar(); S.gpsPedir && S.gpsPedir(); };
+    $('.x', av).onclick = () => { cerradoHasta = Date.now() + 5 * 60000; av.style.display = 'none'; };
+    av.style.display = 'flex';
+  };
+  setInterval(pintarAv, 5000);
+}
+// ---- Seguimiento en el mapa ----
+// El mapa sigue al móvil y lo mantiene centrado. Si el conductor mueve el mapa con el dedo, deja de seguirlo
+// y aparece el botón "Centrar"; a los 20 s sin tocar vuelve a seguirlo solo.
+S.seguir = true;
+function seguirMovil(si) {
+  S.seguir = si; clearTimeout(S.seguirT);
+  const b = $('#centrar'); if (b) b.classList.toggle('on', !si);
+  if (si) centrarMovil(true); else S.seguirT = setTimeout(() => seguirMovil(true), 20000);
+}
+function centrarMovil(forzar) {
+  if (!S.mapa || !S.pos || (!S.seguir && !forzar)) return;
+  const v = S.estado && S.estado.viaje, z = v && ['confirmado', 'en_curso'].includes(v.estado) ? 17 : 16;
+  const ll = L.latLng(S.pos.lat, S.pos.lng);
+  if (forzar || S.mapa.getZoom() < 14) S.mapa.setView(ll, Math.max(S.mapa.getZoom(), z), { animate: true });
+  else S.mapa.panTo(ll, { animate: true, duration: .8, easeLinearity: .5 });
+}
+function iconoMovil() {
+  const col = (EST[S.estado.movil.estado] || [, '#888'])[1], r = S.rumbo;
+  const flecha = r == null ? '' : `<i class="rumbo" style="transform:rotate(${Math.round(r)}deg)"></i>`;
+  const k = col + '|' + (r == null ? '' : Math.round(r / 10)) + '|' + S.estado.movil.numero;
+  if (S.icK === k && S.icO) return S.icO;
+  S.icK = k; S.icO = L.divIcon({ className: '', html: `<div class="mov-yo">${flecha}<div class="marcador-movil" style="background:${col};width:36px;height:36px">${S.estado.movil.numero}</div></div>`, iconSize: [36, 36], iconAnchor: [18, 18] });
+  return S.icO;
+}
+function pintarMovil() {
+  if (!S.pos || !S.mapa) return;
+  const ic = iconoMovil(), dest = L.latLng(S.pos.lat, S.pos.lng);
+  if (!S.mk.yo) { S.mk.yo = L.marker(dest, { icon: ic, zIndexOffset: 1000 }).addTo(S.mapa); S.mapa.setView(dest, 16); return; }
+  if (S.mk.yo.options.icon !== ic) S.mk.yo.setIcon(ic);
+  // movimiento suave entre una posición y la siguiente
+  const desde = S.mk.yo.getLatLng(); cancelAnimationFrame(S.anim);
+  if (desde.distanceTo(dest) > 800 || document.hidden) { S.mk.yo.setLatLng(dest); centrarMovil(); return; }
+  const t0 = performance.now(), dur = 900;
+  const paso = t => { const k = Math.min(1, (t - t0) / dur); S.mk.yo.setLatLng([desde.lat + (dest.lat - desde.lat) * k, desde.lng + (dest.lng - desde.lng) * k]); if (k < 1) S.anim = requestAnimationFrame(paso); };
+  S.anim = requestAnimationFrame(paso);
+  centrarMovil();
+}
+async function refrescar() { try { S.estado = await api('/api/conductor/estado'); S.ultRef = Date.now(); pintar(); } catch { } }
+function pintar() {
+  const e = S.estado, m = e.movil, v = e.viaje;
+  // respaldo sin tiempo real: si hay una oferta pendiente y no se está mostrando, mostrarla
+  if (v && v.estado === 'ofrecido' && !$('.oferta') && S.ofertaVista !== v.id) { S.ofertaVista = v.id; mostrarOferta({ ...v, segundos: 15 }, false); }
+  const [t, c] = EST[m.estado] || [m.estado, '#888'];
+  $('#est').textContent = t; $('#est').style.background = c;
+  $('#saldo').textContent = `Saldo ${pesos(e.saldo)}${m.sin_saldo ? ' · SIN SALDO' : ''}${m.bloqueado ? ' · BLOQUEADO: pagá la base' : ''}${m.penalizado ? ' · PENALIZADO hasta ' + m.penalizado.hasta.slice(11, 16) : ''}`;
+  pintarMovil();
+  S.mk.o && S.mk.o.remove(); S.mk.d && S.mk.d.remove(); S.mk.o = S.mk.d = null;
+  const p = $('#panel');
+  if (v && v.estado === 'confirmado') {
+    S.mk.o = L.marker([v.origen_lat, v.origen_lng]).addTo(S.mapa).bindTooltip('Pasajero', { permanent: true });
+    p.innerHTML = `<h2>Ir a buscar al pasajero</h2><div><b>${esc(v.origen_dir)}</b>${v.origen_ref ? `<br><small>${esc(v.origen_ref)}</small>` : ''}</div><div style="margin-top:4px">${esc(v.alias || 'Pasajero')} ${v.telefono ? `· <a href="tel:${esc(v.telefono)}">${esc(v.telefono)}</a>` : ''}</div>${v.destino_dir ? `<div>${esc(v.destino_dir)}</div>` : ''}${v.datos_movil ? `<div class="nota" style="margin:6px 0 0">${esc(v.datos_movil)}</div>` : ''}
+      <div class="dos"><a class="btn sec grande" target="_blank" href="https://www.google.com/maps/dir/?api=1&destination=${v.origen_lat},${v.origen_lng}">Navegar</a><button class="btn azul grande" id="llegue" ${v.llegada_at ? 'disabled' : ''}>${v.llegada_at ? '✓ Avisado' : 'Llegué'}</button></div>
+      ${v.pin_requerido ? '<div class="campo" style="margin-top:8px"><label>PIN del pasajero</label><input id="pin" inputmode="numeric" maxlength="4" placeholder="4 dígitos"></div>' : ''}
+      <button class="btn verde grande" id="ini">▶ Iniciar viaje</button><button class="btn sec grande" id="canc" style="min-height:40px">Cancelar viaje</button>`;
+    $('#llegue').onclick = async () => { await api(`/api/conductor/viaje/${v.id}/llegue`, {}); refrescar(); };
+    $('#ini').onclick = async () => { try { await api(`/api/conductor/viaje/${v.id}/iniciar`, { pin: $('#pin') && $('#pin').value }); S.tarif = { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() }; guardarTarif(); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+    $('#canc').onclick = async () => { const mot = prompt('Motivo de la cancelación'); if (mot == null) return; await api(`/api/conductor/viaje/${v.id}/cancelar`, { motivo: mot }); refrescar(); };
+    if (S.vistaViaje !== v.id) { S.vistaViaje = v.id; S.mapa.fitBounds(L.latLngBounds([[v.origen_lat, v.origen_lng], S.pos ? [S.pos.lat, S.pos.lng] : [v.origen_lat, v.origen_lng]]).pad(.3)); S.seguir = false; clearTimeout(S.seguirT); S.seguirT = setTimeout(() => seguirMovil(true), 6000); }
+  } else if (v && v.estado === 'en_curso') {
+    if (!S.tarif) S.tarif = JSON.parse(localStorage.getItem('rodar_tarif_' + v.id) || 'null') || { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() };
+    if (v.destino_lat) S.mk.d = L.marker([v.destino_lat, v.destino_lng]).addTo(S.mapa).bindTooltip('Destino', { permanent: true });
+    p.innerHTML = `<h2>Viaje en curso #${v.id}</h2>${v.destino_dir ? `<div>${esc(v.destino_dir)}</div>` : '<div style="color:var(--suave)">Sin destino cargado</div>'}
+      <div class="tarifador"><div style="opacity:.8">TARIFADOR · ${esc(e.tarifa ? e.tarifa.nombre : '')}${v.indice > 1 ? ' ×' + v.indice : ''}</div><div class="monto" id="tm">—</div><div id="td" style="opacity:.85"></div></div>
+      <div class="dos">${v.destino_lat ? `<a class="btn sec grande" target="_blank" href="https://www.google.com/maps/dir/?api=1&destination=${v.destino_lat},${v.destino_lng}">Navegar</a>` : '<span></span>'}<button class="btn rojo grande" id="fin">Finalizar</button></div>`;
+    actualizarTarif();
+    $('#fin').onclick = async () => {
+      const monto = calcMonto();
+      if (!confirm(`¿Finalizar el viaje? Total ${pesos(monto)}`)) return;
+      try {
+        const r = await api(`/api/conductor/viaje/${v.id}/finalizar`, { metros: Math.round(S.tarif.metros), esperaSeg: Math.round(S.tarif.espera), lat: S.pos && S.pos.lat, lng: S.pos && S.pos.lng });
+        localStorage.removeItem('rodar_tarif_' + v.id); S.tarif = null;
+        localStorage.removeItem('rodar_traza_' + v.id);
+        mostrarCobro(r, monto);
+        refrescar();
+      } catch (er) { toast(er.message, 'error'); }
+    };
+  } else {
+    const libre = ['disponible', 'en_parada'].includes(m.estado);
+    if (m.estado !== 'fuera_servicio' && S.fueraDesde) { S.fueraDesde = null; lsSet('rodar_fuera_desde', ''); }
+    const z = e.paradas.find(x => x.id === m.parada_id);
+    const abiertas = (e.abiertas || []).map(a => `<div class="nota" style="display:flex;gap:8px;align-items:center;margin:6px 0"><span style="flex:1">#${a.id} ${esc(a.origen_dir)}${a.zona ? ' · ' + esc(a.zona) : ''}</span><button class="btn chico verde" data-post="${a.id}">Postularme</button></div>`).join('');
+    p.innerHTML = libre ? `<h2>${m.estado === 'en_parada' ? `En parada ${esc(z ? z.nombre : '')} · puesto ${z ? z.cola.indexOf(m.numero) + 1 : '?'}` : 'Libre, esperando viajes'}</h2><div id="abiertas">${abiertas}</div>
+      <div class="dos"><button class="btn naranja grande" id="calle">Viaje de calle</button>${m.estado === 'en_parada' ? '<button class="btn sec grande" id="sal">Salir de parada</button>' : '<button class="btn azul grande" id="par">Entrar a parada</button>'}</div>
+      <button class="btn-fs" id="fs">FUERA DE SERVICIO</button>`
+      : m.estado === 'emergencia' ? `<h2 style="color:#b0003a">Emergencia activa</h2><p>La central fue avisada.</p><button class="btn grande" id="lib">Cancelar emergencia / volver a libre</button>`
+        : m.estado === 'fuera_servicio' ? `<div class="fs-card"><div class="ic">⏸️</div><h2>Estás fuera de servicio</h2><p>No te llegan viajes${S.fueraDesde ? ' desde las ' + S.fueraDesde : ''}. </p><button class="btn verde grande" id="lib" style="width:100%;font-size:18px">▶️ Ponerme libre</button></div>`
+        : `<h2>${EST[m.estado] ? EST[m.estado][0] : m.estado}</h2><button class="btn verde grande" id="lib">Ponerme libre</button>`;
+    const b = id => $('#' + id);
+    if (b('lib')) b('lib').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'disponible' }); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+    if (b('sal')) b('sal').onclick = async () => { await api('/api/conductor/estado', { estado: 'disponible' }); refrescar(); };
+    if (b('par')) b('par').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'en_parada' }); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+    if (b('fs')) b('fs').onclick = () => menu('fuera');
+    $$('[data-post]', p).forEach(x => x.onclick = async () => { try { await api(`/api/conductor/viaje/${x.dataset.post}/postular`, {}); refrescar(); } catch (er) { toast(er.message, 'error'); refrescar(); } });
+    if (b('calle')) b('calle').onclick = async () => { if (!confirm('¿Iniciar un viaje de calle desde tu ubicación?')) return; try { const v2 = await api('/api/conductor/calle', {}); S.tarif = { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() }; guardarTarif(v2.id); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+  }
+  try { actualizarRecorrido(); } catch { }
+}
+// ---- Total a cobrar al finalizar ----
+// Pantalla grande con lo que debe abonar el pasajero. Queda guardada hasta que el conductor toca "Ya cobré", así no se pierde si la app se cierra o se suspende.
+const COBRO = 'rodar_cobro_pend';
+function limpiarCobro() { localStorage.removeItem(COBRO); }
+function mostrarCobro(r, previo, guardar = true) {
+  const calle = r.origen_tipo === 'calle', medio = r.medio_pago || 'efectivo';
+  if (guardar) { try { localStorage.setItem(COBRO, JSON.stringify({ t: Date.now(), previo, r: { id: r.id, monto: r.monto, km: r.km, minutos: r.minutos, medio_pago: medio, origen_tipo: r.origen_tipo } })); } catch { } }
+  vibrar([200, 100, 200]);
+  const ajustado = previo != null && r.monto != null && Math.abs(r.monto - previo) >= 1;
+  const el = hoja(calle ? 'Viaje de calle finalizado' : 'Viaje finalizado', `<div class="tarifador" style="text-align:center"><div style="font-weight:700;letter-spacing:.5px">${calle ? 'EL PASAJERO DEBE ABONAR' : 'Total a cobrar'}</div><div class="monto" style="font-size:52px;line-height:1.1;margin:6px 0">${pesos(r.monto)}</div><div>${km1(r.km)} km · ${Math.round(r.minutos || 0)} min · ${esc(medio)}</div></div>
+    ${ajustado ? `<p style="font-size:13px;opacity:.85;margin:8px 0">El monto se ajustó con el recorrido que registró el servidor (en pantalla marcaba ${pesos(previo)}). Cobrá este.</p>` : ''}
+    ${calle && medio === 'efectivo' ? '<p style="margin:8px 0;text-align:center">Cobrá en efectivo antes de que se baje.</p>' : ''}
+    <button class="btn grande sec" onclick="ticket(${r.id})">🧾 Ver ticket · Imprimir / PDF</button><button class="btn grande verde" id="cobOk">Ya cobré · Volver</button>`);
+  const cerrar = () => { limpiarCobro(); cerrarHoja(); refrescar(); };
+  $('#cobOk', el).onclick = cerrar; const x = $('.hx', el); if (x) x.onclick = cerrar;
+}
+function cobroPendiente() { try { const p = JSON.parse(localStorage.getItem(COBRO) || 'null'); if (p && Date.now() - p.t < 12 * 3600e3) mostrarCobro(p.r, p.previo, false); else limpiarCobro(); } catch { limpiarCobro(); } }
+// tarifador
+function calcMonto() {
+  const t = S.estado.tarifa; if (!t || !S.tarif) return 0;
+  return montoTarifa(t, S.tarif.metros, S.tarif.espera, (S.estado.viaje && S.estado.viaje.indice) || 1);
+}
+function actualizarTarif() { if (!$('#tm') || !S.tarif) return; $('#tm').textContent = pesos(calcMonto()); $('#td').textContent = `${(Math.round(S.tarif.metros / 100) / 10).toFixed(1)} km · espera ${Math.floor(S.tarif.espera / 60)}:${String(Math.floor(S.tarif.espera % 60)).padStart(2, '0')}`; }
+function guardarTarif(id) { const v = id || (S.estado.viaje && S.estado.viaje.id); if (v && S.tarif) localStorage.setItem('rodar_tarif_' + v, JSON.stringify(S.tarif)); }
+setInterval(() => { if (S.tarif && S.estado && S.estado.viaje && S.estado.viaje.estado === 'en_curso') { const t = Date.now(), dt = Math.min(120, Math.max(0, (t - (S.tarif.tk || t)) / 1000)); S.tarif.tk = t; if ((S.vel || 0) < 3) S.tarif.espera += dt; actualizarTarif(); if (Date.now() % 5000 < 1000) guardarTarif(); } }, 1000);
+function nuevaPos(lat, lng, vel) {
+  const ahora = Date.now();
+  if (S.tarif && S.tarif.ult) {
+    // Antes se descartaban los saltos de más de 500 m: con la pantalla apagada el GPS manda pocos puntos y se perdía el tramo.
+    // Ahora se suma el tramo si es posible físicamente (menos de ~150 km/h según el tiempo transcurrido).
+    const d = dist(S.tarif.ult.lat, S.tarif.ult.lng, lat, lng), seg = Math.max(1, (ahora - (S.tarif.ult.t || ahora)) / 1000);
+    if (d > 3 && (d < 500 || d <= seg * 41.7)) S.tarif.metros += d;
+  }
+  if (S.tarif) S.tarif.ult = { lat, lng, t: ahora };
+  if (S.pos && dist(S.pos.lat, S.pos.lng, lat, lng) > 6) { const r = x => x * Math.PI / 180, y = Math.sin(r(lng - S.pos.lng)) * Math.cos(r(lat)), x = Math.cos(r(S.pos.lat)) * Math.sin(r(lat)) - Math.sin(r(S.pos.lat)) * Math.cos(r(lat)) * Math.cos(r(lng - S.pos.lng)); S.rumbo = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }
+  S.pos = { lat, lng }; S.vel = vel;
+  sumarTraza(lat, lng, ahora);
+  pintarMovil();
+}
+// ---- Recorrido en el mapa ----
+// Yendo a buscar al pasajero: ruta por calles hasta el origen (línea naranja de puntos).
+// Con el pasajero a bordo: lo recorrido hasta ahora (línea azul, se guarda por si se recarga la app) y la ruta hasta el destino si hay (línea verde de puntos).
+const trazaClave = id => 'rodar_traza_' + id;
+function limpiarRecorrido() {
+  ['pl', 'plRuta'].forEach(k => { if (S[k]) { S[k].remove(); S[k] = null; } });
+  S.trazaId = null; S.traza = []; S.rutaClave = null;
+}
+async function actualizarRecorrido() {
+  const v = S.estado && S.estado.viaje;
+  if (!S.podada) { S.podada = true; Object.keys(localStorage).filter(k => k.startsWith('rodar_traza_') && !(v && k === trazaClave(v.id))).forEach(k => localStorage.removeItem(k)); }
+  if (!v || !['confirmado', 'en_curso'].includes(v.estado)) { if (S.trazaId || S.plRuta || S.pl) limpiarRecorrido(); return; }
+  if (v.estado === 'en_curso') {
+    if (S.trazaId !== v.id) {
+      S.trazaId = v.id; try { S.traza = JSON.parse(localStorage.getItem(trazaClave(v.id)) || '[]'); } catch { S.traza = []; }
+      if (!S.traza.length && S.pos) S.traza.push([S.pos.lat, S.pos.lng]);
+      if (S.pl) S.pl.remove(); S.pl = L.polyline(S.traza, { color: '#1d6fe0', weight: 6, opacity: .9 }).addTo(S.mapa);
+    }
+  } else if (S.pl) { S.pl.remove(); S.pl = null; S.trazaId = null; S.traza = []; }
+  const dest = v.estado === 'confirmado' ? (v.origen_lat != null ? { lat: v.origen_lat, lng: v.origen_lng } : null) : (v.destino_lat != null ? { lat: v.destino_lat, lng: v.destino_lng } : null);
+  if (!dest || !S.pos) { if (S.plRuta) { S.plRuta.remove(); S.plRuta = null; S.rutaClave = null; } return; }
+  const clave = v.id + ':' + v.estado, ahora = Date.now(), movido = S.rutaDesde ? dist(S.rutaDesde.lat, S.rutaDesde.lng, S.pos.lat, S.pos.lng) : 1e9;
+  if (S.rutaClave === clave && (ahora - (S.rutaT || 0) < 30000 || movido < 150)) return;
+  S.rutaClave = clave; S.rutaT = ahora; S.rutaDesde = { ...S.pos };
+  const rt = await RODAR.ruta(S.pos, dest).catch(() => null);
+  if (S.rutaClave !== clave) return;
+  const pts = rt && rt.coords && rt.coords.length ? rt.coords : [[S.pos.lat, S.pos.lng], [dest.lat, dest.lng]];
+  if (S.plRuta) S.plRuta.setLatLngs(pts);
+  else S.plRuta = L.polyline(pts, { color: v.estado === 'confirmado' ? '#e8892b' : '#2f9e57', weight: 5, opacity: .8, dashArray: '2 10', lineCap: 'round' }).addTo(S.mapa);
+  if (S.plRuta) S.plRuta.setStyle({ color: v.estado === 'confirmado' ? '#e8892b' : '#2f9e57' });
+}
+function sumarTraza(lat, lng, ahora) {
+  const v = S.estado && S.estado.viaje;
+  if (!S.pl || !v || v.estado !== 'en_curso' || v.id !== S.trazaId) return;
+  const u = S.traza[S.traza.length - 1];
+  if (u && dist(u[0], u[1], lat, lng) < 8) return;
+  S.traza.push([lat, lng]);
+  if (S.traza.length > 3000) { S.traza.shift(); S.pl.setLatLngs(S.traza); } else S.pl.addLatLng([lat, lng]);
+  if (ahora - (S.trazaGuardada || 0) > 10000) { S.trazaGuardada = ahora; try { localStorage.setItem(trazaClave(S.trazaId), JSON.stringify(S.traza)); } catch { } }
+}
+function dist(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180; const x = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); }
+let ultEnvio = 0;
+async function enviarPos() {
+  if (!S.pos || Date.now() - ultEnvio < 3500) return; ultEnvio = Date.now();
+  try { const r = await api('/api/conductor/posicion', { lat: S.pos.lat, lng: S.pos.lng, vel: S.vel || 0 }); const pe = $('#pel'); if (pe) { pe.style.display = r.peligrosa ? 'block' : 'none'; pe.textContent = 'Estás en zona peligrosa: ' + (r.peligrosa || ''); } } catch { }
+}
+function gps() {
+  let real = false;
+  const ok = p => { real = true; S.ultGps = Date.now(); S.gpsErr = null; $('#demo').style.display = 'none'; nuevaPos(p.coords.latitude, p.coords.longitude, (p.coords.speed || 0) * 3.6); enviarPos(); };
+  const fallo = er => { S.gpsErr = er ? er.code : 2; };
+  // (Re)inicia el seguimiento: algunos celulares lo cortan al volver de segundo plano
+  S.gpsVigilar = () => { if (!navigator.geolocation) return; try { if (S.gpsWatch != null) navigator.geolocation.clearWatch(S.gpsWatch); } catch { }
+    S.gpsWatch = navigator.geolocation.watchPosition(ok, fallo, { enableHighAccuracy: true, maximumAge: 5000 }); };
+  // Con el auto quieto el celular no informa posiciones nuevas: se pide una explícitamente cada 20 s para no dar falsas alarmas
+  S.gpsPedir = (alta = true) => navigator.geolocation && navigator.geolocation.getCurrentPosition(ok, er => { fallo(er); if (alta && er && er.code === 3) S.gpsPedir(false); }, { enableHighAccuracy: alta, maximumAge: 15000, timeout: 15000 });
+  if (NATIVO && plug('BackgroundGeolocation')) { S.gpsVigilar = () => nativoGps(ok, fallo); S.gpsPedir = () => { }; }
+  S.gpsIni = Date.now(); S.gpsVigilar();
+  setInterval(() => { if (!document.hidden && (!S.ultGps || Date.now() - S.ultGps > 20000)) S.gpsPedir(); }, 20000);
+  // modo prueba: sin GPS, tocá el mapa para moverte
+  setTimeout(() => { if (!real) { $('#demo').textContent = 'Sin GPS: tocá el mapa para moverte'; S.mapa.on('click', ev => { nuevaPos(ev.latlng.lat, ev.latlng.lng, 25); enviarPos(); }); } }, 4000);
+  setInterval(enviarPos, 5000);
+}
+// ofertas
+function mostrarOferta(v, abierta) {
+  notificar((abierta ? '📣 Viaje a oferta #' : '🚕 Nuevo viaje #') + v.id, (v.origen_dir || '') + '\nTocá para ' + (abierta ? 'postularte' : 'aceptarlo'), '#oferta', abierta ? 'rodar-abierta-' + v.id : 'rodar-oferta'); if (document.hidden) vibrar([400, 200, 400]);
+  $('.oferta') && $('.oferta').remove();
+  beep(); vibrar([200, 100, 200]);
+  const seg = v.segundos || 20;
+  const d = S.pos && v.origen_lat ? (dist(S.pos.lat, S.pos.lng, v.origen_lat, v.origen_lng) / 1000).toFixed(1) + ' km' : '';
+  const el = document.createElement('div'); el.className = 'oferta';
+  el.innerHTML = `<div class="c"><h2 style="margin:0">${abierta ? 'Viaje a oferta' : 'Nuevo viaje'} #${v.id}</h2><div class="cuenta"><div style="width:100%"></div></div>
+    <div style="font-size:17px"><b>${esc(v.origen_dir)}</b> <small>${d}</small></div>${v.zona ? `<div>Zona ${esc(v.zona)}</div>` : ''}${v.destino_dir ? `<div>${esc(v.destino_dir)}</div>` : ''}${v.monto_estimado ? `<div>Estimado ${pesos(v.monto_estimado)}</div>` : ''}${v.datos_movil ? `<div class="nota" style="margin-top:6px">${esc(v.datos_movil)}</div>` : ''}
+    <div class="dos"><button class="btn rojo grande" id="rech">Rechazar</button><button class="btn verde grande" id="acep">${abierta ? 'Postularme' : 'Aceptar'}</button></div></div>`;
+  document.body.append(el);
+  if (!abierta) setTimeout(() => $('.cuenta div', el) && ($('.cuenta div', el).style.width = '0%', $('.cuenta div', el).style.transition = `width ${seg}s linear`), 50);
+  const t = setTimeout(() => el.remove(), seg * 1000);
+  $('#rech', el).onclick = async () => { clearTimeout(t); el.remove(); if (!abierta) await api(`/api/conductor/viaje/${v.id}/rechazar`, {}).catch(() => { }); };
+  $('#acep', el).onclick = async () => { clearTimeout(t); el.remove(); try { await api(`/api/conductor/viaje/${v.id}/${abierta ? 'postular' : 'aceptar'}`, {}); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+}
+function conectar() {
+  S.socket = RODAR.tiempoReal(S.estado.canal, ['movil-' + S.estado.movil.id, 'flota', 'radio']);
+  setInterval(() => api('/api/tick', {}).catch(() => { }), 5000);
+  S.socket.on('oferta', v => mostrarOferta(v, false));
+  S.socket.on('oferta_abierta', v => { if (!$('.oferta') && S.estado.movil.estado !== 'confirmado' && !S.ignorar?.[v.id]) { S.ignorar = { ...(S.ignorar || {}), [v.id]: 1 }; mostrarOferta({ ...v, segundos: 25 }, true); } });
+  S.socket.on('oferta_cancelada', () => { $('.oferta') && $('.oferta').remove(); toast('El viaje fue reasignado o cancelado'); refrescar(); });
+  S.socket.on('oferta_tomada', d => { const o = $('.oferta'); if (o && o.innerHTML.includes('#' + d.viajeId)) o.remove(); });
+  S.socket.on('pago_base', d => { beep(); vibrar(200); toast('Pago de base recibido: ' + pesos(d.monto), 'ok'); refrescar(); });
+  S.socket.on('asignado', d => { if (d && d.id) S.avisoAsig = d.id; notificar('✅ Te asignaron un viaje', 'La central te asignó un viaje. Tocá para verlo', '', 'rodar-asignado'); beep(); toast('La central te asignó un viaje', 'ok'); refrescar(); });
+  S.socket.on('viaje', v => { if (S.estado.viaje && S.estado.viaje.id === v.id && v.estado !== S.estado.viaje.estado) refrescar(); });
+  S.socket.on('mensaje', m => mensajeEntrante(m));
+  S.socket.on('mensaje_flota', m => mensajeFlota(m));
+  S.socket.on('forzar_salida', () => salir(true));
+  S.socket.on('zonas', () => location.reload());
+  S.socket.on('tarifas', refrescar);
+  S.socket.on('connect', refrescar);
+  setInterval(() => { if (!S.socket.connected || Date.now() - (S.ultRef || 0) > 20000) refrescar(); }, 5000);
+}
+// radio
+function radio() {
+  // El audio viaja por el servidor: se guarda y se avisa por tiempo real solo el número de mensaje (los audios no se pierden por tamaño)
+  const propios = new Set(); // los audios que mandó este celular no se reproducen acá
+  S.socket.on('radio', async d => {
+    if (d.clave && propios.has(d.clave)) return;
+    toast('📻 ' + (d.de || 'Radio')); mostrarHabla(d.de); notificar('📻 ' + (d.de || 'Radio'), 'Mensaje de radio', '', 'rodar-radio');
+    if (d.audio) return reproducirRadio(d.audio);
+    if (d.id) { try { const r = await api('/api/radio/' + d.id); if (r && r.audio) reproducirRadio(r.audio); } catch { } }
+  });
+  let rec, chunks, stream, tMax, grabando = false;
+  const opciones = () => { const o = { audioBitsPerSecond: 24000 }; try { if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) o.mimeType = 'audio/webm;codecs=opus'; else if (MediaRecorder.isTypeSupported('audio/mp4')) o.mimeType = 'audio/mp4'; } catch { } return o; };
+  const enviar = async (audio, mime) => {
+    const de = 'Móvil ' + S.estado.movil.numero + ' · ' + S.estado.conductor.nombre;
+    const clave = Math.random().toString(36).slice(2) + Date.now().toString(36); propios.add(clave);
+    try { await api('/api/radio', { audio, mime, de, clave }); toast('📻 Enviado a la central', 'ok'); }
+    catch (er) { try { S.socket.emit('radio', { audio, mime, de, movil: S.estado.movil.numero }); } catch { } toast('No se pudo enviar el audio: ' + er.message, 'error'); }
+  };
+  // En la app Android se graba con el micrófono nativo (el de la página web no siempre funciona dentro de la app)
+  const VR = plug('VoiceRecorder'); let grabNativo = false;
+  const errorMic = er => { grabando = false; grabNativo = false; $('#ptt').classList.remove('grabando');
+    toast(/denied|NotAllowed|Permission|MISSING_PERMISSION/i.test(String(er && (er.name || er.message || er.code))) ? 'Permití el micrófono para usar la radio (Ajustes → Aplicaciones → TOQUE! Conductor → Permisos)' : ('Radio: ' + ((er && (er.message || er.code)) || 'sin acceso al micrófono')), 'error'); };
+  const on = async ev => {
+    if (grabando) return; grabando = true; S.audioOk = true; prepararRadio();
+    $('#ptt').classList.add('grabando');
+    if (VR) {
+      try {
+        const p = await VR.hasAudioRecordingPermission();
+        if (!p || !p.value) { const q = await VR.requestAudioRecordingPermission(); if (!q || !q.value) throw new Error('Permission denied'); }
+        if (!grabando) return; // soltó mientras pedía permiso
+        await VR.startRecording(); grabNativo = true; vibrar(60);
+        clearTimeout(tMax); tMax = setTimeout(off, 30000);
+        if (!grabando) off(); // soltó mientras arrancaba
+      } catch (er) { errorMic(er); }
+      return;
+    }
+    try {
+      if (!window.MediaRecorder) throw new Error('Este celular no permite grabar audio desde la app');
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (!grabando) { stream.getTracks().forEach(t => t.stop()); return; } // soltó el botón mientras pedía permiso
+      rec = new MediaRecorder(stream, opciones()); chunks = [];
+      rec.ondataavailable = x => { if (x.data && x.data.size) chunks.push(x.data); };
+      rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); const b = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); if (b.size < 800) return toast('Mantené apretado el botón mientras hablás', 'error'); const fr = new FileReader(); fr.onload = () => enviar(fr.result, rec.mimeType); fr.readAsDataURL(b); };
+      rec.start(); vibrar(60);
+      clearTimeout(tMax); tMax = setTimeout(off, 30000); // máximo 30 segundos por mensaje
+    } catch (er) { errorMic(er); }
+  };
+  function off() {
+    if (!grabando && !grabNativo) return; grabando = false; clearTimeout(tMax); $('#ptt').classList.remove('grabando'); modoToque = false;
+    if (grabNativo) {
+      grabNativo = false;
+      VR.stopRecording().then(r => {
+        const v = (r && r.value) || {};
+        if (!v.recordDataBase64 || (v.msDuration && v.msDuration < 400)) return toast('Mantené apretado el botón mientras hablás', 'error');
+        const mime = String(v.mimeType || 'audio/aac').split(';')[0];
+        enviar('data:' + mime + ';base64,' + v.recordDataBase64, mime);
+      }).catch(errorMic);
+      return;
+    }
+    if (rec && rec.state === 'recording') rec.stop();
+  }
+  // Mantener apretado para hablar; si se toca y suelta rápido, queda grabando hasta el próximo toque
+  const b = $('#ptt'); let t0 = 0, modoToque = false;
+  const bajar = e => { if (e.cancelable) e.preventDefault(); if (grabando && modoToque) return off(); t0 = Date.now(); on(e); };
+  const subir = () => { if (!grabando) return; if (Date.now() - t0 < 350) { modoToque = true; toast('🎙 Grabando… tocá de nuevo para enviar'); return; } if (!modoToque) off(); };
+  if (window.PointerEvent) {
+    b.addEventListener('pointerdown', e => { try { b.setPointerCapture(e.pointerId); } catch { } bajar(e); });
+    b.addEventListener('pointerup', subir);
+  } else {
+    b.addEventListener('touchstart', bajar, { passive: false }); b.addEventListener('mousedown', bajar);
+    b.addEventListener('touchend', subir); b.addEventListener('mouseup', subir);
+  }
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
+// ---- Pagar base ----
+const COLOR_BASE = { verde: '#2f9e57', amarillo: '#e2b007', rojo: '#d64545', azul: '#2f6fd6', gris: '#7b8a8b' };
+async function pagarBase() {
+  const [b, r] = await Promise.all([api('/api/base'), api('/api/conductor/movimientos')]);
+  const cuotaTxt = b.plan && b.cuota > 0 ? `${esc(b.plan.descripcion)}: <b>${pesos(b.cuota)}</b> ${b.plan.periodicidad === 'diaria' ? 'por día, se descuenta solo de tu cuenta' : '(' + esc(b.plan.periodicidad) + ')'}` : 'Tu móvil no tiene un plan con base fija.';
+  const el = hoja('Pagar base', `<div class="tarifador"><div>Saldo de la cuenta · Móvil ${b.numero}</div><div class="monto" style="color:${b.saldo < 0 ? '#ff8a8a' : '#a6e06b'}">${pesos(b.saldo)}</div>
+      <div style="margin-top:4px"><span style="background:${COLOR_BASE[b.color] || '#888'};border-radius:10px;padding:2px 10px;font-size:13px;font-weight:700">${esc(b.texto)}</span></div></div>
+    <p style="margin:8px 0">${cuotaTxt}</p>
+    ${b.bloqueado ? '<div class="err" style="display:block;margin:8px 0">Estás bloqueado por deuda: no recibís viajes hasta pagar la base.</div>' : ''}
+    ${b.deuda > 0 ? `<p style="margin:6px 0">Debés <b>${pesos(b.deuda)}</b>.</p>` : ''}
+    <div class="mp-box"><label for="cm">¿Cuánto vas a pagar?</label>
+      <div class="mp-monto"><span>$</span><input type="number" id="cm" inputmode="numeric" min="1" value="${b.sugerido > 0 ? Math.ceil(b.sugerido) : (b.cuota || '')}" placeholder="0"></div>
+      <div class="mp-chips">${[...new Map([[b.deuda, 'Toda la deuda'], [b.cuota, 'Una cuota'], [b.sugerido, 'Sugerido']].filter(([v]) => v > 0).map(([v, t]) => [Math.ceil(v), t])).entries()].map(([v, t]) => `<button type="button" data-mv="${v}">${t}<b>${pesos(v)}</b></button>`).join('')}</div>
+      <button class="btn-mp" id="cb"><span class="ic">💳</span><span class="tx"><b>Pagar con Mercado Pago</b><small>Al alias ${esc(b.alias || 'danderfertcesar.mp')}</small></span><span class="fl">›</span></button>
+    </div>
+    <h4 style="margin:12px 0 4px">Movimientos</h4>${r.movimientos.map(x => `<div style="border-bottom:1px solid #eee;padding:7px 0;display:flex;justify-content:space-between"><span>${x.fecha.slice(5, 16)} · ${esc(x.detalle || x.tipo)}</span><b style="color:${x.monto < 0 ? 'var(--rojo)' : 'var(--verde)'}">${pesos(x.monto)}</b></div>`).join('') || '<p>Sin movimientos.</p>'}`);
+  const alias = b.alias || 'danderfertcesar.mp';
+  const cb = $('#cb', el), cbHtml = cb.innerHTML, cbOff = () => { cb.disabled = false; cb.innerHTML = cbHtml; };
+  $$('[data-mv]', el).forEach(x => x.onclick = () => { $('#cm', el).value = x.dataset.mv; $$('[data-mv]', el).forEach(y => y.classList.toggle('on', y === x)); });
+  cb.onclick = async () => {
+    const monto = +$('#cm', el).value; if (!(monto >= 1)) { $('#cm', el).focus(); return toast('Escribí el monto a pagar', 'error'); }
+    cb.disabled = true; cb.innerHTML = '<span class="ic">⏳</span><span class="tx"><b>Preparando el pago…</b></span>';
+    // 1) Directo a Mercado Pago con el monto ya puesto (si la función está instalada)
+    try { const x = await RODAR.mercadopagoCrear(TK, monto, null); location.href = x.url; return; }
+    catch (er) { if (!er.noConectado) { toast(er.message, 'error'); cbOff(); return; } }
+    // 2) Sin Checkout instalado: pantalla con alias y monto para transferir
+    let msg = '';
+    try { const x = await api('/api/cargar-saldo', { monto }); msg = x.id ? ' (pago #' + x.id + ')' : ''; } catch (e2) { toast(e2.message, 'error'); cbOff(); return; }
+    try { await navigator.clipboard.writeText(alias); } catch { }
+    hoja('Transferí desde Mercado Pago', `<p style="font-size:15px;margin:0 0 10px">Tu pago${msg} quedó registrado. Seguí estos 3 pasos:</p>
+      <div class="mp-paso"><i>1</i><div><b>Copiá el alias</b><div class="mp-alias">${esc(alias)}</div><button class="btn-mp gris" id="cal" style="margin:0"><span class="ic">📋</span><span class="tx"><b id="calTx">Copiar alias</b><small>Para pegarlo en Mercado Pago</small></span><span class="fl">›</span></button></div></div>
+      <div class="mp-paso"><i>2</i><div><b>Abrí Mercado Pago y transferí</b>
+        <button class="btn-mp" id="abr" style="margin:8px 0"><span class="ic">💳</span><span class="tx"><b>Abrir Mercado Pago</b><small>El alias ya queda copiado</small></span><span class="fl">›</span></button>
+        <ol class="mp-guia">
+          <li>Tocá <span class="mp-tecla">↗ Transferir</span></li>
+          <li>Elegí <span class="mp-tecla">Con alias o CVU</span></li>
+          <li>Mantené apretado el campo y tocá <span class="mp-tecla">Pegar</span> (o escribí <b>${esc(alias)}</b>)</li>
+          <li>Revisá los datos del destinatario y tocá <span class="mp-tecla">Continuar</span></li>
+          <li>Poné el monto <b>${pesos(monto)}</b> y tocá <span class="mp-tecla">Transferir</span></li>
+        </ol></div></div>
+      <div class="mp-paso"><i>3</i><div><b>Volvé a esta app y confirmá</b>
+        <button class="btn-mp verde" id="ya" style="margin:8px 0"><span class="ic">✅</span><span class="tx"><b>Ya transferí</b><small>Avisá a la central</small></span><span class="fl">›</span></button>
+        <div class="mp-nota">Cuando la central verifique la transferencia, la base se acredita y quedás habilitado.</div></div></div>`);
+    const ya = document.querySelector('#ya'); if (ya) ya.onclick = () => { toast('¡Gracias! La central va a verificar tu transferencia', 'ok'); cerrarHoja(); };
+    const h = document.querySelector('#cal'); if (h) h.onclick = async () => { try { await navigator.clipboard.writeText(alias); $('#calTx').textContent = '✓ Alias copiado'; toast('Alias copiado', 'ok'); } catch { toast(alias, 'ok'); } };
+    const ab = document.querySelector('#abr'); if (ab) ab.onclick = async () => { try { await navigator.clipboard.writeText(alias); } catch { } abrirMercadoPago(); };
+  };
+}
+// ---- Radio: quién habla ----
+let hablaT = null;
+function mostrarHabla(quien) {
+  let el = $('#habla'); if (!el) { el = document.createElement('div'); el.id = 'habla'; el.className = 'habla'; const m = $('#mapa'); (m && m.parentElement || document.body).append(el); }
+  el.textContent = '' + (quien || 'Radio'); el.classList.add('on'); clearTimeout(hablaT); hablaT = setTimeout(ocultarHabla, 30000);
+}
+function ocultarHabla() { const el = $('#habla'); if (el) el.classList.remove('on'); clearTimeout(hablaT); }
+
+// ---- Segundo plano ----
+// Un sitio web no puede ejecutarse "a la fuerza" con la pantalla apagada: el sistema del celular decide. Esto hace todo lo que el navegador permite:
+//  - mantiene la pantalla encendida mientras la app está abierta (Wake Lock),
+//  - reproduce un audio silencioso que le indica a Android que la app está en uso (y muestra "En servicio" en las notificaciones),
+//  - avisa con una notificación si llega un viaje con la app en segundo plano,
+//  - al volver a la app se sincroniza al instante (estado, ubicación, distancia del viaje).
+const BG = { lock: null, audio: null, oculto: 0 };
+function wavSilencio() {
+  const n = 8000, b = new ArrayBuffer(44 + n), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+  new Uint8Array(b, 44).fill(128); return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+async function pedirLock() {
+  try { if ('wakeLock' in navigator && !BG.lock && !document.hidden) { BG.lock = await navigator.wakeLock.request('screen'); BG.lock.addEventListener('release', () => { BG.lock = null; actualizarBg(); }); } } catch { }
+  actualizarBg();
+}
+function iniciarAudio() {
+  if (NATIVO) return; // la app Android se mantiene activa con su servicio de ubicación
+  try {
+    if (!BG.audio) {
+      BG.audio = new Audio(wavSilencio()); BG.audio.loop = true; BG.audio.volume = 0.02; BG.audio.setAttribute('playsinline', '');
+      // si el sistema lo frena (llamada, otro audio, ahorro de batería) se vuelve a arrancar solo
+      BG.audio.addEventListener('pause', () => { if (activoOn() && !BG.apagado) setTimeout(() => { if (BG.audio.paused && !BG.apagado) iniciarAudio(); }, 800); });
+    }
+    BG.apagado = false;
+    if (!BG.audio.paused) return;
+    BG.audio.play().then(() => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: 'En servicio', artist: 'Remises TOQUE!' });
+        try { navigator.mediaSession.playbackState = 'playing'; } catch { }
+        ['play', 'pause', 'stop'].forEach(ac => { try { navigator.mediaSession.setActionHandler(ac, () => BG.audio.play()); } catch { } });
+      }
+      actualizarBg();
+    }).catch(() => actualizarBg());
+  } catch { }
+}
+// Radio: un reproductor propio que se "desbloquea" con el primer toque del conductor. Después puede sonar con la app en segundo plano
+// (antes se creaba un audio nuevo en cada mensaje y el navegador lo bloqueaba si la app no estaba a la vista).
+function prepararRadio() {
+  try {
+    if (!BG.radio) { BG.radio = new Audio(); BG.radio.setAttribute('playsinline', ''); BG.radio.onended = BG.radio.onerror = () => { ocultarHabla(); if (activoOn()) iniciarAudio(); }; }
+    if (!BG.radioListo) {
+      BG.radio.src = wavSilencio(); BG.radio.volume = 0;
+      const sil = BG.radio.src; BG.radio.play().then(() => { if (BG.radio.src === sil) BG.radio.pause(); BG.radio.volume = 1; BG.radioListo = true; }).catch(() => { BG.radio.volume = 1; });
+    }
+    AC = AC || new AudioContext(); if (AC.state === 'suspended') AC.resume();
+  } catch { }
+}
+function reproducirRadio(src) {
+  try {
+    BG.radioListo = true; // si el "desbloqueo" silencioso estaba en curso, no debe pausar este audio
+    prepararRadio(); const a = BG.radio; try { a.pause(); } catch { } a.volume = 1; a.src = src;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => { BG.radioPend = { src, t: Date.now() }; toast('Tocá la pantalla para escuchar la radio', 'error'); });
+  } catch { }
+}
+function bgActivo() { return NATIVO ? !!S.bgWatcher : !!(BG.lock || (BG.audio && !BG.audio.paused)); }
+function actualizarBg() {
+  let b = $('#bgInd'); if (!b) { b = document.createElement('button'); b.id = 'bgInd'; b.onclick = () => { activarBg(true); infoBg(); }; document.body.append(b); }
+  const ok = bgActivo(); b.className = 'bg-ind' + (ok ? '' : ' aviso'); b.textContent = NATIVO ? (ok ? 'GPS en segundo plano ✓' : 'Activar GPS') : (ok ? 'Segundo plano activo' : 'Activar segundo plano') + (S.pushOk ? ' · 🔔' : '');
+}
+function activarBg(gesto) { pedirLock(); iniciarAudio(); if (gesto) { prepararRadio(); if (BG.radioPend && Date.now() - BG.radioPend.t < 60000) { const x = BG.radioPend.src; BG.radioPend = null; reproducirRadio(x); } } if (gesto && !S.pushOk) activarPush(true); }
+function infoBg() {
+  if (NATIVO) return hoja('Segundo plano', `<p>La app Android sigue mandando tu ubicación y avisándote de viajes y mensajes aunque bloquees el celular. Mientras está en servicio vas a ver un aviso fijo en la barra de notificaciones.</p>
+    <ol style="line-height:1.7;padding-left:20px"><li>Permití la <b>ubicación</b> y las <b>notificaciones</b> cuando la app lo pida.</li>
+    <li>Aceptá que la app funcione <b>sin restricciones de batería</b> (Ajustes → Aplicaciones → TOQUE! Conductor → Batería → Sin restricciones).</li>
+    <li>Para salir de la app usá <b>Cerrar sesión</b>; con la tecla Atrás o el botón de inicio queda funcionando en segundo plano.</li></ol>
+    <p style="font-size:14px">${S.bgWatcher ? '<b style="color:#2f9e57">✓ GPS en segundo plano activo</b>' : '<b style="color:#d98a00">El GPS en segundo plano todavía no está activo</b>'}</p>
+    <button class="btn grande" onclick="S.gpsVigilar && S.gpsVigilar();cerrarHoja()">Activar ahora</button>`);
+  hoja('Segundo plano', `<p>Para que la app siga recibiendo viajes y midiendo el recorrido con la pantalla apagada:</p>
+    <ol style="line-height:1.7;padding-left:20px"><li><b>Instalá la app</b>: menú del navegador → <i>Agregar a pantalla de inicio</i>, y abrila desde ahí.</li>
+    <li>Permiso de <b>Ubicación: «Permitir siempre»</b> (Ajustes del celular → Aplicaciones → esta app/Chrome → Permisos).</li>
+    <li>Desactivá el <b>ahorro de batería</b> para esta app/Chrome (Batería → Sin restricciones).</li>
+    <li>Permití las <b>notificaciones</b>: los viajes y los mensajes de la central te llegan aunque el celular esté bloqueado o la app cerrada. ${S.pushOk ? '<b style="color:#2f9e57">✓ Activadas en este celular</b>' : '<b style="color:#d98a00">Todavía no están activadas</b>'}</li>
+    <li>Para que el <b>GPS</b> siga funcionando con la pantalla apagada, usá la <b>app Android</b> de Remises TOQUE! (pedila a la central).</li>
+    <li>No cierres la app deslizándola desde las apps recientes.</li></ol>
+    <p style="opacity:.8;font-size:13px">En iPhone el sistema suspende las páginas web al bloquear la pantalla: ahí conviene dejar la app abierta y la pantalla encendida. Aunque se suspenda, al volver a la app se actualiza sola y el viaje cobra el recorrido real registrado por el servidor.</p>
+    <button class="btn grande" onclick="activarBg(true);cerrarHoja()">Activar ahora</button>`);
+}
+function notificar(titulo, cuerpo, abrir, tag) {
+  const LN = plug('LocalNotifications');
+  if (LN) {
+    if (!(S.enFondo || document.hidden)) return;
+    LN.schedule({ notifications: [{ id: idDeTag(tag), title: titulo, body: cuerpo || '', largeBody: cuerpo || '', channelId: 'toque-avisos', smallIcon: 'ic_stat_toque', iconColor: '#5fa52f', autoCancel: true, extra: { abrir: abrir || '' } }] }).catch(() => { });
+    return;
+  }
+  if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const op = { body: cuerpo, icon: 'img/conductor-192.png', badge: 'img/conductor-192.png', tag: tag || 'rodar', renotify: true, requireInteraction: true, vibrate: [300, 150, 300], data: { url: 'conductor.html' + (abrir || '') } };
+  const dir = () => { try { const n = new Notification(titulo, op); n.onclick = () => { window.focus(); n.close(); if (abrir) abrirDesdeAviso(abrir); }; } catch { } };
+  if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r ? r.showNotification(titulo, op) : dir()).catch(dir); else dir();
+}
+function segundoPlano() {
+  const gesto = () => { activarBg(true); ['touchstart', 'click'].forEach(ev => document.removeEventListener(ev, gesto, true)); };
+  ['touchstart', 'click'].forEach(ev => document.addEventListener(ev, gesto, true));
+  activarBg(false);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { BG.oculto = Date.now(); return; }
+    activarBg(false); if (BG.audio && BG.audio.paused) iniciarAudio();
+    const seg = BG.oculto ? (Date.now() - BG.oculto) / 1000 : 0; BG.oculto = 0;
+    if (seg > 15) { ultEnvio = 0; refrescar(); enviarPos(); toast('Volviste después de ' + (seg >= 90 ? Math.round(seg / 60) + ' min' : Math.round(seg) + ' s') + ': ya está actualizado'); }
+  });
+  setInterval(() => { if (!document.hidden) pedirLock(); }, 30000);
+}
+// ---------- Soporte con la central ----------
+const SOP_VISTO = 'rodar_sop_visto', SOP_NL = 'rodar_sop_nl';
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } }, lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { } };
+function noLeidos() { return +(lsGet(SOP_NL) || 0); }
+function pintarNoLeidos() { const n = noLeidos(); ['chatn', 'chatn2'].forEach(id => { const b = $('#' + id); if (b) { b.textContent = n > 9 ? '9+' : n; b.classList.toggle('on', n > 0); } }); }
+async function revisarSoporte() {
+  try { const ms = await api('/api/conductor/soporte'); const visto = +(lsGet(SOP_VISTO) || 0); const n = ms.filter(m => m.de !== 'movil' && m.id > visto).length; if (!visto && ms.length) lsSet(SOP_VISTO, ms[ms.length - 1].id); else lsSet(SOP_NL, n); pintarNoLeidos(); } catch { }
+}
+function chatAbierto() { return !!$('.hoja.chat-h'); }
+function pintarChat(ms) {
+  const c = $('#sm'); if (!c) return;
+  let dia = '';
+  c.innerHTML = ms.map(m => { const f = String(m.fecha || ''), d = f.slice(0, 10), mio = m.de === 'movil';
+    const sep = d && d !== dia ? (dia = d, `<div class="dia">${d === new Date().toISOString().slice(0, 10) ? 'Hoy' : d.split('-').reverse().join('/')}</div>`) : '';
+    return sep + `<div class="burbuja ${mio ? 'mia' : ''}${m.pend ? '" style="opacity:.6' : ''}"><span class="de">${mio ? 'Vos' : 'Central'}</span>${esc(m.texto)}<small>${m.pend ? 'Enviando…' : f.slice(11, 16)}</small></div>`; }).join('')
+    || '<p style="text-align:center;opacity:.7;margin:30px 10px">👋 ¿En qué te podemos ayudar?<br><small>Escribí tu consulta o elegí una opción rápida. La central te responde por acá y te avisamos con un sonido.</small></p>';
+  c.scrollTop = c.scrollHeight;
+  const ult = ms.filter(m => m.id).pop(); if (ult) lsSet(SOP_VISTO, ult.id);
+  lsSet(SOP_NL, 0); pintarNoLeidos();
+}
+async function abrirSoporte() {
+  let ms = []; try { ms = await api('/api/conductor/soporte'); } catch (er) { return toast(er.message, 'error'); }
+  const RAP = ['Necesito hablar con la central', 'Problema con un viaje', 'Problema con la app', 'Consulta sobre pagos', 'Voy demorado'];
+  const el = hoja('💬 Soporte con la central', `<div class="chat"><div class="msgs" id="sm"></div>
+    <div class="rapidas">${RAP.map(r => `<button type="button">${r}</button>`).join('')}</div>
+    <form id="sf"><textarea name="texto" rows="1" placeholder="Escribí y tocá Enter para enviar…" maxlength="1000" enterkeyhint="send"></textarea><button class="btn">Enviar</button></form></div>`);
+  el.classList.add('chat-h'); S.chatMs = ms; pintarChat(ms);
+  const f = $('#sf', el), ta = f.texto;
+  ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; };
+  // Enter envía; Shift+Enter hace un salto de línea
+  ta.onkeydown = ev => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); f.requestSubmit ? f.requestSubmit() : f.onsubmit(ev); } };
+  $$('.rapidas button', el).forEach(b => b.onclick = () => { ta.value = ta.value ? ta.value + ' ' + b.textContent : b.textContent; ta.oninput(); ta.focus(); });
+  f.onsubmit = async ev => {
+    ev.preventDefault(); const t = ta.value.trim(); if (!t) return ta.focus();
+    const bt = $('button', f); bt.disabled = true; ta.value = ''; ta.oninput();
+    S.chatMs = [...S.chatMs, { de: 'movil', texto: t, pend: 1, fecha: '' }]; pintarChat(S.chatMs);
+    try { await api('/api/conductor/soporte', { texto: t }); await recargarChat(); }
+    catch (er) { toast('No se pudo enviar: ' + er.message, 'error'); S.chatMs = S.chatMs.filter(m => !m.pend); pintarChat(S.chatMs); ta.value = t; }
+    bt.disabled = false;
+  };
+  clearInterval(S.chatT); S.chatT = setInterval(() => chatAbierto() ? recargarChat() : clearInterval(S.chatT), 20000);
+}
+async function recargarChat() { try { const ms = await api('/api/conductor/soporte'); if (chatAbierto()) { S.chatMs = ms; pintarChat(ms); } } catch { } }
+// Aviso emergente dentro de la app: se toca y abre lo que corresponde
+function popAviso({ ic = '💬', titulo, texto, pie = 'Tocá para abrir', abrir, seg = 20 }) {
+  $$('.pop').forEach(x => x.remove());
+  const p = document.createElement('div'); p.className = 'pop';
+  p.innerHTML = `<span class="ic">${ic}</span><span class="tx"><b>${esc(titulo)}</b><span>${esc(texto)}</span><small>${esc(pie)}</small></span><button class="x" aria-label="Cerrar">×</button>`;
+  p.onclick = ev => { p.remove(); if (!ev.target.classList.contains('x') && abrir) abrir(); };
+  document.body.append(p); setTimeout(() => p.remove(), seg * 1000);
+}
+function sonarMensaje() { beep(); setTimeout(beep, 450); vibrar([300, 120, 300]); }
+function mensajeEntrante(m) {
+  sonarMensaje();
+  if (chatAbierto()) { recargarChat(); if (!document.hidden) return; }
+  else { lsSet(SOP_NL, noLeidos() + 1); pintarNoLeidos(); popAviso({ titulo: 'Mensaje de la ' + (m.de || 'Central'), texto: m.texto, pie: 'Tocá para abrir y responder', abrir: () => menu('soporte') }); }
+  notificar('💬 Mensaje de la ' + (m.de || 'Central'), m.texto + '\nTocá para responder', '#soporte', 'rodar-soporte');
+}
+function mensajeFlota(m) {
+  sonarMensaje(); lsSet('rodar_flota_ult', m.texto || '');
+  const ver = () => hoja('📢 Mensaje de la central', `<p style="font-size:18px;white-space:pre-wrap">${esc(m.texto)}</p><button class="btn grande" onclick="cerrarHoja()">Entendido</button>`);
+  popAviso({ ic: '📢', titulo: 'Mensaje para toda la flota', texto: m.texto, pie: 'Tocá para leerlo completo', abrir: ver, seg: 40 });
+  notificar('📢 Mensaje de la central', m.texto, '#mensaje', 'rodar-flota');
+}
+function abrirDesdeAviso(h) {
+  $$('.pop').forEach(x => x.remove());
+  if (h === '#soporte') menu('soporte');
+  if (h === '#oferta') refrescar();
+  if (h === '#mensaje') { const t = lsGet('rodar_flota_ult'); if (t) hoja('📢 Mensaje de la central', `<p style="font-size:18px;white-space:pre-wrap">${esc(t)}</p><button class="btn grande" onclick="cerrarHoja()">Entendido</button>`); }
+}
+// ---------- Notificaciones push (llegan con el celular bloqueado o la app cerrada) ----------
+function b64aU8(b) { const p = '='.repeat((4 - b.length % 4) % 4), r = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); }
+async function activarPush(pedir) {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || !TK) return;
+    if (Notification.permission === 'default' && pedir) await Notification.requestPermission();
+    if (Notification.permission !== 'granted') return;
+    const cfg = await api('/api/conductor/push'); if (!cfg || !cfg.publica) return;
+    const reg = await (navigator.serviceWorker.getRegistration().then(r => r || navigator.serviceWorker.register('sw.js'))).then(() => navigator.serviceWorker.ready);
+    let sub = await reg.pushManager.getSubscription();
+    const clave = b64aU8(cfg.publica);
+    if (sub && sub.options && sub.options.applicationServerKey) { const k = new Uint8Array(sub.options.applicationServerKey); if (k.length !== clave.length || k.some((x, i) => x !== clave[i])) { await sub.unsubscribe(); sub = null; } }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clave });
+    await api('/api/conductor/push', { sub: sub.toJSON(), ua: navigator.userAgent });
+    S.pushOk = true; actualizarBg && actualizarBg();
+  } catch (er) { S.pushOk = false; }
+}
+// ---------- Fuera de servicio ----------
+// ---- Menú lateral ----
+function abrirMenu() { pintarMenu(); const l = $('#lat'); l.classList.add('ab'); requestAnimationFrame(() => l.classList.add('vis')); }
+function cerrarMenu() { const l = $('#lat'); if (!l) return; l.classList.remove('vis'); setTimeout(() => l.classList.remove('ab'), 200); }
+function pintarMenu() {
+  const e = S.estado; if (!e) return;
+  const m = e.movil, c = e.conductor || {}, [et, ec] = EST[m.estado] || [m.estado, '#888'], fuera = m.estado === 'fuera_servicio';
+  const ini = ((c.nombre || '?')[0] + ((c.apellido || '')[0] || '')).toUpperCase();
+  const it = (k, ico, t, sub, col) => `<a data-k="${k}"><span class="mi" style="background:${col}">${ico}</span><span class="mt"><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span>${k === 'soporte' ? '<span class="badge-n" id="chatn2"></span>' : ''}<span class="mc">›</span></a>`;
+  $('#lat').innerHTML = `<div class="caja">
+    <div class="mh"><button class="mx" aria-label="Cerrar menú">×</button>
+      <div class="mp"><span class="av">${esc(ini)}</span><div style="min-width:0"><b>${esc((c.nombre || '') + ' ' + (c.apellido || ''))}</b><small>Móvil ${m.numero}${m.patente ? ' · ' + esc(m.patente) : ''}</small></div></div>
+      <div class="mest"><span class="pill" style="background:${ec}">${et}</span><span class="ms">Saldo <b style="color:${e.saldo < 0 ? '#ffb3b3' : '#c9f29b'}">${pesos(e.saldo)}</b></span></div></div>
+    <button class="mfs ${fuera ? 'lib' : ''}" data-k="fuera">${fuera ? '▶️ Ponerme libre' : '⏸️ Fuera de servicio'}</button>
+    <div class="mg">Trabajo</div>
+    ${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
+    <div class="mg">Ayuda</div>
+    ${it('soporte', '💬', 'Soporte con la central', 'Escribile a la central', '#e6f6f4')}${it('manual', '📘', 'Manual de uso', 'Cómo usar la app', '#eef0fb')}
+    <div class="mg">Mi cuenta</div>
+    ${it('perfil', '👤', 'Mi perfil', 'Datos y contacto', '#f1eefa')}${it('clave', '🔑', 'Cambiar clave', '', '#f3f4f6')}${ES_ANDROID && !NATIVO ? it('apk', '📲', 'Descargar app Android', 'Funciona con el celular bloqueado', '#e8f1fb') : ''}
+    <a data-k="cerrar" class="msal"><span class="mi" style="background:#fdecec">🚪</span><span class="mt"><b>Cerrar sesión</b></span></a>
+    <div class="mpie">Remises TOQUE! · Conductor</div></div>`;
+  $('.mx', $('#lat')).onclick = cerrarMenu;
+  $$('#lat [data-k]').forEach(a => a.onclick = () => { cerrarMenu(); S.volverMenu = true; Promise.resolve(menu(a.dataset.k)).catch(er => toast(er.message, 'error')).finally(() => { S.volverMenu = false; }); });
+  pintarNoLeidos();
+}
+function pintarFueraMenu() { const t = $('#fueraTx'); if (t && S.estado) t.textContent = S.estado.movil.estado === 'fuera_servicio' ? '▶️ Ponerme libre' : '⏸️ Fuera de servicio'; }
+async function fueraDeServicio() {
+  const m = S.estado.movil, salir = m.estado === 'fuera_servicio';
+  if (!salir && (S.estado.viaje || ['confirmado', 'con_pasajero'].includes(m.estado))) return toast('Terminá el viaje en curso antes de pasar a fuera de servicio', 'error');
+  try {
+    await api('/api/conductor/estado', { estado: salir ? 'disponible' : 'fuera_servicio' });
+    if (!salir) { S.fueraDesde = new Date().toTimeString().slice(0, 5); lsSet('rodar_fuera_desde', S.fueraDesde); }
+    toast(salir ? 'Estás libre' : 'Fuera de servicio', 'ok'); refrescar();
+  } catch (er) { toast(er.message, 'error'); }
+}
+// Abre la app de Mercado Pago; si no está instalada (o no responde), abre la web. Si la app se abrió, no se abre además la web.
+function abrirMercadoPago() {
+  const web = 'https://www.mercadopago.com.ar/', android = /android/i.test(navigator.userAgent), ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (NATIVO) { // en la app Android: intenta abrir la app de Mercado Pago; si no está instalada, abre la web
+    let fue = false; const v = () => { if (document.hidden) fue = true; }; document.addEventListener('visibilitychange', v);
+    try { location.href = 'mercadopago://home'; } catch { }
+    setTimeout(() => { document.removeEventListener('visibilitychange', v); if (!fue && !document.hidden) location.href = web; }, 1500); return;
+  }
+  if (!android && !ios) return window.open(web, '_blank', 'noopener');
+  let salio = false; const vis = () => { if (document.hidden) salio = true; };
+  document.addEventListener('visibilitychange', vis);
+  if (android) location.href = 'intent://#Intent;scheme=mercadopago;package=com.mercadopago.wallet;S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+  else location.href = 'mercadopago://';
+  setTimeout(() => { document.removeEventListener('visibilitychange', vis); if (!salio && !document.hidden && ios) window.open(web, '_blank'); }, 1500);
+}
+// ---- Mis viajes (últimos 7 días) ----
+async function misViajesCond() {
+  let vs; try { vs = await api('/api/conductor/viajes'); } catch (er) { return toast(er.message, 'error'); }
+  const EV = { finalizado: ['Finalizado', '#2f9e57'], anulado: ['Cancelado', '#d64545'], en_curso: ['En curso', '#e8892b'], confirmado: ['Asignado', '#2f6fd6'], ofrecido: ['Ofrecido', '#7b8a8b'], pendiente: ['Pendiente', '#7b8a8b'], reserva: ['Reserva', '#6c4fd6'] };
+  const fin = vs.filter(v => v.estado === 'finalizado'), total = fin.reduce((a, v) => a + (+v.monto || 0), 0), km = fin.reduce((a, v) => a + (+v.km || 0), 0);
+  const dia = f => { const d = String(f || '').slice(0, 10), hoy = new Date(), ay = new Date(Date.now() - 864e5), iso = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+    if (d === iso(hoy)) return 'Hoy'; if (d === iso(ay)) return 'Ayer';
+    const x = new Date(d + 'T12:00:00'); return isNaN(x) ? d : ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][x.getDay()] + ' ' + x.getDate() + '/' + (x.getMonth() + 1); };
+  const grupos = []; vs.forEach(v => { const g = dia(v.creado); let x = grupos.find(y => y.g === g); if (!x) grupos.push(x = { g, vs: [] }); x.vs.push(v); });
+  const medio = m => ({ efectivo: '💵 Efectivo', mercadopago: '💳 Mercado Pago', cuenta_corriente: '🏢 Cuenta corriente', transferencia: '🏦 Transferencia' })[m] || (m ? esc(String(m).replace(/_/g, ' ')) : '');
+  const tarjeta = v => { const [et, ec] = EV[v.estado] || [v.estado, '#7b8a8b'];
+    return `<div class="vj${v.estado === 'anulado' ? ' an' : ''}"><div class="vj1"><span class="vjh">${esc(String(v.creado || '').slice(11, 16))}</span><span class="vjn">#${v.id}</span><span class="vje" style="background:${ec}">${et}</span><b class="vjm">${v.monto != null && v.estado !== 'anulado' ? pesos(v.monto) : ''}</b></div>
+      <div class="vjr"><div><i class="o"></i>${esc(v.origen_dir || '—')}</div><div><i class="d"></i>${esc(v.destino_dir || 'Sin destino')}</div></div>
+      <div class="vj2">${v.km ? `<span class="ch">🛣 ${km1(v.km)} km</span>` : ''}${medio(v.medio_pago) ? `<span class="ch">${medio(v.medio_pago)}</span>` : ''}${v.estado === 'finalizado' ? `<button class="vjt" data-tk="${v.id}">🧾 Ticket</button>` : ''}</div></div>`; };
+  const el = hoja('Mis viajes', `<div class="vjres"><div><small>Viajes</small><b>${fin.length}</b></div><div><small>Recaudado</small><b>${pesos(total)}</b></div><div><small>Recorrido</small><b>${km1(km)} km</b></div></div>
+    <p class="vjsub">Últimos 7 días · ${vs.length} viaje${vs.length === 1 ? '' : 's'} en total</p>
+    ${grupos.length ? grupos.map(g => `<div class="vjg">${g.g}<span>${g.vs.filter(v => v.estado === 'finalizado').length ? pesos(g.vs.filter(v => v.estado === 'finalizado').reduce((a, v) => a + (+v.monto || 0), 0)) : ''}</span></div>${g.vs.map(tarjeta).join('')}`).join('') : '<div class="vjvac"><div style="font-size:42px">🚕</div><b>Todavía no hiciste viajes esta semana</b><p>Cuando termines un viaje lo vas a ver acá con su ticket.</p></div>'}`);
+  el.classList.add('h-viajes');
+  $$('[data-tk]', el).forEach(b => b.onclick = () => ticket(+b.dataset.tk));
+}
+// hojas / menú
+// Pantallas que se abren desde el menú: mismo estilo que el menú y "‹" para volver al menú con todas las opciones.
+function hoja(t, html) {
+  const prev = $('.hoja'), desdeMenu = !!(S.volverMenu || (prev && prev.dataset.menu === '1')); S.volverMenu = false;
+  cerrarHoja();
+  const el = document.createElement('div'); el.className = 'hoja'; el.dataset.menu = desdeMenu ? '1' : '';
+  el.innerHTML = `<div class="ht">${desdeMenu ? '<button class="hv" aria-label="Volver al menú">‹</button>' : ''}<b>${esc(t)}</b><button class="hx" aria-label="Cerrar">×</button></div><div class="hb"><div class="hc">${html}</div></div>`;
+  document.body.append(el);
+  const v = $('.hv', el); if (v) v.onclick = volverAlMenu;
+  $('.hx', el).onclick = () => cerrarHoja();
+  return el;
+}
+function volverAlMenu() { cerrarHoja(); abrirMenu(); }
+function cerrarHoja() { $$('.hoja').forEach(x => x.remove()); }
+async function menu(k) {
+  const e = S.estado;
+  if (k === 'soporte') return abrirSoporte();
+  if (k === 'perfil') {
+    let p = {}; try { p = await api('/api/conductor/perfil'); } catch (er) { return toast(er.message, 'error'); }
+    const el = hoja('Mi perfil', `<p style="margin:0 0 10px"><b>DNI ${esc(p.documento || '')}</b> · Móvil ${e.movil.numero} · ${esc(e.movil.marca || '')} ${esc(e.movil.modelo || '')} · ${esc(e.movil.patente || '')}<br><small style="opacity:.75">El DNI y los datos del auto los cambia la central.</small></p>
+      <form id="fp"><div class="grid g2">
+        <div class="campo"><label>Nombre</label><input name="nombre" value="${esc(p.nombre || '')}" required></div>
+        <div class="campo"><label>Apellido</label><input name="apellido" value="${esc(p.apellido || '')}"></div>
+        <div class="campo"><label>Teléfono</label><input name="telefono" type="tel" inputmode="tel" value="${esc(p.telefono || '')}"></div>
+        <div class="campo"><label>Email</label><input name="email" type="email" autocapitalize="none" value="${esc(p.email || '')}"></div>
+        <div class="campo"><label>Teléfono de recupero</label><input name="tel_recupero" type="tel" inputmode="tel" value="${esc(p.tel_recupero || '')}"></div>
+        <div class="campo"><label>Email de recupero</label><input name="email_recupero" type="email" autocapitalize="none" value="${esc(p.email_recupero || '')}"></div>
+      </div><button class="btn grande" style="margin-top:12px">Guardar mis datos</button></form>
+      <p style="font-size:13px;opacity:.75;margin-top:10px">Tu alias y tu billetera se cargan en <b>Mi billetera virtual</b>.</p>`);
+    $('#fp', el).onsubmit = async ev => { ev.preventDefault(); const btn = $('button', ev.target); btn.disabled = true;
+      try { await api('/api/conductor/perfil', Object.fromEntries(new FormData(ev.target))); toast('Datos guardados', 'ok'); cerrarHoja(); await refrescar(); const n = $('.hd div div'); if (n && S.estado) n.textContent = S.estado.conductor.nombre + ' ' + S.estado.conductor.apellido; }
+      catch (er) { toast(er.message, 'error'); btn.disabled = false; } };
+  }
+  if (k === 'viajes') return misViajesCond();
+  if (k === 'saldo') await pagarBase();
+  if (k === 'billetera') {
+    let b = {}; try { b = await api('/api/conductor/billetera'); } catch (er) { return toast(er.message, 'error'); }
+    const TIPOS = [['mercadopago', 'Mercado Pago'], ['uala', 'Ualá'], ['naranja_x', 'Naranja X'], ['brubank', 'Brubank'], ['personal_pay', 'Personal Pay'], ['otra', 'Otra billetera o banco']];
+    const el = hoja('Mi billetera virtual', `<p style="font-size:14px;opacity:.85;margin:0 0 10px">Indicá el alias o CVU donde querés recibir tus pagos. Lo ve la central.</p>
+      <form id="bf"><div class="campo"><label>Billetera</label><select name="tipo" style="width:100%;padding:10px;border-radius:8px">${TIPOS.map(([c, n]) => `<option value="${c}" ${c === (b.tipo || 'mercadopago') ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="campo"><label>Alias o CVU</label><input name="alias" value="${esc(b.alias || '')}" placeholder="ej: juan.perez.mp" autocapitalize="none" autocomplete="off"></div>
+      <button class="btn grande">Guardar</button>${b.alias ? '<button type="button" class="btn grande sec" id="bq" style="margin-top:8px">Quitar mi billetera</button>' : ''}</form>`);
+    $('#bf', el).onsubmit = async ev => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); if (!String(d.alias || '').trim()) return toast('Escribí tu alias o CVU', 'error'); try { const r = await api('/api/conductor/billetera', d, 'PUT'); toast('Billetera guardada: ' + r.alias, 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
+    if ($('#bq', el)) $('#bq', el).onclick = async () => { if (!confirm('¿Quitar tu billetera virtual?')) return; try { await api('/api/conductor/billetera', { alias: '' }, 'PUT'); toast('Billetera quitada', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
+  }
+  if (k === 'clave') {
+    const el = hoja('Cambiar clave', '<form id="cf"><div class="campo"><label>Actual</label><input type="password" name="actual"></div><div class="campo"><label>Nueva</label><input type="password" name="nueva"></div><button class="btn grande">Guardar</button></form>');
+    $('#cf', el).onsubmit = async ev => { ev.preventDefault(); try { await api('/api/me/password', Object.fromEntries(new FormData(ev.target))); toast('Clave actualizada', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
+  }
+  if (k === 'fuera') await fueraDeServicio();
+  if (k === 'manual') window.open('manual-conductor.html', '_blank');
+  if (k === 'apk') hoja('App Android', `<div class="fs-card"><div class="ic">📲</div><h2>App Android del conductor</h2><p>Con la app instalada, el GPS y los avisos de viajes siguen funcionando aunque bloquees el celular.</p></div>
+    <ol style="line-height:1.7;padding-left:20px"><li>Tocá <b>Descargar</b> y abrí el archivo <b>toque-conductor.apk</b>.</li><li>Si el celular lo pide, permití <b>instalar apps de esta fuente</b>.</li><li>Abrí <b>TOQUE! Conductor</b>, ingresá y aceptá los permisos de ubicación, notificaciones y batería.</li></ol>
+    <a class="btn verde grande" style="width:100%;text-align:center;display:block" href="${APK_URL}">⬇️ Descargar la app</a>`);
+  if (k === 'cerrar') { if (confirm('¿Cerrar sesión? Vas a quedar desconectado.')) salir(false, true); }
+}
+async function salir(silencio, cerrarApp) {
+  try { if (!silencio) await api('/api/conductor/salir', { cerrar_app: !!cerrarApp }); } catch { }
+  try { if (S.bgWatcher && S.bgWatcher !== 'pend' && S.bgWatcher !== 'activo') await plug('BackgroundGeolocation').removeWatcher({ id: S.bgWatcher }); } catch { }
+  localStorage.removeItem('rodar_cond_token'); TK = null; S.socket && S.socket.cerrar(); location.reload();
+}
+if (!RODAR.listo) document.getElementById('root').innerHTML = '<div class="login-c"><h2>Falta configurar config.js</h2><p>Completá la URL y la clave de Supabase (ver README).</p></div>';
+else if (TK) iniciar(); else { pantallaLogin(); if (location.hash === '#alta') formAlta(); }
+</script>
+</body>
+</html>

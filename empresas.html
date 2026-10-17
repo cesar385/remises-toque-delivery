@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f2b3a">
+<title>Empresas · Remises TOQUE!</title>
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<link rel="stylesheet" href="css/app.css?v=2026101610">
+<style>
+  body{background:#1f2b3a;color:#fff;min-height:100vh;margin:0}
+  .emp{max-width:440px;margin:0 auto;padding:28px 18px 40px}
+  .emp .logo{display:block;width:210px;margin:6px auto 0}
+  .emp .rol{margin:14px auto 0;width:fit-content;background:#e8892b;color:#fff;font-weight:700;font-size:13px;border-radius:20px;padding:5px 16px;letter-spacing:.3px}
+  .emp h1{font-size:22px;text-align:center;margin:16px 0 4px}
+  .emp .sub{text-align:center;opacity:.8;font-size:15px;margin:0 0 20px;line-height:1.5}
+  .emp form{background:#fff;color:var(--texto);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+  .emp input{background:#fff;font-size:17px;min-height:48px}
+  .emp .err{background:#fde8ea;color:#8a1c27;border-radius:10px;padding:10px 12px;display:none}
+  .emp .activa{background:#2a3a4e;border-radius:14px;padding:14px;margin-bottom:14px;line-height:1.5}
+  .emp .activa .fila{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .emp .otros{margin-top:22px;padding-top:16px;border-top:1px solid #3a4c63;text-align:center;font-size:14px;opacity:.85}
+  .emp .otros a{color:#9fd0ff}
+  .emp .btn.grande{width:100%;min-height:50px;justify-content:center;font-size:16px}
+</style>
+</head>
+<body>
+<main class="emp" id="raiz"></main>
+<script src="config.js?v=2026101610"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="js/backend.js?v=2026101610"></script>
+<script>
+const $ = (s, e = document) => e.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } }, del: k => { try { localStorage.removeItem(k); } catch { } } };
+
+function pantalla() {
+  const corp = JSON.parse(LS.get('rodar_corp') || 'null');
+  $('#raiz').innerHTML = `<img class="logo" src="img/logo-blanco.png" alt="Remises TOQUE!"><div class="rol">INGRESO DE EMPRESAS</div>
+    <h1>Viajes a cuenta corriente</h1><p class="sub">Para empresas con cuenta en la central. Los viajes quedan a cargo de la empresa y con su centro de costo.</p>
+    ${corp ? `<div class="activa">Sesión de empresa: <b>${esc(corp.nombre)}</b><div class="fila"><a class="btn" href="pasajero.html">Pedir un viaje</a><button class="btn sec" id="salir" type="button">Cerrar sesión</button></div></div>` : ''}
+    <form id="f" autocomplete="on">
+      <div class="campo"><label>Usuario de la empresa</label><input name="usuario" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></div>
+      <div class="campo"><label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required></div>
+      <div class="err" id="err"></div>
+      <button class="btn grande" id="ok">Ingresar como empresa</button>
+      <small style="color:var(--suave);text-align:center">El usuario y la contraseña los entrega la central. Si no los tenés, pedíselos al administrador.</small>
+    </form>
+    <div class="otros">¿No sos una empresa? <a href="pasajero.html#/ingresar">Ingreso de pasajeros</a> · <a href="conductor.html">Conductores</a></div>`;
+  if ($('#salir')) $('#salir').onclick = () => { LS.del('rodar_corp'); pantalla(); };
+  $('#f').onsubmit = async e => {
+    e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)), er = $('#err'), b = $('#ok'); er.style.display = 'none';
+    b.disabled = true; b.textContent = 'Ingresando...';
+    try {
+      const r = await RODAR.llamar('/api/login', 'POST', { usuario: (d.usuario || '').trim(), password: d.password, tipo: 'web' }, null);
+      if (!r.usuario.roles.includes('corporativo')) throw new Error('Este usuario no pertenece a una empresa. Si sos pasajero, ingresá desde la pantalla de pasajeros.');
+      LS.set('rodar_corp', JSON.stringify({ token: r.token, nombre: [r.usuario.nombre, r.usuario.apellido].filter(Boolean).join(' ') }));
+      location.href = 'pasajero.html';
+    } catch (x) { er.textContent = /incorrect/i.test(x.message) ? 'El usuario o la contraseña no coinciden.' : x.message; er.style.display = 'block'; b.disabled = false; b.textContent = 'Ingresar como empresa'; }
+  };
+}
+if (!RODAR.listo) $('#raiz').innerHTML = '<h2>Falta configurar config.js</h2><p>Completá la URL y la clave de Supabase (ver README).</p>'; else pantalla();
+</script>
+</body>
+</html>

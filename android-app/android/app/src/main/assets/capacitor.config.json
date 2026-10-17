@@ -1,0 +1,23 @@
+{
+	"appId": "com.remisestoque.conductor",
+	"appName": "TOQUE! Conductor",
+	"webDir": "www",
+	"server": {
+		"url": "https://remisestoque.com/conductor.html",
+		"cleartext": false,
+		"errorPath": "error.html"
+	},
+	"android": {
+		"useLegacyBridge": true,
+		"backgroundColor": "#0e1a2b"
+	},
+	"plugins": {
+		"CapacitorHttp": {
+			"enabled": true
+		},
+		"LocalNotifications": {
+			"smallIcon": "ic_stat_toque",
+			"iconColor": "#5fa52f"
+		}
+	}
+}

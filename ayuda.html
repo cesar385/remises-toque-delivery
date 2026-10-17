@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#215181">
+<title>Ayuda y reclamos · Remises TOQUE!</title>
+<meta name="description" content="Escribile a la central de Remises TOQUE!: consultas, reclamos, objetos olvidados y sugerencias.">
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<link rel="stylesheet" href="css/app.css?v=2026101621">
+<style>
+  .login .caja{max-width:460px;display:flex;flex-direction:column;gap:10px}
+  .sub-l{color:var(--suave);margin:0;text-align:center;font-size:14px}
+  .tipos{display:flex;flex-wrap:wrap;gap:6px}
+  .tipos button{border:2px solid #dbe4ea;background:#fff;border-radius:999px;padding:7px 12px;font-size:14px;font-weight:600;color:var(--suave);cursor:pointer}
+  .tipos button.on{border-color:var(--pri);background:#eef4fa;color:var(--pri-2)}
+  .caja input,.caja textarea,.caja select{width:100%;font-size:16px}
+  .caja textarea{min-height:120px;resize:vertical}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:420px){.g2{grid-template-columns:1fr}}
+  .ayuda-c{font-size:12px;color:var(--suave);margin-top:2px}
+  .oculto-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .contacto{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .contacto a{display:inline-flex;align-items:center;gap:6px;text-decoration:none;border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px}
+  .contacto .wa{background:#25d366;color:#fff}.contacto .tel{background:#eef4fa;color:var(--pri-2)}
+  .ok{text-align:center;padding:10px 0}.ok .ic{font-size:54px}
+  .cont-car{text-align:right;font-size:12px;color:var(--suave)}
+</style>
+</head>
+<body>
+<div class="login"><div class="caja" id="caja">
+  <div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:200px;max-width:75%"></a></div>
+  <div class="rol-etiqueta">💬 Soporte y reclamos</div>
+  <p class="sub-l">Contanos qué pasó y la central te responde a la brevedad.</p>
+  <div class="contacto" id="contacto"></div>
+  <form id="f" novalidate style="display:flex;flex-direction:column;gap:10px">
+    <div class="campo"><label>¿Sobre qué nos escribís?</label>
+      <div class="tipos" id="tipos"></div></div>
+    <div class="g2">
+      <div class="campo"><label>Nombre *</label><input name="nombre" autocomplete="name" required></div>
+      <div class="campo"><label>Celular *</label><input name="telefono" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3454 123456" required></div>
+    </div>
+    <div class="campo"><label>Email</label><input name="email" type="email" autocomplete="email" autocapitalize="none" placeholder="Opcional, para responderte por correo"></div>
+    <div class="g2" id="datosViaje">
+      <div class="campo"><label>Fecha y hora del viaje</label><input name="fecha" type="datetime-local"></div>
+      <div class="campo"><label>N° de móvil o patente</label><input name="movil" placeholder="Si lo sabés"></div>
+    </div>
+    <div class="campo"><label>Mensaje *</label><textarea name="texto" maxlength="1500" placeholder="Contanos con detalle…" required></textarea><div class="cont-car" id="cc">0 / 1500</div></div>
+    <div class="oculto-hp" aria-hidden="true"><label>No completar</label><input name="web" tabindex="-1" autocomplete="off"></div>
+    <div class="login-err" id="err"></div>
+    <button class="btn verde" id="env" style="width:100%;justify-content:center;min-height:48px;font-size:16px">Enviar a la central</button>
+  </form>
+  <div class="otros-ingresos"><span>También podés</span><a href="pasajero.html">🙂 Pedir un remís</a><a href="manual-pasajero.html">📘 Manual del pasajero</a><a href="index.html">🏠 Página principal</a></div>
+</div></div>
+<script src="config.js?v=2026101621"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="js/backend.js?v=2026101627"></script>
+<script>
+const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const TIPOS = [['Consulta', '❓'], ['Reclamo', '⚠️'], ['Objeto olvidado', '🎒'], ['Sugerencia', '💡'], ['Felicitación', '⭐']];
+let tipo = new URLSearchParams(location.search).get('tipo') || 'Consulta';
+if (!TIPOS.some(t => t[0] === tipo)) tipo = 'Consulta';
+function pintarTipos() {
+  $('#tipos').innerHTML = TIPOS.map(([t, i]) => `<button type="button" data-t="${t}" class="${t === tipo ? 'on' : ''}">${i} ${t}</button>`).join('');
+  $$('#tipos button').forEach(b => b.onclick = () => { tipo = b.dataset.t; pintarTipos(); });
+  $('#datosViaje').style.display = ['Sugerencia', 'Consulta'].includes(tipo) ? 'none' : '';
+}
+pintarTipos();
+try { const n = localStorage.getItem('rodar_nombre'), t = localStorage.getItem('rodar_tel'); if (n) $('[name=nombre]').value = n; if (t) $('[name=telefono]').value = t; } catch (e) { }
+$('[name=texto]').oninput = e => { $('#cc').textContent = e.target.value.length + ' / 1500'; };
+if (window.RODAR && RODAR.listo) RODAR.llamar('/api/pub/config', 'GET', null, null).then(c => {
+  const wa = String(c.whatsapp || '').replace(/\D/g, ''), tel = c.telefono || '';
+  $('#contacto').innerHTML = (wa ? `<a class="wa" target="_blank" rel="noopener" href="https://wa.me/${wa}">WhatsApp</a>` : '') + (tel ? `<a class="tel" href="tel:${esc(tel.replace(/[^\d+]/g, ''))}">📞 ${esc(tel)}</a>` : '');
+}).catch(() => { });
+const err = m => { const e = $('#err'); e.textContent = m || ''; e.style.display = m ? 'block' : 'none'; };
+$('#f').onsubmit = async ev => {
+  ev.preventDefault(); err('');
+  const d = Object.fromEntries([...new FormData(ev.target)].map(([k, v]) => [k, String(v).trim()]));
+  if (d.web) return; // relleno automático de robots
+  const tel = d.telefono.replace(/\D/g, '');
+  if (!d.nombre) return err('Escribí tu nombre');
+  if (tel.length < 8) return err('Escribí un celular válido, con código de área');
+  if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) return err('El email no parece válido');
+  if (d.texto.length < 5) return err('Escribí tu mensaje');
+  const extra = [d.email && 'Email: ' + d.email, d.fecha && 'Fecha del viaje: ' + d.fecha.replace('T', ' '), d.movil && 'Móvil/patente: ' + d.movil].filter(Boolean);
+  const texto = `[${tipo}] ${d.texto}${extra.length ? '\n\n' + extra.join('\n') : ''}`;
+  const b = $('#env'); b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    await RODAR.llamar('/api/pub/soporte', 'POST', { telefono: tel, alias: d.nombre, texto }, null);
+    try { localStorage.setItem('rodar_nombre', d.nombre); localStorage.setItem('rodar_tel', d.telefono); } catch (e) { }
+    $('#f').outerHTML = `<div class="ok"><div class="ic">✅</div><h2 style="margin:6px 0;color:var(--pri-2)">¡Mensaje enviado!</h2><p>Gracias, ${esc(d.nombre)}. La central lo va a revisar y te va a contactar al <b>${esc(d.telefono)}</b>${d.email ? ' o por email' : ''}.</p><a class="btn" href="index.html" style="display:inline-flex">Volver al inicio</a></div>`;
+  } catch (x) { err(x.message || 'No se pudo enviar. Probá de nuevo.'); b.disabled = false; b.textContent = 'Enviar a la central'; }
+};
+</script>
+</body>
+</html>

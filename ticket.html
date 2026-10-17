@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ticket de viaje · Remises TOQUE!</title>
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+</head>
+<body style="font-family:system-ui,sans-serif">
+<p id="msg">Preparando ticket…</p>
+<script src="js/backend.js?v=2026101627"></script>
+<script>
+// Muestra un ticket con los datos que vienen en el enlace (después del #, no se envían a ningún servidor).
+// Lo usa la app Android del conductor para imprimir o guardar el PDF desde Chrome.
+window.addEventListener('load', function () {
+  try {
+    const b = location.hash.slice(1).replace(/-/g, '+').replace(/_/g, '/');
+    const v = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4)))));
+    const html = ticketHtml(v, { auto: true }).replace('Imprimir / Guardar PDF', '🖨 Imprimir / Guardar PDF');
+    document.open(); document.write(html); document.close();
+  } catch (e) { document.getElementById('msg').textContent = 'No se pudo abrir el ticket. Volvé a la app e intentá de nuevo.'; }
+});
+</script>
+</body>
+</html>

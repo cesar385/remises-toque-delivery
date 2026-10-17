@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#215181">
+<link rel="manifest" href="manifest-pasajero.json">
+<link rel="apple-touch-icon" href="img/pasajero-180.png">
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TOQUE!">
+<title>Remises TOQUE! · Pedí tu remís</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="css/app.css?v=2026101631">
+<style>
+  body{background:#f2f5f6}
+  .wrap{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:#fff;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+  .top{background:var(--pri);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;padding-top:max(10px,env(safe-area-inset-top));position:sticky;top:0;z-index:500}
+  .top .esp{flex:1}
+  .top a{color:#fff;font-size:13px;cursor:pointer}
+  .top .salir-top{background:transparent;border:1px solid rgba(255,255,255,.7);color:#fff;border-radius:16px;padding:5px 12px;font-size:14px;cursor:pointer;margin-left:6px}
+  .caja-empresa{border:2px solid #1f4e79;border-radius:12px;padding:14px;background:#f3f7fb}
+  .rol-empresa{background:#1f4e79;color:#fff}
+  .top .logo-l{display:flex;align-items:center}
+  body.modo-empresa .top{background:#1f4e79}
+  .top .emp-tag{background:#fff;color:#1f4e79;border-radius:12px;padding:3px 9px;font-size:12px;font-weight:800;letter-spacing:.5px}
+  .tipo-ing{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 2px}
+  .tipo-ing button{border:2px solid #dbe4ea;background:#fff;border-radius:14px;padding:10px 6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--suave);display:flex;flex-direction:column;align-items:center;gap:2px}
+  .tipo-ing button span{font-size:24px}
+  .tipo-ing button.on{border-color:var(--pri);color:var(--pri-2);background:#f2f9f9}
+  .tipo-ing button.emp.on{border-color:#1f4e79;color:#1f4e79;background:#f3f7fb}
+  .aviso-cuenta{background:#fff8e6;border:1px solid #f2d48a;border-radius:12px;padding:10px 12px;font-size:14px;color:#6b5210;text-align:center}
+  body.en-login .top,body.en-login #nav,body.en-login #mapa{display:none!important}
+  body.en-login .wrap{max-width:none;padding-bottom:0;background:none}
+  body.en-login .cont{padding:0;display:block}
+  .login-pas{color:var(--texto)}
+  .login-pas .caja{max-width:420px;display:flex;flex-direction:column;gap:10px}
+  .login-pas .rol-etiqueta{margin-top:4px}
+  .login-pas .sub-l{color:var(--suave);margin:0 0 4px;text-align:center;font-size:14px}
+  .login-pas .caja-empresa{border:0;padding:0;background:none}
+  .login-pas .otros-ingresos{margin-top:8px}
+  .ventajas{margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.6;color:#33475b}
+  .top .yo{background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:16px;padding:6px 12px;font-size:14px;cursor:pointer;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #mapa{height:34vh;min-height:210px}
+  @media (orientation:landscape) and (max-height:520px){#mapa{height:42vh;min-height:140px}.top{padding-top:6px;padding-bottom:6px}.top img{height:34px!important}}
+  .cont{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .cont input,.cont select{font-size:16px;min-height:48px}
+  .paso{font-weight:700;font-size:16px;color:var(--pri-2)}
+  .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px}
+  .chips button{flex:none;border:1px solid var(--borde);background:#f4f8f8;border-radius:18px;padding:7px 12px;font-size:14px;cursor:pointer;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chips button.fav{background:#eef7e6;border-color:#cfe6b8}
+  .quien{display:flex;align-items:center;gap:8px;background:#f4f8f8;border-radius:12px;padding:10px 12px;font-size:15px}
+  .quien a{margin-left:auto;color:var(--pri-2);cursor:pointer}
+  .ubic{font-size:13px;color:var(--suave);min-height:16px}
+  .linkito{font-size:13px;color:var(--pri-2);cursor:pointer;background:none;border:0;padding:2px 0;text-align:left}
+  .top [data-instalar]{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:14px;padding:5px 10px;font-size:13px;cursor:pointer}
+  .grande{width:100%;justify-content:center;font-size:16px;min-height:52px;border-radius:12px}
+  .pin{font-size:44px;font-weight:800;letter-spacing:10px;color:var(--pri-2);text-align:center}
+  .estado-g{font-size:20px;font-weight:700;text-align:center;padding:8px}
+  .estrellas{display:flex;justify-content:center;gap:6px;font-size:36px;cursor:pointer}
+  .rel .sug{top:100%}
+  .seg{display:flex;background:#eef2f5;border-radius:12px;padding:4px;gap:4px}
+  .seg button{flex:1;border:0;background:none;border-radius:9px;min-height:42px;font-size:15px;font-weight:600;color:var(--suave);cursor:pointer}
+  .seg button.on{background:#fff;color:var(--pri-2);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:600;background:#fff;border-top:1px solid var(--borde);box-shadow:0 -4px 16px rgba(20,50,80,.08);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
+  .tabbar .in{display:flex;width:100%;max-width:520px;padding:6px 6px 4px;gap:4px}
+  .tabbar button{flex:1;min-height:56px;border:0;background:none;padding:4px 2px 6px;font-size:12.5px;font-weight:600;color:#6b7c8c;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:14px;-webkit-tap-highlight-color:transparent;transition:color .15s}
+  .tabbar .ic{display:flex;align-items:center;justify-content:center;width:56px;height:30px;border-radius:999px;transition:background .2s,transform .15s}
+  .tabbar svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .tabbar button:active .ic{transform:scale(.92)}
+  .tabbar button.on{color:var(--pri-2);font-weight:800}
+  .tabbar button.on .ic{background:#e3edf7}
+  .tabbar button.on svg{stroke-width:2.4}
+  .tabbar button.pedir.on .ic{background:#7ac143;color:#fff}
+  .tabbar button.pedir:not(.on) .ic{color:#4e9a1f}
+  .tarjeta{border:1px solid var(--borde);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+  .tarjeta .fila1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .tarjeta .monto{font-weight:800;font-size:17px;color:var(--pri-2)}
+  .tarjeta .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .tag{font-size:12px;font-weight:700;border-radius:10px;padding:3px 8px;background:#eef2f5;color:var(--suave);white-space:nowrap}
+  .tag.verde{background:#e5f4ea;color:#23793f}.tag.azul{background:#e6eef7;color:#215181}.tag.rojo{background:#fbe9e9;color:#b23b3b}.tag.nar{background:#fff2e2;color:#a85a00}
+  h2.tit{margin:2px 0 0;font-size:20px;color:var(--pri-2)}
+  .sub{color:var(--suave);font-size:14px;margin-top:-4px}
+  .vacio{color:var(--suave);text-align:center;padding:18px 6px}
+  .pass{position:relative}.pass button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:20px;padding:6px;cursor:pointer}
+  .err{background:#fbe9e9;color:#9b2c2c;border-radius:10px;padding:10px 12px;display:none}
+  .banner{background:#eef7e6;border:1px solid #cfe6b8;border-radius:12px;padding:10px 12px;font-size:14px}
+  .banner a{color:var(--pri-2);font-weight:700;cursor:pointer}
+  .curso{background:#fff2e2;border:1px solid #f3cf9c;border-radius:12px;padding:10px 12px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .curso button{margin-left:auto}
+
+  /* ===== Mismo estilo visual que la app del conductor ===== */
+  #yo{display:flex;gap:8px;align-items:center}
+  .vjr{font-size:15px;line-height:1.35}.vjr div{display:flex;gap:10px;align-items:flex-start;position:relative;padding:3px 0}
+  .vjr i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}.vjr i.o{background:#2f9e57}.vjr i.d{background:#d64545}
+  .vjr div:first-child:not(:last-child)::after{content:"";position:absolute;left:4px;top:17px;bottom:-6px;border-left:2px dotted #c3ccd3}
+  .perf-h{display:flex;gap:12px;align-items:center;background:#0f1f35;color:#fff;border-radius:16px;padding:14px}.perf-h b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.perf-h small{opacity:.75}
+  .perf-h .av{flex:none;width:50px;height:50px;border-radius:50%;background:#7ac143;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.3)}
+  .caja-blanca{display:flex;flex-direction:column;gap:10px}
+  body{background:#0e1a2b}
+  .wrap{background:#f6f8fa}
+  body.con-mapa .wrap{background:#13233a}
+  .top{background:#0f1f35;gap:8px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  .top a#ayuda{background:rgba(255,255,255,.12);border-radius:10px;padding:0 12px;height:38px;display:inline-flex;align-items:center;font-size:14px;font-weight:700;text-decoration:none}
+  .top .yo{background:var(--pri);border-radius:10px;height:38px;padding:0 12px;font-weight:800;font-size:15px}
+  .top .salir-top{background:#d64545;border:0;border-radius:10px;height:38px;padding:0 14px;font-weight:700;font-size:14px;margin-left:0}
+  .top [data-instalar]{border-radius:10px;height:38px;padding:0 12px;font-weight:700}
+  body.con-mapa .cont{position:relative;z-index:450;background:#fff;border-radius:18px 18px 0 0;margin-top:-18px;box-shadow:0 -6px 20px rgba(0,0,0,.3);flex:1}
+  body.con-mapa #mapa .leaflet-bottom{bottom:18px}
+  body:not(.con-mapa):not(.en-login) .cont{padding-top:0}
+  body:not(.con-mapa) h2.tit{margin:0 -16px 6px;padding:18px 16px;background:linear-gradient(135deg,#183c62,#215181);color:#fff;font-size:20px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+  body:not(.con-mapa) .sub{color:#5b6b78;margin-top:0}
+  body:not(.con-mapa) .paso{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#7a8a96;margin-top:6px}
+  body:not(.con-mapa) .tarjeta{background:#fff;border:0;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  body:not(.con-mapa) .cont>form,body:not(.con-mapa) .cont>.caja-blanca{background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .paso{color:#183c62}
+  .grande{border-radius:12px;font-size:16px;font-weight:800;min-height:54px}
+  .tarjeta .monto{color:#183c62}
+  .estado-g{color:#183c62}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="top"><a href="index.html" class="logo-l" title="Ir a la página principal"><img src="img/logo-blanco.png" alt="Remises TOQUE!" style="height:42px;width:auto"></a><span id="empTag"></span><span class="esp"></span><span id="inst"></span><a id="ayuda">Ayuda</a><span id="yo"></span></div>
+<div id="mapa"></div><div class="cont" id="cont"></div></div>
+<nav class="tabbar" id="nav"></nav>
+<script src="config.js?v=2026101631"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/backend.js?v=2026101627"></script>
+<script src="js/pwa.js?v=2026101631"></script>
+<script>
+const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pesos = n => n == null ? '—' : '$ ' + Math.round(n).toLocaleString('es-AR');
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } }, del: k => { try { localStorage.removeItem(k); } catch { } } };
+const S = { tk: LS.get('rodar_cli_token'), cli: null, vista: null, timers: [], socket: null };
+// ---------- App Android (Capacitor) y avisos ----------
+const NATIVO = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const plug = n => (NATIVO && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null;
+const ES_ANDROID = /android/i.test(navigator.userAgent);
+const APK_PAS = 'https://github.com/cesar385/remises-toque/releases/latest/download/toque-pasajero.apk';
+const idDeTag = t => { let h = 7; for (const c of String(t || 'rodar')) h = (h * 31 + c.charCodeAt(0)) % 2000000000; return h; };
+function b64aU8(b) { const p = '='.repeat((4 - b.length % 4) % 4), r = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); }
+// Notificaciones push del navegador (llegan con el celular bloqueado): remís en camino, en la puerta y viaje terminado
+async function activarPush(pedir) {
+  try {
+    if (NATIVO || !S.cli || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+    if (Notification.permission === 'default' && pedir) await Notification.requestPermission();
+    if (Notification.permission !== 'granted') return;
+    const cfg = await api('/api/cli/push'); if (!cfg || !cfg.publica) return;
+    const reg = await (navigator.serviceWorker.getRegistration().then(r => r || navigator.serviceWorker.register('sw.js'))).then(() => navigator.serviceWorker.ready);
+    let sub = await reg.pushManager.getSubscription(); const clave = b64aU8(cfg.publica);
+    if (sub && sub.options && sub.options.applicationServerKey) { const k = new Uint8Array(sub.options.applicationServerKey); if (k.length !== clave.length || k.some((x, i) => x !== clave[i])) { await sub.unsubscribe(); sub = null; } }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clave });
+    await api('/api/cli/push', { sub: sub.toJSON(), ua: navigator.userAgent });
+  } catch { }
+}
+// Abrir el seguimiento desde una notificación
+function abrirAviso(h) { const m = String(h || '').match(/^#\/seguimiento\/(\d+)\?k=(\w+)/); if (m) { history.replaceState({}, '', h); ir('seguir', +m[1], m[2]); } }
+if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { if (ev.data && ev.data.abrir) abrirAviso(ev.data.abrir); });
+// En la app Android: notificaciones del sistema, tecla Atrás y un servicio que la mantiene activa durante el viaje
+let nativoListo = false;
+function nativoIniciar() {
+  if (!NATIVO || nativoListo) return; nativoListo = true;
+  const LN = plug('LocalNotifications'), App = plug('App');
+  if (LN) {
+    LN.requestPermissions().catch(() => { });
+    LN.createChannel({ id: 'toque-viaje', name: 'Mi viaje', description: 'Avisos de tu remís', importance: 5, visibility: 1, vibration: true }).catch(() => { });
+    LN.addListener('localNotificationActionPerformed', a => { const ab = a && a.notification && a.notification.extra && a.notification.extra.abrir; if (ab) abrirAviso(ab); });
+  }
+  if (App) {
+    App.addListener('appStateChange', s => { S.enFondo = !s.isActive; if (s.isActive && S.pintarSeg) S.pintarSeg(); });
+    App.addListener('backButton', () => {
+      const mo = $$('.modal-fondo'); if (mo.length) return mo.forEach(x => x.remove());
+      if (S.cli && S.vista && !['pedir', 'seguir'].includes(S.vista)) return ir('pedir');
+      App.minimizeApp();
+    });
+  }
+}
+function avisarNativo(titulo, cuerpo, tag, abrir) {
+  const LN = plug('LocalNotifications'); if (!LN || !(S.enFondo || document.hidden)) return;
+  LN.schedule({ notifications: [{ id: idDeTag(tag), title: titulo, body: cuerpo, largeBody: cuerpo, channelId: 'toque-viaje', smallIcon: 'ic_stat_toque', iconColor: '#5fa52f', autoCancel: true, extra: { abrir: abrir || '' } }] }).catch(() => { });
+}
+// Mientras hay un viaje activo, la app Android queda "en servicio" (aviso fijo) para poder avisarte aunque bloquees el celular
+function guardiaViaje(activo) {
+  const BGL = plug('BackgroundGeolocation'); if (!BGL) return;
+  if (activo && !S.guardia) {
+    S.guardia = 'pend';
+    let w; try { w = BGL.addWatcher({ backgroundTitle: 'Remises TOQUE! · Tu viaje', backgroundMessage: 'Te avisamos cuando llegue tu remís. Tocá para ver el viaje.', requestPermissions: true, stale: false, distanceFilter: 50 },
+      () => { if (S.enFondo && S.pintarSeg && Date.now() - (S.ultFondo || 0) > 8000) { S.ultFondo = Date.now(); S.pintarSeg(); } }); } catch (e) { S.guardia = null; return; }
+    // addWatcher puede devolver una promesa o directamente el id (texto), según el puente de Android
+    Promise.resolve(w).then(r => { const id = r && (r.id || r); if (S.guardia === 'pend') S.guardia = id; else if (id) Promise.resolve(BGL.removeWatcher({ id })).catch(() => { }); }).catch(() => { S.guardia = null; });
+  } else if (!activo && S.guardia) {
+    const id = S.guardia; S.guardia = null; if (id !== 'pend') try { Promise.resolve(BGL.removeWatcher({ id })).catch(() => { }); } catch { }
+  }
+}
+async function api(url, body, metodo) {
+  try { return await RODAR.llamar(url, metodo || (body ? 'POST' : 'GET'), body, S.tk); }
+  catch (e) { if (e.status === 401 && S.tk) { salirCuenta(true); } throw e; }
+}
+function toast(m, t) { let c = $('#toasts'); if (!c) { c = document.createElement('div'); c.id = 'toasts'; document.body.append(c); } const e = document.createElement('div'); e.className = 'toast ' + (t || ''); e.textContent = m; c.append(e); setTimeout(() => e.remove(), 4500); }
+const st = { o: null, d: null, cfg: null, mo: null, md: null, mm: null, prog: null };
+let mapa;
+const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+function fecha(s) { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T')); const hoy = new Date(); const ay = new Date(Date.now() - 864e5); const hh = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === hoy.toDateString()) return 'Hoy ' + hh; if (d.toDateString() === ay.toDateString()) return 'Ayer ' + hh;
+  const man = new Date(Date.now() + 864e5); if (d.toDateString() === man.toDateString()) return 'Mañana ' + hh;
+  return `${DIAS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}${d.getFullYear() !== hoy.getFullYear() ? '/' + d.getFullYear() : ''} ${hh}`; }
+function localISO(d) { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
+
+// ---------- navegación ----------
+function limpiarVista() { if (S.vista === 'seguir') { S.pintarSeg = null; guardiaViaje(false); } S.timers.forEach(clearInterval); S.timers = []; if (S.socket) { try { S.socket.cerrar(); } catch { } S.socket = null; } $$('.modal-fondo').forEach(x => x.remove()); }
+function mostrarMapa(si) { document.body.classList.toggle('con-mapa', !!si); $('#mapa').style.display = si ? '' : 'none'; if (si && mapa) setTimeout(() => mapa.invalidateSize(), 50); }
+function marcoLogin(html) { document.body.classList.add('en-login'); return `<div class="login login-pas"><div class="caja">${html}</div></div>`; }
+function ir(v, ...args) {
+  document.body.classList.remove('en-login');
+  limpiarVista(); S.vista = v; pintarNav(); window.scrollTo(0, 0);
+  return ({ pedir: pedido, viajes: misViajes, lugares: misLugares, perfil: miPerfil, ingresar: pantallaIngreso, empresas: pantallaEmpresas, seguir: seguimiento })[v](...args);
+}
+const ICONOS = {
+  pedir: '<path d="M5 16l1.6-5.1A2 2 0 0 1 8.5 9.5h7a2 2 0 0 1 1.9 1.4L19 16"/><path d="M4 16h16v3a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1h-9v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M10 9.5V7.5a2 2 0 0 1 4 0v2"/><circle cx="7.5" cy="17" r=".6"/><circle cx="16.5" cy="17" r=".6"/>',
+  viajes: '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  lugares: '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><path d="M12 7.3l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/>',
+  perfil: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  empresas: '<rect x="4" y="3" width="11" height="18" rx="1.5"/><path d="M15 9h4a1 1 0 0 1 1 1v11H15M8 7h3M8 11h3M8 15h3"/>',
+  ingresar: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'
+};
+function pintarNav() {
+  const corp = JSON.parse(LS.get('rodar_corp') || 'null');
+  document.body.classList.toggle('modo-empresa', !!corp);
+  $('#empTag').innerHTML = corp ? '<span class="emp-tag">EMPRESAS</span>' : '';
+  const it = S.cli ? [['pedir', '', 'Pedir'], ['viajes', '', 'Mis viajes'], ['lugares', '', 'Lugares'], ['perfil', '', 'Perfil']] : corp ? [['pedir', '', 'Pedir'], ['empresas', '', 'Mi empresa']] : [['ingresar', '', 'Pasajeros'], ['empresas', '', 'Empresas']];
+  const act = S.vista === 'seguir' ? (S.cli ? 'viajes' : 'pedir') : S.vista;
+  $('#nav').innerHTML = `<div class="in">${it.map(([k, i, t]) => `<button data-v="${k}" class="${k}${k === act ? ' on' : ''}" aria-label="${t}"${k === act ? ' aria-current="page"' : ''}><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONOS[k] || ''}</svg></span>${t}</button>`).join('')}</div>`;
+  $$('#nav [data-v]').forEach(b => b.onclick = () => ir(b.dataset.v));
+  $('#yo').innerHTML = S.cli ? `<button class="yo" id="yoBtn">${esc((S.cli.nombre || '').split(' ')[0])}</button><button class="salir-top" id="salirBtn">Salir</button>`
+    : corp ? `<button class="yo" id="yoEmp">🏢 ${esc(corp.nombre)}</button><button class="salir-top" id="salirEmp">Salir</button>` : '';
+  if ($('#yoEmp')) $('#yoEmp').onclick = () => ir('empresas');
+  if ($('#salirEmp')) $('#salirEmp').onclick = () => { if (confirm('¿Salir de la cuenta de empresa?')) { LS.del('rodar_corp'); ir(S.cli ? 'pedir' : 'ingresar'); } };
+  if ($('#yoBtn')) $('#yoBtn').onclick = () => ir('perfil');
+  if ($('#salirBtn')) $('#salirBtn').onclick = () => { if (confirm('¿Cerrar sesión en este celular?')) salirCuenta(); };
+  if ($('#ent')) $('#ent').onclick = () => ir('ingresar');
+}
+
+async function arrancar() {
+  st.cfg = await api('/api/pub/config');
+  document.title = (st.cfg.nombre || 'Remises TOQUE!') + ' · Pedí tu remís';
+  mapa = L.map('mapa').setView([st.cfg.lat, st.cfg.lng], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(mapa);
+  if (S.tk) { try { S.cli = await api('/api/cli/perfil'); } catch { S.cli = null; } }
+  nativoIniciar(); activarPush(false);
+  const m = location.hash.match(/^#\/seguimiento\/(\d+)/);
+  const k = new URLSearchParams(location.hash.split('?')[1] || '').get('k');
+  if (m && k) return ir('seguir', +m[1], k);
+  const act = JSON.parse(LS.get('rodar_viaje') || 'null');
+  if (act) return ir('seguir', act.id, act.k);
+  if (/^#\/empresas/.test(location.hash)) return ir('empresas');
+  if (/^#\/ingresar/.test(location.hash) && !S.cli) return ir('ingresar');
+  if (/^#\/crear/.test(location.hash) && !S.cli) return ir('ingresar', 'crear');
+  ir('pedir');
+}
+const icono = c => L.divIcon({ className: '', html: `<div class="marcador-viaje" style="background:${c}"></div>`, iconSize: [22, 22], iconAnchor: [11, 22] });
+
+// ---------- lugares (invitado: en este celular; con cuenta: en el servidor) ----------
+const lugaresLocales = () => { try { return JSON.parse(LS.get('rodar_lugares') || '[]'); } catch { return []; } };
+function recordarLugar(x) {
+  if (!x || !x.dir || x.lat == null) return;
+  const l = lugaresLocales().filter(y => y.dir !== x.dir); l.unshift({ dir: x.dir, lat: x.lat, lng: x.lng, loc: x.loc, prov: x.prov });
+  LS.set('rodar_lugares', JSON.stringify(l.slice(0, 6)));
+}
+function listaChips() {
+  if (S.cli) {
+    const favs = (S.cli.lugares || []).map(l => ({ fav: 1, et: l.etiqueta, dir: l.direccion, lat: l.lat, lng: l.lng, loc: l.localidad, prov: l.provincia, ref: l.referencias }));
+    const rec = (S.cli.recientes || []).filter(r => !favs.some(f => f.dir === r.direccion)).map(r => ({ dir: r.direccion, lat: r.lat, lng: r.lng, loc: r.localidad, prov: r.provincia }));
+    return [...favs, ...rec].slice(0, 10);
+  }
+  return lugaresLocales();
+}
+function chips(c, l) {
+  if (!l.length) return '';
+  return `<div class="chips">${l.map((x, i) => `<button type="button" class="${x.fav ? 'fav' : ''}" data-l="${c}${i}" title="${esc(x.dir)}">${x.fav ? '' + esc(x.et) : '' + esc(x.dir)}</button>`).join('')}</div>`;
+}
+function ubicar(silencio) {
+  if (!navigator.geolocation) { if (!silencio) toast('Tu celular no comparte la ubicación con el navegador', 'error'); return; }
+  if ($('#ubic')) $('#ubic').textContent = 'Buscando dónde estás…';
+  navigator.geolocation.getCurrentPosition(p => { if ($('#ubic')) $('#ubic').textContent = ''; if (S.vista === 'pedir' && (!st.o || !silencio)) { S.noFoco = silencio; fijar('o', p.coords.latitude, p.coords.longitude).finally(() => { S.noFoco = false; }); } },
+    () => { if ($('#ubic')) $('#ubic').textContent = 'No pudimos saber dónde estás: escribí la dirección o tocá el mapa.'; }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+// ---------- PEDIR ----------
+async function pedido(pre) {
+  const corp = JSON.parse(LS.get('rodar_corp') || 'null');
+  // Para pedir un viaje hay que tener cuenta (pasajero) o haber ingresado como empresa.
+  if (!S.cli && !corp) return ir('ingresar');
+  mostrarMapa(true);
+  limpiarMapa(); st.o = st.d = null; st.prog = null;
+  const nombre = S.cli ? S.cli.nombre : (LS.get('rodar_nombre') || ''), tel = S.cli ? S.cli.telefono : (LS.get('rodar_tel') || '');
+  const conocido = nombre && tel; const l = listaChips();
+  const medioPref = (S.cli && S.cli.medio_pago_pref) || LS.get('rodar_medio') || 'efectivo';
+  $('#cont').innerHTML = `<div id="enCurso"></div>
+    ${corp ? `<div class="nota">Pedido corporativo: <b>${esc(corp.nombre)}</b> (a cuenta de la empresa) <a href="#" id="xc">salir</a></div>` : ''}
+    <div class="campo rel"><label class="paso">1. ¿Dónde te buscamos?</label><div class="fila"><input id="od" placeholder="Calle y altura, localidad, provincia (o tocá el mapa)" style="flex:1" autocomplete="off"><button class="btn sec" id="gps" title="Usar mi ubicación">📍</button></div><div class="sug oculto" id="so"></div><input type="hidden" id="ol" value="${esc(st.cfg.localidad || '')}"><input type="hidden" id="op" value="${esc(st.cfg.provincia || '')}"><div class="ubic" id="ubic"></div>${chips('o', l)}
+      ${S.cli ? '<button class="linkito oculto" id="favO">Guardar este lugar</button>' : ''}</div>
+    <div class="campo"><input id="or" placeholder="Referencias (opcional): portón verde, timbre 2…"></div>
+    <div class="campo rel"><label class="paso">2. ¿A dónde vas?</label><input id="dd" placeholder="Destino — calle y altura, localidad, provincia" autocomplete="off"><div class="sug oculto" id="sd"></div><input type="hidden" id="dl" value="${esc(st.cfg.localidad || '')}"><input type="hidden" id="dp" value="${esc(st.cfg.provincia || '')}"><div class="ubic" id="ubicD"></div>${chips('d', l)}
+      ${S.cli ? '<button class="linkito oculto" id="favD">Guardar este lugar</button>' : ''}</div>
+    <div class="campo"><label class="paso">3. ¿Cuándo?</label><div class="seg"><button type="button" class="on" data-c="ahora">Ahora</button><button type="button" data-c="prog">Programar</button></div>
+      <div id="progBox" class="oculto" style="margin-top:8px">${S.cli ? `<input type="datetime-local" id="prog">` : `<div class="banner">Para reservar un viaje para más tarde <a id="bannerCta">creá tu cuenta gratis</a> (lleva un minuto).</div>`}</div></div>
+    ${conocido ? `<div class="quien" id="quien">Pedís como <b>${esc(nombre)}</b> · ${esc(tel)}${S.cli ? '' : '<a id="cambiar">cambiar</a>'}</div>` : '<div class="paso">4. Tus datos</div>'}
+    <div class="grid g2" id="datos" ${conocido ? 'style="display:none"' : ''}><div class="campo"><label>Tu nombre</label><input id="n" autocomplete="given-name" value="${esc(nombre)}"></div><div class="campo"><label>Celular</label><input id="t" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3454 123456" value="${esc(tel)}"></div></div>
+    ${corp ? '' : `<div class="campo"><label>Forma de pago</label><select id="mp">${st.cfg.medios.map(x => `<option value="${x.codigo}" ${x.codigo === medioPref ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>`}
+    <div class="kpi" style="text-align:center"><div class="l">Precio estimado</div><div class="v" id="est">—</div><small id="estd" style="color:var(--suave)">Marcá origen y destino</small></div>
+    <button class="btn grande verde" id="pedir">Pedir remís</button>
+    ${S.cli || corp ? '' : `<div class="banner"><a id="bannerCta2">Creá tu cuenta</a> para ver tus viajes, guardar Casa/Trabajo y reservar. ¿Ya tenés? <a id="bannerIng">Ingresá</a>.</div>`}
+    <p style="font-size:12px;color:var(--suave);text-align:center">Al subir, decile al conductor el PIN que te mostramos. Tocá el mapa para marcar dónde estás; mantenelo apretado para marcar el destino.</p>
+    <div id="inst2" style="display:flex;justify-content:center"></div>`;
+  if ($('#xc')) $('#xc').onclick = e => { e.preventDefault(); LS.del('rodar_corp'); ir('pedir'); };
+  if ($('#cambiar')) $('#cambiar').onclick = () => { $('#quien').remove(); $('#datos').style.display = ''; $('#n').focus(); };
+  ['bannerCta', 'bannerCta2'].forEach(id => { if ($('#' + id)) $('#' + id).onclick = () => ir('ingresar', 'crear'); });
+  if ($('#bannerIng')) $('#bannerIng').onclick = () => ir('ingresar');
+  $$('[data-l]').forEach(b => b.onclick = () => { const c = b.dataset.l[0], x = l[+b.dataset.l.slice(1)]; if (x) { fijar(c, x.lat, x.lng, { direccion: x.dir, localidad: x.loc, provincia: x.prov }); if (c === 'o' && x.ref) $('#or').value = x.ref; } });
+  $$('.seg [data-c]').forEach(b => b.onclick = () => {
+    $$('.seg [data-c]').forEach(x => x.classList.toggle('on', x === b));
+    const pr = b.dataset.c === 'prog'; $('#progBox').classList.toggle('oculto', !pr);
+    if ($('#prog')) { const min = new Date(Date.now() + 20 * 60000); $('#prog').min = localISO(min); if (!$('#prog').value) $('#prog').value = localISO(new Date(Math.ceil((Date.now() + 60 * 60000) / 9e5) * 9e5)); }
+    $('#pedir').textContent = pr ? 'Reservar viaje' : 'Pedir remís';
+  });
+  ['favO', 'favD'].forEach(id => { if ($('#' + id)) $('#' + id).onclick = () => guardarFavorito(id === 'favO' ? st.o : st.d, id === 'favO' ? $('#or').value : ''); });
+  mapa.off('click'); mapa.off('contextmenu');
+  mapa.on('click', e => fijar('o', e.latlng.lat, e.latlng.lng));
+  mapa.on('contextmenu', e => fijar('d', e.latlng.lat, e.latlng.lng));
+  auto($('#od'), $('#so'), x => fijar('o', x.lat, x.lng, x), 'o'); auto($('#dd'), $('#sd'), x => fijar('d', x.lat, x.lng, x), 'd');
+  ['o', 'd'].forEach(c => ['l', 'p'].forEach(k => { const el = $('#' + c + k); if (el) el.onchange = () => { if (st[c]) { st[c][k === 'l' ? 'loc' : 'prov'] = el.value.trim(); } const i = $(c === 'o' ? '#od' : '#dd'); if (i && i.value.trim().length >= 4 ) i.dispatchEvent(new Event('input')); }; }));
+  if ($('#mp')) $('#mp').onchange = estimar;
+  $('#gps').onclick = () => ubicar(false);
+  $('#pedir').onclick = pedir;
+  botonInstalar($('#inst2'), 'btn sec');
+  if (pre && pre.o) { await fijar('o', pre.o.lat, pre.o.lng, { direccion: pre.o.dir }); if (pre.o.ref) $('#or').value = pre.o.ref; if (pre.d) fijar('d', pre.d.lat, pre.d.lng, { direccion: pre.d.dir }); }
+  else ubicar(true);
+  if (S.cli) api('/api/cli/viajes?limite=5').then(vs => {
+    const a = vs.find(v => ['pendiente', 'ofrecido', 'confirmado', 'en_curso'].includes(v.estado));
+    if (a && S.vista === 'pedir' && $('#enCurso')) { $('#enCurso').innerHTML = `<div class="curso">Tenés un viaje ${a.estado === 'en_curso' ? 'en curso' : 'pedido'}<button class="btn chico" id="verCurso">Ver</button></div>`; $('#verCurso').onclick = () => ir('seguir', a.id, a.k); }
+  }).catch(() => { });
+}
+async function guardarFavorito(x, ref) {
+  if (!x) return toast('Primero elegí la dirección', 'error');
+  const et = prompt('¿Qué nombre le ponemos? (Casa, Trabajo, Mamá…)', 'Casa'); if (!et) return;
+  try { S.cli = await api('/api/cli/lugares', { etiqueta: et, direccion: x.dir, lat: x.lat, lng: x.lng, localidad: x.loc, provincia: x.prov, referencias: ref || null }); toast('Guardado como ' + et, 'ok'); }
+  catch (e) { toast(e.message, 'error'); }
+}
+function aviso(c, t) { const el = $(c === 'o' ? '#ubic' : '#ubicD'); if (el) el.textContent = t; }
+async function fijar(c, lat, lng, d) {
+  if (!d || !d.direccion) d = await api(`/api/pub/geocodificar/inversa?lat=${lat}&lng=${lng}`);
+  st[c] = { lat, lng, dir: d.direccion, loc: d.localidad, prov: d.provincia };
+  const inp = $(c === 'o' ? '#od' : '#dd'); if (!inp) return; { const lo = $('#' + (c === 'o' ? 'ol' : 'dl')), pr = $('#' + (c === 'o' ? 'op' : 'dp')); if (lo && d.localidad) lo.value = d.localidad; if (pr && d.provincia) pr.value = d.provincia; st[c].loc = (lo && lo.value) || d.localidad; st[c].prov = (pr && pr.value) || d.provincia; inp.value = RODAR.compDir(d.direccion, (lo && lo.value) || d.localidad, (pr && pr.value) || d.provincia); }
+  { const l = $('#' + c + 'l'), pr = $('#' + c + 'p'); if (l && d.localidad) l.value = d.localidad; if (pr && d.provincia) pr.value = d.provincia; }
+  const fb = $(c === 'o' ? '#favO' : '#favD'); if (fb) fb.classList.remove('oculto');
+  const k = c === 'o' ? 'mo' : 'md';
+  st[k] && st[k].remove(); st[k] = L.marker([lat, lng], { icon: icono(c === 'o' ? '#2f9e57' : '#2a86e8'), draggable: true }).addTo(mapa);
+  st[k].on('dragend', e => { const p = e.target.getLatLng(), txt = inp.value.trim();
+    if (RODAR.partirDir(txt).altura) { st[c].lat = p.lat; st[c].lng = p.lng; st[c].dir = RODAR.enTexto(txt).dir; aviso(c, 'Ubicación corregida.'); estimar(); } else fijar(c, p.lat, p.lng); });
+  if (d.sinAltura) { const pos = d.direccion.length + 1; inp.value = d.direccion + ' ' + inp.value.slice(d.direccion.length); aviso(c, ''); if (!S.noFoco) { inp.focus(); inp.setSelectionRange(pos, pos); } }
+  else if (d.aprox) aviso(c, d.conocida === 'estimada' ? 'Ubicación estimada. Si no es tu puerta, arrastrá el pin.' : 'Ubicación aproximada: arrastrá el pin hasta tu puerta.');
+  else aviso(c, '');
+  if (st.o && st.d) mapa.fitBounds(L.latLngBounds([[st.o.lat, st.o.lng], [st.d.lat, st.d.lng]]).pad(.3)); else mapa.setView([lat, lng], 16);
+  estimar();
+}
+function lugarDe(c) { const l = ($('#' + c + 'l') || {}).value, p = ($('#' + c + 'p') || {}).value; return [l, p].map(x => (x || '').trim()).filter(Boolean).join(', '); }
+function auto(inp, sug, alElegir, c) {
+  let t; inp.oninput = () => { clearTimeout(t); const v = inp.value.trim(); if (c) { const x = RODAR.enTexto(v), lo = $('#' + c + 'l'), pr = $('#' + c + 'p'); if (x.loc && lo) lo.value = x.loc; if (x.prov && pr) pr.value = x.prov; } if (v.length < 4) return sug.classList.add('oculto'); t = setTimeout(async () => { const lg = c ? lugarDe(c) : ''; const r = await api('/api/pub/geocodificar?q=' + encodeURIComponent(v.includes(',') || !lg ? v : v + ', ' + lg)); sug.innerHTML = r.map((x, i) => `<div data-i="${i}">${esc(x.direccion)} <small>${esc(x.localidad || '')}</small></div>`).join('') || '<div>Sin resultados: marcá el punto en el mapa</div>'; sug.classList.remove('oculto'); $$('[data-i]', sug).forEach(d => d.onclick = () => { sug.classList.add('oculto'); alElegir(r[+d.dataset.i]); }); }, 450); };
+  inp.onblur = () => setTimeout(() => sug.classList.add('oculto'), 200);
+}
+let estN = 0;
+async function estimar() {
+  if (!st.o || !$('#est')) return;
+  const n = ++estN;
+  // Ruta por calles entre origen y destino: se dibuja en el mapa y su distancia mejora el precio estimado
+  let rt = null; if (st.d) rt = await RODAR.ruta(st.o, st.d);
+  if (n !== estN) return;
+  st.ruta && st.ruta.remove(); st.ruta = null; st.rutaM = rt ? rt.metros : null;
+  if (st.d) {
+    st.ruta = L.polyline(rt ? rt.coords : [[st.o.lat, st.o.lng], [st.d.lat, st.d.lng]], rt ? { color: '#1d6fe0', weight: 5, opacity: .8 } : { color: '#555', weight: 3, dashArray: '6' }).addTo(mapa);
+    mapa.fitBounds(st.ruta.getBounds().pad(.15));
+  }
+  const r = await api('/api/pub/estimar', { origen_lat: st.o.lat, origen_lng: st.o.lng, destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, medio_pago: $('#mp') && $('#mp').value, metros_ruta: st.rutaM }).catch(() => null);
+  if (!r || !$('#est')) return;
+  $('#est').textContent = r.monto != null ? pesos(r.monto) : 'Desde ' + pesos(r.bajada);
+  $('#estd').textContent = r.monto != null ? `${km1(r.km)} km aprox. · ${r.cobro === 'fijo' ? 'precio fijo' : 'precio estimado, se cobra lo que marca el reloj'}` : 'Sin destino: se cobra lo que marca el reloj';
+}
+async function pedir() {
+  const corp = JSON.parse(LS.get('rodar_corp') || 'null');
+  if (!S.cli && !corp) { toast('Ingresá o creá tu cuenta para pedir un viaje', 'error'); return ir('ingresar'); }
+  if (!NATIVO && S.cli && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().then(() => activarPush(false)).catch(() => { });
+  if (!st.o) return toast('Indicá dónde te buscamos', 'error');
+  if (!st.d || !$('#dd').value.trim()) return toast('Indicá a dónde vas', 'error');
+  const programar = $('.seg [data-c=prog]').classList.contains('on');
+  if (programar && !S.cli) return ir('ingresar', 'crear');
+  const txtO = $('#od').value.trim(), txtD = $('#dd').value.trim();
+  if (!RODAR.partirDir(txtO).altura && !confirm('La dirección de origen no tiene altura (número). ¿Pedir igual? Podés agregarla en Referencias o en el campo de dirección.')) return;
+  const base = { origen_dir: RODAR.enTexto(txtO).dir || st.o.dir, origen_loc: ($('#ol') && $('#ol').value.trim()) || st.o.loc, origen_prov: ($('#op') && $('#op').value.trim()) || st.o.prov, origen_ref: $('#or').value, origen_lat: st.o.lat, origen_lng: st.o.lng, destino_dir: st.d && (RODAR.enTexto(txtD).dir || st.d.dir), destino_loc: st.d && (($('#dl') && $('#dl').value.trim()) || st.d.loc), destino_prov: st.d && (($('#dp') && $('#dp').value.trim()) || st.d.prov), destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, metros_ruta: st.rutaM || undefined, medio_pago: $('#mp') ? $('#mp').value : 'cuenta_corriente' };
+  $('#pedir').disabled = true;
+  try {
+    let r;
+    if (S.cli && !corp) {
+      if (programar) { if (!$('#prog').value) throw new Error('Elegí el día y la hora'); base.programado = $('#prog').value.replace('T', ' ') + ':00'; }
+      r = await api('/api/cli/viaje', base);
+      if (r.reserva) { toast('¡Reserva confirmada! La ves en Mis viajes.', 'ok'); return ir('viajes'); }
+    } else {
+      const nombre = $('#n').value.trim(), tel = $('#t').value.trim();
+      if (!nombre || !tel) throw new Error('Completá nombre y celular');
+      LS.set('rodar_nombre', nombre); LS.set('rodar_tel', tel); LS.set('rodar_medio', base.medio_pago); recordarLugar(st.o); recordarLugar(st.d);
+      r = await api('/api/pub/viaje', { ...base, nombre, telefono: tel, token: corp && corp.token });
+    }
+    LS.set('rodar_viaje', JSON.stringify({ id: r.id, k: r.k })); activarPush(false);
+    history.replaceState({}, '', `#/seguimiento/${r.id}?k=${r.k}`);
+    ir('seguir', r.id, r.k);
+  } catch (e) { toast(e.message, 'error'); if ($('#pedir')) $('#pedir').disabled = false; }
+}
+
+// ---------- SEGUIMIENTO ----------
+const TXT = { pendiente: 'Buscando un móvil…', ofrecido: 'Buscando un móvil…', confirmado: 'Tu móvil está en camino', en_curso: 'Viaje en curso', finalizado: 'Llegaste. ¡Gracias por viajar!', anulado: 'Viaje cancelado', reserva: 'Reserva confirmada' };
+async function seguimiento(id, k) {
+  mostrarMapa(true);
+  mapa.off('click'); mapa.off('contextmenu');
+  let ult = null; st.estPrev = null; st.claveAviso = null;
+  S.pintarSeg = () => pintar();
+  async function pintar(v) {
+    if (S.vista !== 'seguir') return;
+    if (!v) v = await api(`/api/pub/viaje/${id}?k=${k}`).catch(() => null);
+    if (S.vista !== 'seguir') return;
+    if (!v) { LS.del('rodar_viaje'); return ir('pedir'); }
+    if (ult === JSON.stringify(v)) return; ult = JSON.stringify(v);
+    if (NATIVO) {
+      const ab = `#/seguimiento/${id}?k=${k}`, mv = v.movil_numero ? `Móvil ${v.movil_numero}${v.movil ? ' · ' + v.movil : ''}${v.patente ? ' · ' + v.patente : ''}` : '';
+      const clave = v.estado + (v.llego ? '-llego' : '');
+      if (st.claveAviso && st.claveAviso !== clave) {
+        if (v.estado === 'confirmado' && v.llego) avisarNativo('📍 Tu remís llegó', mv + '\nTe está esperando', 'viaje-' + id, ab);
+        else if (v.estado === 'confirmado') avisarNativo('🚕 Tu remís está en camino', mv + '\nTocá para seguirlo en el mapa', 'viaje-' + id, ab);
+        else if (v.estado === 'finalizado') avisarNativo('✅ ¡Llegaste!', (v.monto ? 'Total: ' + pesos(v.monto) + '. ' : '') + '¡Gracias por viajar con nosotros!', 'viaje-' + id, ab);
+        else if (v.estado === 'anulado') avisarNativo('Viaje cancelado', 'Tu viaje fue cancelado.', 'viaje-' + id, ab);
+      }
+      st.claveAviso = clave;
+      guardiaViaje(['pendiente', 'ofrecido', 'confirmado', 'en_curso'].includes(v.estado));
+    }
+    if (['pendiente', 'ofrecido'].includes(st.estPrev) && v.estado === 'confirmado') { toast(`Móvil ${v.movil_numero} en camino${v.conductor ? ' · ' + v.conductor : ''}`, 'ok'); try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch { } }
+    st.estPrev = v.estado;
+    $('#cont').innerHTML = `<div class="estado-g">${v.estado === 'confirmado' && v.llego ? '📍 Tu remís llegó: te está esperando' : (TXT[v.estado] || v.estado)}</div>
+      ${v.movil_numero && !['pendiente', 'ofrecido'].includes(v.estado) ? `<div class="kpi"><div class="l">Tu móvil</div><div class="v">N° ${v.movil_numero} · ${esc(v.patente || '')}</div><div>${esc(v.movil || '')}</div><div>Conductor: ${esc(v.conductor || '')}</div></div>` : ''}
+      ${v.pin && ['confirmado', 'ofrecido', 'pendiente'].includes(v.estado) ? `<div class="kpi"><div class="l" style="text-align:center">PIN de seguridad — dáselo al conductor al subir</div><div class="pin">${v.pin}</div></div>` : ''}
+      <div>${esc(v.origen)}${v.destino ? `<br>${esc(v.destino)}` : ''}</div>${v.monto ? `<div>${v.estado === 'finalizado' ? 'Total' : 'Estimado'}: <b>${pesos(v.monto)}</b></div>` : ''}
+      ${['pendiente', 'ofrecido', 'confirmado', 'reserva'].includes(v.estado) ? '<button class="btn rojo grande" id="canc">Cancelar viaje</button>' : ''}
+      ${v.estado === 'finalizado' ? `<p style="text-align:center">¿Cómo fue tu viaje?</p><div class="estrellas">${[1, 2, 3, 4, 5].map(n => `<span data-s="${n}">${n <= (v.calificacion || 0) ? '★' : '☆'}</span>`).join('')}</div>` : ''}
+      ${['finalizado', 'anulado'].includes(v.estado) ? '<button class="btn grande" id="nuevo">Pedir otro viaje</button>' : ''}
+      <button class="btn sec" id="comp">Compartir seguimiento</button>
+      ${S.cli ? '<button class="btn sec" id="misv">Ver mis viajes</button>' : ''}`;
+    if ($('#canc')) $('#canc').onclick = async () => { if (confirm('¿Cancelar el viaje?')) { try { await api(`/api/pub/viaje/${id}/cancelar?k=${k}`, {}); } catch (e) { toast(e.message, 'error'); } ult = null; pintar(); } };
+    if ($('#nuevo')) $('#nuevo').onclick = () => { LS.del('rodar_viaje'); history.replaceState({}, '', location.pathname); ir('pedir'); };
+    if ($('#misv')) $('#misv').onclick = () => { history.replaceState({}, '', location.pathname); ir('viajes'); };
+    $$('[data-s]').forEach(s => s.onclick = async () => { await api(`/api/pub/viaje/${id}/calificar?k=${k}`, { estrellas: +s.dataset.s }); toast('¡Gracias!', 'ok'); ult = null; pintar(); });
+    $('#comp').onclick = () => { const u = location.href.split('#')[0] + `#/seguimiento/${id}?k=${k}`; navigator.share ? navigator.share({ title: 'Mi viaje', url: u }).catch(() => { }) : (navigator.clipboard.writeText(u), toast('Enlace copiado')); };
+    limpiarMapa();
+    if (v.origen_lat) st.mo = L.marker([v.origen_lat, v.origen_lng], { icon: icono('#2f9e57') }).addTo(mapa);
+    if (v.destino_lat) st.md = L.marker([v.destino_lat, v.destino_lng], { icon: icono('#2a86e8') }).addTo(mapa);
+    if (v.lat && ['confirmado', 'en_curso'].includes(v.estado)) { st.mm = L.marker([v.lat, v.lng], { icon: L.divIcon({ className: '', html: `<div class="marcador-movil" style="background:#5fa52f">${v.movil_numero}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(mapa); mapa.fitBounds(L.latLngBounds([[v.lat, v.lng], [v.origen_lat, v.origen_lng]]).pad(.4)); }
+    else if (v.origen_lat) mapa.setView([v.origen_lat, v.origen_lng], 15);
+    if (['finalizado', 'anulado'].includes(v.estado)) LS.del('rodar_viaje');
+  }
+  const primero = await api(`/api/pub/viaje/${id}?k=${k}`).catch(() => null);
+  if (primero && primero.canal) { S.socket = RODAR.tiempoReal(primero.canal, ['']); S.socket.on('viaje', v => { ult = null; pintar(v); }); }
+  S.timers.push(setInterval(() => pintar(), 5000));
+  pintar(primero);
+}
+function limpiarMapa() { ['mo', 'md', 'mm'].forEach(k => { st[k] && st[k].remove(); st[k] = null; }); }
+
+// ---------- MIS VIAJES ----------
+const ETQ = { pendiente: ['Buscando móvil', 'nar'], ofrecido: ['Buscando móvil', 'nar'], confirmado: ['Móvil en camino', 'azul'], en_curso: ['En viaje', 'azul'], reserva: ['Reservado', 'verde'], finalizado: ['Finalizado', ''], anulado: ['Cancelado', 'rojo'] };
+async function misViajes() {
+  mostrarMapa(false);
+  $('#cont').innerHTML = '<h2 class="tit">Mis viajes</h2><div class="vacio">Cargando…</div>';
+  let vs; try { vs = await api('/api/cli/viajes?limite=60'); } catch (e) { $('#cont').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
+  if (S.vista !== 'viajes') return;
+  const act = vs.filter(v => ['pendiente', 'ofrecido', 'confirmado', 'en_curso'].includes(v.estado)), res = vs.filter(v => v.estado === 'reserva').sort((a, b) => String(a.programado).localeCompare(String(b.programado))), hist = vs.filter(v => ['finalizado', 'anulado'].includes(v.estado));
+  const tarjeta = v => { const [et, cl] = ETQ[v.estado] || [v.estado, ''];
+    return `<div class="tarjeta"><div class="fila1"><b>${esc(fecha(v.estado === 'reserva' ? v.programado : v.creado))}</b><span class="tag ${cl}">${et}</span></div>
+      <div class="vjr"><div><i class="o"></i>${esc(v.origen_dir)}</div>${v.destino_dir ? `<div><i class="d"></i>${esc(v.destino_dir)}</div>` : ''}</div>
+      ${['confirmado', 'en_curso'].includes(v.estado) && v.movil_numero ? `<div class="kpi" style="margin:6px 0"><div class="l">Tu móvil</div><div class="v">N° ${v.movil_numero} · ${esc(v.patente || '')}</div><div>${esc([v.movil, v.movil_color].filter(Boolean).join(' '))}</div>${v.conductor ? `<div>Conductor: ${esc(v.conductor)}</div>` : ''}</div>` : ''}
+      <div class="fila1"><small style="color:var(--suave)">${v.movil_numero ? `Móvil ${v.movil_numero}${v.movil ? ' · ' + esc(v.movil) : ''}` : ''}${v.km ? ` · ${km1(v.km)} km` : ''}${v.estado === 'finalizado' && v.calificacion ? ' · ' + '★'.repeat(v.calificacion) : ''}${v.estado === 'anulado' && v.motivo_anulacion ? esc(v.motivo_anulacion) : ''}</small>
+        ${v.monto != null && v.estado !== 'anulado' ? `<span class="monto">${v.monto_final ? '' : '~'}${pesos(v.monto)}</span>` : ''}</div>
+      <div class="acc">${['pendiente', 'ofrecido', 'confirmado', 'en_curso'].includes(v.estado) ? `<button class="btn chico" data-ver="${v.id}">Ver en el mapa</button>` : ''}
+        ${v.estado === 'reserva' ? `<button class="btn rojo chico" data-canc="${v.id}">Cancelar reserva</button>` : ''}
+        ${v.estado === 'finalizado' ? `<button class="btn sec chico" data-comp="${v.id}">Comprobante</button>${v.calificacion ? '' : `<button class="btn sec chico" data-ver="${v.id}">★ Calificar</button>`}` : ''}
+        ${['finalizado', 'anulado'].includes(v.estado) ? `<button class="btn sec chico" data-rep="${v.id}">↻ Repetir</button>` : ''}</div></div>`; };
+  $('#cont').innerHTML = `<h2 class="tit">Mis viajes</h2>
+    ${act.length ? `<div class="paso">Ahora</div>${act.map(tarjeta).join('')}` : ''}
+    <div class="paso">Reservas</div>${res.length ? res.map(tarjeta).join('') : '<div class="vacio" style="padding:6px">No tenés reservas. Podés programar un viaje desde <a href="#" id="irPedir">Pedir</a> → Programar.</div>'}
+    <div class="paso">Historial</div>${hist.length ? hist.map(tarjeta).join('') : '<div class="vacio" style="padding:6px">Todavía no hiciste viajes con tu cuenta.</div>'}`;
+  const de = id => vs.find(v => v.id === +id);
+  if ($('#irPedir')) $('#irPedir').onclick = e => { e.preventDefault(); ir('pedir'); };
+  $$('[data-ver]').forEach(b => b.onclick = () => { const v = de(b.dataset.ver); ir('seguir', v.id, v.k); });
+  $$('[data-canc]').forEach(b => b.onclick = async () => { if (!confirm('¿Cancelar esta reserva?')) return; try { await api(`/api/cli/viajes/${b.dataset.canc}/cancelar`, {}); toast('Reserva cancelada', 'ok'); misViajes(); } catch (e) { toast(e.message, 'error'); } });
+  $$('[data-rep]').forEach(b => b.onclick = () => { const v = de(b.dataset.rep); ir('pedir', { o: { lat: v.origen_lat, lng: v.origen_lng, dir: v.origen_dir, ref: v.origen_ref }, d: v.destino_lat ? { lat: v.destino_lat, lng: v.destino_lng, dir: v.destino_dir } : null }); });
+  $$('[data-comp]').forEach(b => b.onclick = () => comprobante(de(b.dataset.comp)));
+}
+function comprobante(v) {
+  const w = window.open('', '_blank'); if (!w) return toast('Permití las ventanas emergentes para ver el comprobante', 'error');
+  const c = st.cfg || {};
+  abrirTicket(w, { ...v, movil_patente: v.patente }, { empresa: { nombre: c.nombre, localidad: c.localidad, telefono: c.telefono }, cliente: [S.cli.nombre, S.cli.telefono].filter(Boolean).join(' · ') });
+}
+
+// ---------- LUGARES ----------
+function misLugares() {
+  mostrarMapa(false);
+  const l = S.cli.lugares || [];
+  $('#cont').innerHTML = `<h2 class="tit">Mis lugares</h2><div class="sub">Tocá uno para pedir un remís desde ahí.</div>
+    ${l.length ? l.map(x => `<div class="tarjeta"><div class="fila1"><b>${esc(x.etiqueta)}</b><span><button class="btn sec chico" data-ren="${x.id}">✎</button> <button class="btn sec chico" data-qui="${x.id}">🗑</button></span></div>
+      <div style="cursor:pointer" data-pedir="${x.id}">${esc(x.direccion)}${x.referencias ? `<br><small style="color:var(--suave)">${esc(x.referencias)}</small>` : ''}</div>
+      <div class="acc"><button class="btn chico" data-pedir="${x.id}">Pedir desde acá</button><button class="btn sec chico" data-ir="${x.id}">Ir hacia acá</button></div></div>`).join('')
+      : '<div class="vacio">Todavía no guardaste lugares.</div>'}
+    <div class="tarjeta"><b>Agregar un lugar</b>
+      <div class="campo"><input id="lnEt" placeholder="Nombre: Casa, Trabajo, Mamá…" maxlength="30"></div>
+      <div class="campo rel"><div class="fila"><input id="lnDir" placeholder="Calle y altura" autocomplete="off" style="flex:1"><button class="btn sec" id="lnGps" title="Usar mi ubicación">📍</button></div><div class="sug oculto" id="lnSug"></div></div>
+      <div class="campo"><input id="lnRef" placeholder="Referencias (opcional)"></div><button class="btn verde" id="lnOk">Guardar lugar</button></div>
+    <p style="font-size:13px;color:var(--suave)">También podés guardar un lugar desde <b>Pedir</b>, tocando “Guardar este lugar”.</p>`;
+  let elegido = null;
+  auto($('#lnDir'), $('#lnSug'), x => { elegido = x; $('#lnDir').value = x.direccion; });
+  $('#lnGps').onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(async p => { const d = await api(`/api/pub/geocodificar/inversa?lat=${p.coords.latitude}&lng=${p.coords.longitude}`); elegido = { ...d, lat: p.coords.latitude, lng: p.coords.longitude }; $('#lnDir').value = d.direccion; }, () => toast('No pudimos obtener tu ubicación', 'error'), { enableHighAccuracy: true, timeout: 12000 });
+  $('#lnOk').onclick = async () => {
+    if (!elegido) return toast('Elegí la dirección de la lista o usá ', 'error');
+    try { S.cli = await api('/api/cli/lugares', { etiqueta: $('#lnEt').value, direccion: elegido.direccion, lat: elegido.lat, lng: elegido.lng, localidad: elegido.localidad, provincia: elegido.provincia, referencias: $('#lnRef').value || null }); toast('Lugar guardado', 'ok'); misLugares(); }
+    catch (e) { toast(e.message, 'error'); }
+  };
+  const de = id => l.find(x => x.id === +id);
+  $$('[data-ren]').forEach(b => b.onclick = async () => { const x = de(b.dataset.ren); const et = prompt('Nuevo nombre', x.etiqueta); if (!et) return; try { S.cli = await api('/api/cli/lugares', { id: x.id, etiqueta: et }); misLugares(); } catch (e) { toast(e.message, 'error'); } });
+  $$('[data-qui]').forEach(b => b.onclick = async () => { const x = de(b.dataset.qui); if (!confirm(`¿Quitar "${x.etiqueta}" de tus lugares?`)) return; try { S.cli = await api(`/api/cli/lugares/${x.id}/quitar`, {}); misLugares(); } catch (e) { toast(e.message, 'error'); } });
+  $$('[data-pedir]').forEach(b => b.onclick = () => { const x = de(b.dataset.pedir); ir('pedir', { o: { lat: x.lat, lng: x.lng, dir: x.direccion, ref: x.referencias } }); });
+  $$('[data-ir]').forEach(b => b.onclick = async () => { const x = de(b.dataset.ir); await ir('pedir'); fijar('d', x.lat, x.lng, { direccion: x.direccion }); });
+}
+
+// ---------- PERFIL ----------
+function miPerfil() {
+  mostrarMapa(false);
+  const c = S.cli;
+  const ini = String(c.nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase();
+  $('#cont').innerHTML = `<h2 class="tit">Mi perfil</h2>
+    <div class="perf-h"><span class="av">${esc(ini)}</span><div style="min-width:0"><b>${esc(c.nombre || '')}</b><small>Cuenta creada ${esc(fecha(c.desde))}</small></div></div>
+    <div class="caja-blanca"><div class="campo"><label>Nombre</label><input id="pN" value="${esc(c.nombre || '')}" autocomplete="name"></div>
+    <div class="campo"><label>Email</label><input id="pE" type="email" value="${esc(c.email || '')}" autocomplete="email"></div>
+    <div class="campo"><label>Celular</label><input id="pT" type="tel" inputmode="tel" value="${esc(c.telefono || '')}" autocomplete="tel"></div>
+    <div class="campo"><label>Forma de pago preferida</label><select id="pM">${st.cfg.medios.map(x => `<option value="${x.codigo}" ${x.codigo === c.medio_pago_pref ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>
+    <details><summary style="cursor:pointer;color:var(--pri-2);font-weight:600;padding:6px 0">Cambiar contraseña</summary>
+      <div class="campo"><label>Contraseña actual</label><input id="pA" type="password" autocomplete="current-password"></div>
+      <div class="campo"><label>Nueva contraseña (mínimo 6)</label><input id="pP" type="password" autocomplete="new-password"></div></details>
+    <button class="btn grande verde" id="pG" style="width:100%;margin-top:8px">Guardar cambios</button></div>
+    <div id="inst3" style="display:flex;justify-content:center"></div>
+    <button class="btn grande" id="pS" style="background:#fff;color:#c0392b;border:2px solid #f3c7c7">🚪 Cerrar sesión</button>
+    <button class="linkito" id="pEmp" style="text-align:center">Ingreso para empresas (cuenta corriente)</button>`;
+  botonInstalar($('#inst3'), 'btn sec');
+  $('#pEmp').onclick = ingresoEmpresas;
+  $('#pS').onclick = () => { if (confirm('¿Cerrar sesión en este celular?')) salirCuenta(); };
+  $('#pG').onclick = async () => {
+    const b = { nombre: $('#pN').value, email: $('#pE').value, telefono: $('#pT').value, medio_pago_pref: $('#pM').value };
+    if ($('#pP').value) { b.password_actual = $('#pA').value; b.password_nueva = $('#pP').value; }
+    try { S.cli = await api('/api/cli/perfil', b, 'PUT'); toast('Datos guardados', 'ok'); pintarNav(); miPerfil(); } catch (e) { toast(e.message, 'error'); }
+  };
+}
+async function salirCuenta(silencio) {
+  if (!silencio) { try { await RODAR.llamar('/api/cli/logout', 'POST', {}, S.tk); } catch { } }
+  LS.del('rodar_cli_token'); S.tk = null; S.cli = null;
+  if (silencio) toast('Tu sesión venció. Volvé a ingresar.'); ir('pedir');
+}
+
+// ---------- INGRESAR / CREAR CUENTA ----------
+function pantallaIngreso(modo) {
+  mostrarMapa(false);
+  modo = modo === 'crear' || (!modo && !LS.get('rodar_tuvo_cuenta')) ? 'crear' : 'entrar';
+  const crear = modo === 'crear';
+  $('#cont').innerHTML = marcoLogin(`<div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:220px;max-width:80%"></a></div>
+    <div class="rol-etiqueta">🙂 Pasajeros</div>
+    <div class="tipo-ing"><button type="button" class="on"><span>🙂</span>Soy pasajero</button><button type="button" class="emp" id="tEmp"><span>🏢</span>Soy empresa</button></div>
+    <div class="aviso-cuenta">Para pedir un viaje necesitás una cuenta. ${crear ? 'Es gratis y tarda un minuto.' : '¿Todavía no tenés? Tocá <b>Crear cuenta</b>.'}</div>
+    <div class="seg"><button type="button" data-m="entrar" class="${crear ? '' : 'on'}">Ingresar</button><button type="button" data-m="crear" class="${crear ? 'on' : ''}">Crear cuenta</button></div>
+    <form id="fi" style="display:flex;flex-direction:column;gap:10px" autocomplete="on">
+      ${crear ? `<div class="campo"><label>Nombre y apellido</label><input name="nombre" autocomplete="name" value="${esc(LS.get('rodar_nombre') || '')}" required></div>` : ''}
+      <div class="campo"><label>Email</label><input name="email" type="email" autocomplete="email" autocapitalize="none" required></div>
+      ${crear ? `<div class="campo"><label>Celular</label><input name="telefono" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3454 123456" value="${esc(LS.get('rodar_tel') || '')}" required></div>` : ''}
+      <div class="campo"><label>Contraseña${crear ? ' (mínimo 6 caracteres)' : ''}</label><div class="pass"><input name="password" id="pw" type="password" autocomplete="${crear ? 'new-password' : 'current-password'}" required><button type="button" id="ver">👁</button></div></div>
+      <div class="err" id="err"></div>
+      <button class="btn grande verde" id="ok">${crear ? 'Crear mi cuenta' : 'Ingresar'}</button>
+    </form>
+    ${crear ? '<p style="font-size:13px;color:var(--suave);text-align:center">Con tu cuenta ves tus viajes, guardás Casa y Trabajo, y reservás para más tarde.</p>' : '<button class="linkito" id="olv" style="text-align:center">Olvidé mi contraseña</button>'}
+    <div class="otros-ingresos"><span>¿Necesitás ayuda?</span><a href="manual-pasajero.html">📘 Cómo se usa</a><a href="#" id="ayuda2">💬 Ayuda</a></div>
+    ${ES_ANDROID && !NATIVO ? `<div class="otros-ingresos"><span>App Android</span><a href="${APK_PAS}" class="dest">📲 Descargar la app</a></div>` : ''}
+    <div class="otros-ingresos"><span>Otros ingresos</span><a href="conductor.html">🚕 Soy conductor</a><a href="index.html">🏠 Página principal</a></div>`);
+  $('#ayuda2').onclick = e => { e.preventDefault(); $('#ayuda').click(); };
+  $$('.seg [data-m]').forEach(b => b.onclick = () => pantallaIngreso(b.dataset.m));
+  $('#ver').onclick = () => { const p = $('#pw'); p.type = p.type === 'password' ? 'text' : 'password'; };
+  $('#tEmp').onclick = ingresoEmpresas;
+  if ($('#olv')) $('#olv').onclick = olvide;
+  $('#fi').onsubmit = async e => {
+    e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)); const er = $('#err'); er.style.display = 'none';
+    $('#ok').disabled = true;
+    try {
+      const r = await RODAR.llamar(crear ? '/api/cli/registro' : '/api/cli/login', 'POST', d, null);
+      S.tk = r.token; S.cli = r.cliente; LS.set('rodar_cli_token', r.token); LS.set('rodar_tuvo_cuenta', '1'); LS.set('rodar_nombre', r.cliente.nombre); LS.set('rodar_tel', r.cliente.telefono);
+      toast(crear ? '¡Listo! Ya tenés tu cuenta.' : '¡Hola, ' + (r.cliente.nombre || '').split(' ')[0] + '!', 'ok');
+      ir('pedir');
+    } catch (x) { er.textContent = x.message; er.style.display = 'block'; $('#ok').disabled = false; }
+  };
+}
+function olvide() {
+  const em = prompt('Escribí el email de tu cuenta. La central te va a contactar para darte una contraseña nueva.');
+  if (!em) return;
+  RODAR.llamar('/api/cli/olvide', 'POST', { email: em }, null).then(() => toast('Listo. La central se va a comunicar con vos' + (st.cfg.telefono ? ' (o llamá al ' + st.cfg.telefono + ')' : '') + '.', 'ok')).catch(e => toast(e.message, 'error'));
+}
+
+// ---------- ayuda y empresas ----------
+function waAyuda() {
+  const n = String(st.cfg.whatsapp || '').replace(/\D/g, ''); if (!n) return '';
+  return `<p><a class="btn verde" style="display:inline-flex;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/${n}${st.cfg.whatsapp_texto ? '?text=' + encodeURIComponent(st.cfg.whatsapp_texto) : ''}">Escribinos por WhatsApp</a></p>`;
+}
+$('#ayuda').onclick = () => {
+  const d = document.createElement('div'); d.className = 'modal-fondo';
+  const tel = S.cli ? S.cli.telefono : (LS.get('rodar_tel') || '');
+  d.innerHTML = `<div class="modal"><div class="mh"><h3>Ayuda</h3><button>×</button></div><div class="mb"><p>¿Tuviste un problema? Escribinos y te respondemos.${st.cfg.telefono ? ` También podés llamar al <a href="tel:${esc(st.cfg.telefono)}">${esc(st.cfg.telefono)}</a>.` : ''}</p>${waAyuda()}<p><a href="ayuda.html?tipo=Reclamo">⚠️ Hacer un reclamo</a> · <a href="manual-pasajero.html" target="_blank">📘 Manual de uso</a></p><div class="campo"><label>Celular</label><input id="at" value="${esc(tel)}"></div><div class="campo"><label>Mensaje</label><textarea id="am"></textarea></div></div><div class="mf"><button class="btn">Enviar</button></div></div>`;
+  document.body.append(d); $('.mh button', d).onclick = () => d.remove();
+  $('.mf button', d).onclick = async () => { try { await api('/api/pub/soporte', { telefono: $('#at', d).value, alias: S.cli ? S.cli.nombre : LS.get('rodar_nombre'), texto: $('#am', d).value }); toast('Mensaje enviado', 'ok'); d.remove(); } catch (e) { toast(e.message, 'error'); } };
+};
+function ingresoEmpresas() { ir('empresas'); }
+// Ingreso para empresas con cuenta corriente: pantalla aparte del ingreso de pasajeros (también se llega con pasajero.html#/empresas).
+function pantallaEmpresas() {
+  mostrarMapa(false);
+  const corp = JSON.parse(LS.get('rodar_corp') || 'null');
+  const enLogin = !S.cli && !corp, envol = h => enLogin ? marcoLogin(h) : h;
+  $('#cont').innerHTML = envol(`<div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:${enLogin ? 220 : 190}px;max-width:80%"></a></div>
+    ${enLogin ? '<div class="rol-etiqueta rol-empresa">🏢 Empresas</div>' : ''}
+    ${S.cli || corp ? '' : `<div class="tipo-ing"><button type="button" id="tPas"><span>🙂</span>Soy pasajero</button><button type="button" class="emp on"><span>🏢</span>Soy empresa</button></div>`}
+    <div class="caja-empresa">${enLogin ? '' : '<h3 style="margin:0 0 6px;color:#1f4e79">🏢 Ingreso para empresas</h3>'}
+      ${corp ? `<div class="nota">Ingresaste como <b>${esc(corp.nombre)}</b>. Los viajes que pidas quedan a cuenta de la empresa.</div><button class="btn grande" id="pedirEmp" style="background:#1f4e79">Pedir un viaje para la empresa</button><button class="btn sec" id="xc2" style="margin-top:8px;width:100%">Salir de la cuenta de empresa</button>` : `
+      <ul class="ventajas"><li>Los viajes quedan <b>a cuenta corriente</b>: no se pagan en el momento.</li><li>Pedís para cualquier persona de tu equipo indicando su nombre y celular.</li><li>La central te envía el resumen de viajes para facturar.</li></ul>
+      <p style="margin:0 0 10px;font-size:14px">Ingresá con el <b>usuario de empresa</b> que te dio la central (no es tu cuenta de pasajero).</p>
+      <form id="fe" style="display:flex;flex-direction:column;gap:10px" autocomplete="on">
+        <div class="campo"><label>Usuario de la empresa</label><input name="usuario" autocomplete="username" autocapitalize="none" required></div>
+        <div class="campo"><label>Contraseña</label><div class="pass"><input name="password" id="pwe" type="password" autocomplete="current-password" required><button type="button" id="vere">👁</button></div></div>
+        <div class="err" id="erre"></div>
+        <button class="btn grande" id="oke" style="background:#1f4e79">Ingresar como empresa</button>
+      </form>
+      <p style="font-size:13px;color:var(--suave);margin:12px 0 0;text-align:center">¿Tu empresa todavía no tiene cuenta corriente? ${st.cfg.telefono ? `Llamá al <a href="tel:${esc(st.cfg.telefono)}">${esc(st.cfg.telefono)}</a> o tocá <b>Ayuda</b>` : 'Tocá <b>Ayuda</b> arriba'} y pedila.</p>`}</div>
+    <div class="otros-ingresos"><span>Otros ingresos</span><a href="conductor.html">🚕 Soy conductor</a><a href="#" id="ayuda3">💬 Ayuda</a><a href="index.html">🏠 Página principal</a></div>`);
+  $('#ayuda3').onclick = e => { e.preventDefault(); $('#ayuda').click(); };
+  if ($('#tPas')) $('#tPas').onclick = () => ir('ingresar');
+  if ($('#pedirEmp')) $('#pedirEmp').onclick = () => ir('pedir');
+  if ($('#xc2')) $('#xc2').onclick = e => { e.preventDefault(); LS.del('rodar_corp'); ir(S.cli ? 'pedir' : 'empresas'); };
+  if (!$('#fe')) return;
+  $('#vere').onclick = () => { const x = $('#pwe'); x.type = x.type === 'password' ? 'text' : 'password'; };
+  $('#fe').onsubmit = async e => {
+    e.preventDefault(); const er = $('#erre'); er.textContent = ''; const btn = $('#oke'); btn.disabled = true;
+    try {
+      const r = await RODAR.llamar('/api/login', 'POST', { usuario: e.target.usuario.value.trim(), password: e.target.password.value, tipo: 'web' }, null);
+      if (!r.usuario.roles.includes('corporativo')) throw new Error('Este usuario no es de una empresa. Si sos pasajero, ingresá desde Ingresar.');
+      LS.set('rodar_corp', JSON.stringify({ token: r.token, nombre: r.usuario.nombre + ' ' + r.usuario.apellido }));
+      ir('pedir');
+    } catch (x) { er.textContent = x.message; btn.disabled = false; }
+  };
+}
+botonInstalar(document.getElementById('inst'), '', 'Instalar');
+if (!RODAR.listo) document.getElementById('cont').innerHTML = '<p>Falta configurar config.js con los datos de Supabase (ver README).</p>'; else arrancar();
+</script>
+</body>
+</html>
