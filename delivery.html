@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#215181">
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<link rel="apple-touch-icon" href="img/pasajero-180.png">
+<title>Remises TOQUE! · Delivery</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+:root{--az:#215181;--az2:#163a5e;--ve:#2f9e57;--na:#e8892b;--ro:#d64545;--tx:#1d2a2b;--su:#6b7a7b;--bo:#e3e9ec;--fo:#f3f6f8}
+*{box-sizing:border-box}html,body{margin:0;background:var(--fo);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px}
+a{color:var(--az)}button{font:inherit;cursor:pointer}input,select,textarea{font:inherit;width:100%;padding:11px 12px;border:1px solid var(--bo);border-radius:10px;background:#fff;color:var(--tx)}textarea{min-height:70px;resize:vertical}
+header{position:sticky;top:0;z-index:500;background:var(--az);color:#fff;display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top))}
+header img{height:34px}header .sp{flex:1}header button,header a.b{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:20px;padding:7px 12px;text-decoration:none;font-size:14px}
+main{max-width:760px;margin:0 auto;padding:14px 14px 110px}
+h1{font-size:22px;margin:4px 0 12px}h2{font-size:18px;margin:18px 0 8px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}.chip{flex:0 0 auto;border:1px solid var(--bo);background:#fff;border-radius:20px;padding:7px 14px;display:flex;align-items:center;gap:6px;white-space:nowrap}.chip.on{background:var(--az);color:#fff;border-color:var(--az)}.chip img{width:20px;height:20px;border-radius:5px;object-fit:cover}
+.neg{display:flex;gap:12px;background:#fff;border:1px solid var(--bo);border-radius:14px;padding:12px;margin-bottom:10px;cursor:pointer;align-items:center}.neg.cerrado{opacity:.55}.neg .lg{width:64px;height:64px;border-radius:12px;object-fit:cover;background:#e8eef3;display:grid;place-items:center;font-size:28px;flex:0 0 auto}
+.neg .t{flex:1;min-width:0}.neg b{display:block;font-size:16px}.neg small{color:var(--su);display:block;margin-top:2px}.tag{display:inline-block;font-size:12px;border-radius:10px;padding:2px 8px;background:#eef3f8;color:var(--az);margin-top:4px}.tag.ro{background:#fdecec;color:var(--ro)}
+.port{height:150px;border-radius:14px;background:linear-gradient(135deg,var(--az),#3b7bbf) center/cover;margin-bottom:-36px}.cab{display:flex;gap:12px;align-items:flex-end;padding:0 12px}.cab .lg{width:76px;height:76px;border-radius:16px;border:3px solid #fff;object-fit:cover;background:#e8eef3;display:grid;place-items:center;font-size:32px}
+.prod{display:flex;gap:12px;background:#fff;border-bottom:1px solid var(--bo);padding:12px;align-items:center}.prod:first-of-type{border-radius:12px 12px 0 0}.prod .t{flex:1}.prod small{color:var(--su);display:block}.prod img{width:72px;height:72px;border-radius:10px;object-fit:cover}.prod.completa img{object-fit:contain;background:#fff}
+.qty{display:flex;align-items:center;gap:8px}.qty button{width:32px;height:32px;border-radius:50%;border:1px solid var(--az);background:#fff;color:var(--az);font-size:18px;line-height:1}.qty button.mas{background:var(--az);color:#fff}
+.barra{position:fixed;left:0;right:0;bottom:0;padding:12px 14px;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--fo) 30%);z-index:400}.barra button{width:100%;max-width:732px;display:flex;margin:0 auto;justify-content:space-between;align-items:center;background:var(--ve);color:#fff;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--az);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:600}.btn.sec{background:#fff;color:var(--az);border:1px solid var(--az)}.btn.ro{background:var(--ro)}.btn.full{width:100%}.btn:disabled{opacity:.6}
+.card{background:#fff;border:1px solid var(--bo);border-radius:14px;padding:14px;margin-bottom:12px}.campo{margin-bottom:10px}.campo label{display:block;font-size:13px;color:var(--su);margin-bottom:4px}
+.seg{display:flex;background:#e8eef3;border-radius:12px;padding:3px;margin-bottom:10px}.seg button{flex:1;border:0;background:none;padding:9px;border-radius:10px;color:var(--su)}.seg button.on{background:#fff;color:var(--az);font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.f{display:flex;justify-content:space-between;padding:4px 0}.f.tot{font-size:18px;font-weight:800;border-top:1px dashed var(--bo);margin-top:6px;padding-top:8px}
+.mapa{height:220px;border-radius:12px;border:1px solid var(--bo);margin-top:6px}.sug{position:absolute;z-index:1000;left:0;right:0;background:#fff;border:1px solid var(--bo);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:240px;overflow:auto}.sug a{display:block;padding:10px 12px;text-decoration:none;color:var(--tx);border-bottom:1px solid #f1f4f5}
+.aviso{background:#fff4e5;border:1px solid #f3d3a6;color:#8a5200;border-radius:10px;padding:10px;margin:8px 0;font-size:14px}.error{background:#fdecec;border-color:#f4b9b9;color:#9b1c1c}
+.pasos{display:flex;justify-content:space-between;margin:14px 0}.paso{flex:1;text-align:center;font-size:12px;color:var(--su);position:relative}.paso:before{content:'';display:block;width:14px;height:14px;border-radius:50%;background:#cfd8dc;margin:0 auto 6px;position:relative;z-index:1}.paso:after{content:'';position:absolute;top:6px;left:-50%;right:50%;height:2px;background:#cfd8dc}.paso:first-child:after{display:none}.paso.on{color:var(--az);font-weight:700}.paso.on:before,.paso.on:after{background:var(--az)}
+.codigo{font-family:monospace;font-size:28px;font-weight:800;letter-spacing:4px;color:var(--az)}.vacio{text-align:center;color:var(--su);padding:40px 10px}.vacio div{font-size:46px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#1d2a2b;color:#fff;padding:10px 16px;border-radius:10px;z-index:2000;display:none;max-width:90%}
+.tl div{font-size:13px;padding:3px 0;color:var(--su)}.tl b{color:var(--tx);font-weight:600}
+</style>
+</head>
+<body>
+<header><a href="#/"><img src="img/logo-blanco.png" alt="Remises TOQUE!"></a><span class="sp"></span><span id="hsaldo"></span><a class="b" href="#/pedidos">Mis pedidos</a><a class="b" href="pasajero.html" title="Pedir un remís">🚕</a></header>
+<main id="app"><div class="vacio"><div>⏳</div>Cargando…</div></main>
+<div id="toast"></div>
+<script src="config.js"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/backend.js"></script>
+<script>
+(function () {
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pesos = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } } };
+const J = (k, d) => { try { return JSON.parse(LS.get(k) || '') ?? d; } catch { return d; } };
+const app = $('#app');
+const api = (fn, q, b) => RODAR.rpc(fn, LS.get('rodar_cli_token'), q || {}, b || {});
+const toast = m => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', 3500); };
+const S = { ini: null, neg: null, carrito: J('dlv_carrito', { negocio_id: null, items: [] }), timer: null, mapas: [] };
+const guardarCarrito = () => LS.set('dlv_carrito', JSON.stringify(S.carrito));
+const EST = { pendiente: 'Esperando al comercio', confirmado: 'Aceptado', preparando: 'En preparación', listo: 'Listo', recogido: 'Retirado por el repartidor', en_camino: 'En camino', cancelacion_solicitada: 'Cancelación solicitada', entregado: 'Entregado', cancelado: 'Cancelado' };
+const PASOS = [['pendiente', 'Recibido'], ['confirmado', 'Aceptado'], ['preparando', 'Preparando'], ['en_camino', 'En camino'], ['entregado', 'Entregado']];
+const ORDEN = { pendiente: 0, confirmado: 1, preparando: 2, listo: 2, recogido: 3, en_camino: 3, entregado: 4 };
+const textoDirecto = () => (S.ini.config.directo_texto || '').trim() || 'Enviar paquete';
+const mapa = (el, lat, lng, z = 15) => { const e = S.ini.empresa || {}; const m = L.map(el, { zoomControl: true }).setView([lat ?? e.lat ?? -30.95, lng ?? e.lng ?? -58.78], z); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m); S.mapas.push(m); return m; };
+
+function limpiar() { clearInterval(S.timer); S.mapas.forEach(m => { try { m.remove(); } catch { } }); S.mapas = []; }
+async function ruta() {
+limpiar(); window.scrollTo(0, 0);
+const p = location.hash.replace(/^#\/?/, '').split('/');
+try {
+if (!S.ini) { S.ini = await api('r_dlv_pub_inicio'); RODAR.setEmpresa && S.ini.empresa && RODAR.setEmpresa(S.ini.empresa); }
+const cli = S.ini.cliente; $('#hsaldo').innerHTML = cli && +cli.saldo > 0 ? `<a class="b" title="Saldo de tu billetera">💰 ${pesos(cli.saldo)}</a>` : '';
+if (p[0] === 'n' && p[1]) return negocio(+p[1]);
+if (p[0] === 'carrito') return carrito();
+if (p[0] === 'seguir' && p[1]) return seguir(+p[1], p[2]);
+if (p[0] === 'pedidos') return misPedidos();
+if (p[0] === 'enviar') return enviar();
+const marca = S.ini.config.modo_catalogo === 'uninegocio' && S.ini.config.negocio_marca_id;
+if (marca) return negocio(+marca);
+return inicio(p[0] === 'c' ? +p[1] : null);
+} catch (e) { app.innerHTML = `<div class="vacio"><div>⚠️</div>${esc(e.message)}<br><br><button class="btn" onclick="location.reload()">Reintentar</button></div>`; }
+}
+window.addEventListener('hashchange', ruta);
+
+function barraCarrito() {
+const n = S.carrito.items.reduce((s, i) => s + i.cantidad, 0); if (!n) return '';
+const t = S.carrito.items.reduce((s, i) => s + i.cantidad * i.precio, 0);
+return `<div class="barra"><button onclick="location.hash='#/carrito'"><span>🛒 Ver pedido (${n})</span><span>${pesos(t)}</span></button></div>`;
+}
+
+function inicio(cat) {
+const { categorias, negocios, config } = S.ini;
+const lista = negocios.filter(n => !cat || n.categoria_id === cat);
+app.innerHTML = `<h1>¿Qué querés pedir hoy?</h1>
+${config.directo_activo ? `<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="location.hash='#/enviar'"><div style="font-size:34px">📦</div><div style="flex:1"><b>${esc(textoDirecto())}</b><br><small style="color:var(--su)">Un repartidor lleva lo que necesites de un punto a otro.</small></div><span>›</span></div>` : ''}
+${categorias.length ? `<div class="chips"><a class="chip ${!cat ? 'on' : ''}" href="#/">Todos</a>${categorias.map(c => `<a class="chip ${cat === c.id ? 'on' : ''}" href="#/c/${c.id}">${c.icono ? `<img src="${esc(c.icono)}">` : ''}${esc(c.nombre)}</a>`).join('')}</div>` : ''}
+${lista.length ? lista.map(n => `<div class="neg ${n.abierto ? '' : 'cerrado'}" data-n="${n.id}">${n.logo ? `<img class="lg" src="${esc(n.logo)}">` : '<div class="lg">🏪</div>'}<div class="t"><b>${esc(n.nombre)}</b><small>${esc(n.descripcion || n.direccion || '')}</small>
+<span class="tag">⏱ ${n.tiempo_prep || 20}-${(n.tiempo_prep || 20) + 15} min</span> ${+n.pedido_minimo ? `<span class="tag">Mín. ${pesos(n.pedido_minimo)}</span>` : ''} ${n.abierto ? '' : '<span class="tag ro">Cerrado</span>'}</div></div>`).join('') : '<div class="vacio"><div>🏪</div>Todavía no hay negocios disponibles.</div>'}
+${barraCarrito()}`;
+$$('[data-n]').forEach(d => d.onclick = () => location.hash = '#/n/' + d.dataset.n);
+}
+
+async function negocio(id) {
+const n = S.neg && S.neg.id === id ? S.neg : (S.neg = await api('r_dlv_pub_negocio', { id }));
+const completa = S.ini.config.imagenes_completas ? 'completa' : '';
+const enCarrito = pid => (S.carrito.negocio_id === id && S.carrito.items.find(i => i.producto_id === pid) || {}).cantidad || 0;
+const grupos = [...n.menu.map(c => ({ c, ps: n.productos.filter(p => p.menu_cat_id === c.id) })), { c: null, ps: n.productos.filter(p => !n.menu.some(c => c.id === p.menu_cat_id)) }].filter(g => g.ps.length);
+const pintar = () => {
+app.innerHTML = `<div class="port" ${n.portada ? `style="background-image:url('${esc(n.portada)}')"` : ''}></div><div class="cab">${n.logo ? `<img class="lg" src="${esc(n.logo)}">` : '<div class="lg">🏪</div>'}<div><h1 style="margin:0">${esc(n.nombre)}</h1></div></div>
+<div style="padding:8px 2px"><small style="color:var(--su)">${esc(n.descripcion || '')}</small><br><span class="tag">⏱ ${n.tiempo_prep || 20}-${(n.tiempo_prep || 20) + 15} min</span> ${+n.pedido_minimo ? `<span class="tag">Mín. ${pesos(n.pedido_minimo)}</span>` : ''} ${n.retiro_local ? '<span class="tag">Retiro en local</span>' : ''} ${n.abierto ? '' : '<span class="tag ro">Cerrado ahora</span>'}</div>
+${S.ini.config.modo_catalogo !== 'uninegocio' ? '<p><a href="#/">← Volver a negocios</a></p>' : ''}
+${grupos.map(g => `<h2>${esc(g.c ? g.c.nombre : 'Productos')}</h2><div>${g.ps.map(p => { const q = enCarrito(p.id); const pr = +p.precio_promo || +p.precio; return `<div class="prod ${completa}"><div class="t"><b>${esc(p.nombre)}</b><small>${esc(p.descripcion || '')}</small><div style="margin-top:4px">${+p.precio_promo ? `<s style="color:var(--su)">${pesos(p.precio)}</s> ` : ''}<b>${pesos(pr)}</b></div></div>${p.imagen ? `<img src="${esc(p.imagen)}">` : ''}<div class="qty">${q ? `<button data-m="${p.id}">−</button><b>${q}</b>` : ''}<button class="mas" data-p="${p.id}" ${n.abierto ? '' : 'disabled'}>+</button></div></div>`; }).join('')}</div>`).join('') || '<div class="vacio"><div>🍽</div>Este negocio todavía no cargó su menú.</div>'}
+${barraCarrito()}`;
+$$('[data-p]').forEach(b => b.onclick = async () => {
+const p = n.productos.find(x => x.id === +b.dataset.p);
+if (S.carrito.negocio_id && S.carrito.negocio_id !== id && S.carrito.items.length) { if (!confirm('Tu pedido tiene productos de otro negocio. ¿Vaciarlo y empezar uno nuevo?')) return; S.carrito = { negocio_id: id, items: [] }; }
+S.carrito.negocio_id = id; S.carrito.negocio = n.nombre;
+const it = S.carrito.items.find(i => i.producto_id === p.id); if (it) it.cantidad++; else S.carrito.items.push({ producto_id: p.id, nombre: p.nombre, precio: +p.precio_promo || +p.precio, cantidad: 1, notas: '' });
+guardarCarrito(); pintar();
+});
+$$('[data-m]').forEach(b => b.onclick = () => { const it = S.carrito.items.find(i => i.producto_id === +b.dataset.m); if (it && --it.cantidad <= 0) S.carrito.items = S.carrito.items.filter(i => i !== it); guardarCarrito(); pintar(); });
+};
+pintar();
+}
+
+// selector de dirección: buscador + mapa
+function selectorDir(cont, v, ph, alCambiar) {
+cont.innerHTML = `<div style="position:relative"><input placeholder="${esc(ph)}" value="${esc(v.dir || '')}" autocomplete="off"><div class="sug" style="display:none"></div></div><div class="mapa"></div><small style="color:var(--su)">Buscá la dirección o tocá el mapa para marcar el punto exacto. <a href="#" class="gps">Usar mi ubicación</a></small>`;
+const inp = $('input', cont), sug = $('.sug', cont); let mk = null;
+const m = mapa($('.mapa', cont), v.lat, v.lng, v.lat ? 16 : 14);
+const poner = (lat, lng, centrar) => { v.lat = lat; v.lng = lng; if (!mk) { mk = L.marker([lat, lng], { draggable: true }).addTo(m); mk.on('dragend', e => { const p = e.target.getLatLng(); poner(p.lat, p.lng); inversa(p.lat, p.lng); }); } else mk.setLatLng([lat, lng]); if (centrar) m.setView([lat, lng], 17); alCambiar && alCambiar(); };
+const inversa = async (lat, lng) => { try { const r = await RODAR.geoInversa(lat, lng); v.dir = r.direccion + (r.localidad ? ', ' + r.localidad : ''); inp.value = v.dir; if (r.sinAltura) toast('Agregá la altura (número) de la calle'); alCambiar && alCambiar(); } catch { } };
+if (v.lat) poner(v.lat, v.lng);
+m.on('click', e => { poner(e.latlng.lat, e.latlng.lng); inversa(e.latlng.lat, e.latlng.lng); });
+setTimeout(() => m.invalidateSize(), 200);
+$('.gps', cont).onclick = e => { e.preventDefault(); navigator.geolocation && navigator.geolocation.getCurrentPosition(p => { poner(p.coords.latitude, p.coords.longitude, true); inversa(p.coords.latitude, p.coords.longitude); }, () => toast('No pudimos obtener tu ubicación')); };
+let tm; inp.oninput = () => { v.dir = inp.value; clearTimeout(tm); tm = setTimeout(async () => {
+const q = inp.value.trim(); if (q.length < 3) return sug.style.display = 'none';
+let r = []; try { r = await RODAR.geoBuscar(q); } catch { }
+sug.innerHTML = r.slice(0, 6).map((x, i) => `<a href="#" data-i="${i}">${esc(x.direccion)} <small style="color:var(--su)">${esc(x.localidad || '')}</small></a>`).join('') || '<a>Sin resultados</a>'; sug.style.display = 'block';
+$$('a[data-i]', sug).forEach(a => a.onclick = e => { e.preventDefault(); const x = r[+a.dataset.i]; v.dir = x.direccion + (x.localidad ? ', ' + x.localidad : ''); inp.value = v.dir; sug.style.display = 'none'; poner(x.lat, x.lng, true); });
+}, 350); };
+inp.onblur = () => setTimeout(() => sug.style.display = 'none', 250);
+}
+
+async function carrito() {
+const c = S.carrito;
+if (!c.items.length) { app.innerHTML = '<div class="vacio"><div>🛒</div>Tu pedido está vacío.<br><br><a class="btn" href="#/">Ver negocios</a></div>'; return; }
+const n = S.neg && S.neg.id === c.negocio_id ? S.neg : (S.neg = await api('r_dlv_pub_negocio', { id: c.negocio_id }));
+const cfg = S.ini.config, cli = S.ini.cliente;
+const datos = J('dlv_cliente', {});
+const st = { tipo_entrega: 'entrega', dir: { dir: datos.dir || '', lat: datos.lat, lng: datos.lng }, propina_pct: 0, propina: null, medio: 'efectivo', usar_saldo: false, cot: null };
+app.innerHTML = `<p><a href="#/n/${n.id}">← Seguir agregando en ${esc(n.nombre)}</a></p><h1>Tu pedido</h1>
+<div class="card" id="items"></div>
+${n.retiro_local ? '<div class="seg" id="seg"><button data-v="entrega" class="on">🛵 Envío</button><button data-v="retiro">🏪 Retiro en el local</button></div>' : ''}
+<div class="card" id="cdir"><b>¿Dónde lo llevamos?</b><div id="dir" style="margin-top:8px"></div><div class="campo" style="margin-top:8px"><label>Referencia (depto, timbre, entre calles)</label><input id="ref" value="${esc(datos.ref || '')}"></div></div>
+<div class="card"><div class="campo"><label>Tu nombre</label><input id="nom" value="${esc(datos.nombre || (cli && cli.nombre) || '')}"></div><div class="campo"><label>Tu teléfono</label><input id="tel" inputmode="tel" value="${esc(datos.tel || (cli && cli.telefono) || '')}"></div></div>
+<div class="card"><b>Forma de pago</b><div class="seg" id="med" style="margin-top:8px"><button data-v="efectivo" class="on">💵 Efectivo</button><button data-v="transferencia">🏦 Transferencia</button></div><div class="campo" id="cpaga"><label>¿Con cuánto pagás? (opcional, para el vuelto)</label><input id="paga" type="number" inputmode="numeric"></div>
+${cfg.pagar_con_saldo && cli && +cli.saldo > 0 ? `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="saldo" style="width:auto"> Usar mi saldo (${pesos(cli.saldo)})</label>` : ''}</div>
+${cfg.propina_tipo !== 'ninguna' && (cfg.propina_opciones || []).length ? `<div class="card"><b>Propina para el repartidor</b><div class="chips" id="prop" style="margin-top:8px"><button class="chip on" data-v="0">Sin propina</button>${cfg.propina_opciones.map(v => `<button class="chip" data-v="${v}">${cfg.propina_tipo === 'monto' ? pesos(v) : v + '%'}</button>`).join('')}</div></div>` : ''}
+<div class="card"><div class="campo"><label>Notas para el comercio (opcional)</label><textarea id="notas"></textarea></div></div>
+<div class="card" id="tot"></div><div id="err"></div>
+<button class="btn full" id="conf" style="padding:16px;font-size:17px;background:var(--ve)">Confirmar pedido</button>`;
+const pintarItems = () => { $('#items').innerHTML = c.items.map((i, k) => `<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f4f5"><div style="flex:1"><b>${esc(i.nombre)}</b><br><small style="color:var(--su)">${pesos(i.precio)} c/u</small><input placeholder="Aclaraciones (sin cebolla…)" data-no="${k}" value="${esc(i.notas || '')}" style="margin-top:4px;padding:6px 8px;font-size:13px"></div><div class="qty"><button data-me="${k}">−</button><b>${i.cantidad}</b><button class="mas" data-ma="${k}">+</button></div></div>`).join('');
+$$('[data-me]').forEach(b => b.onclick = () => { const i = c.items[+b.dataset.me]; if (--i.cantidad <= 0) c.items.splice(+b.dataset.me, 1); guardarCarrito(); if (!c.items.length) return carrito(); pintarItems(); cotizar(); });
+$$('[data-ma]').forEach(b => b.onclick = () => { c.items[+b.dataset.ma].cantidad++; guardarCarrito(); pintarItems(); cotizar(); });
+$$('[data-no]').forEach(i => i.onchange = () => { c.items[+i.dataset.no].notas = i.value; guardarCarrito(); }); };
+pintarItems();
+let tc;
+const cotizar = () => { clearTimeout(tc); tc = setTimeout(async () => {
+let met = null, min = null;
+if (st.tipo_entrega === 'entrega' && st.dir.lat && n.lat) { const r = await RODAR.ruta({ lat: n.lat, lng: n.lng }, { lat: st.dir.lat, lng: st.dir.lng }).catch(() => null); if (r) { met = Math.round(r.metros); min = Math.round(r.minutos); } }
+try {
+st.cot = await api('r_dlv_pub_cotizar', {}, { negocio_id: n.id, items: c.items, tipo_entrega: st.tipo_entrega, entrega_lat: st.dir.lat, entrega_lng: st.dir.lng, metros: met, minutos: min, propina: st.propina, propina_pct: st.propina_pct });
+st.cot.metros_ruta = met; st.cot.minutos_ruta = min;
+const q = st.cot, saldo = st.usar_saldo && cli ? Math.min(+cli.saldo, q.total) : 0;
+$('#tot').innerHTML = `<div class="f"><span>Productos</span><span>${pesos(q.subtotal)}</span></div>${st.tipo_entrega === 'entrega' ? `<div class="f"><span>Envío${q.metros ? ` (${(q.metros / 1000).toFixed(1)} km)` : ''}</span><span>${st.dir.lat ? pesos(q.envio) : 'Elegí la dirección'}</span></div>` : ''}${+q.service_fee ? `<div class="f"><span>Tarifa de servicio</span><span>${pesos(q.service_fee)}</span></div>` : ''}${+q.propina ? `<div class="f"><span>Propina</span><span>${pesos(q.propina)}</span></div>` : ''}${saldo ? `<div class="f"><span>Saldo de tu billetera</span><span>− ${pesos(saldo)}</span></div>` : ''}<div class="f tot"><span>Total</span><span>${pesos(q.total - saldo)}</span></div>`;
+$('#err').innerHTML = (q.avisos || []).map(a => `<div class="aviso">${esc(a)}</div>`).join('');
+} catch (e) { $('#err').innerHTML = `<div class="aviso error">${esc(e.message)}</div>`; }
+}, 300); };
+selectorDir($('#dir'), st.dir, 'Calle y número', cotizar);
+const seg = $('#seg'); if (seg) $$('button', seg).forEach(b => b.onclick = () => { $$('button', seg).forEach(x => x.classList.toggle('on', x === b)); st.tipo_entrega = b.dataset.v; $('#cdir').style.display = st.tipo_entrega === 'entrega' ? '' : 'none'; cotizar(); });
+$$('#med button').forEach(b => b.onclick = () => { $$('#med button').forEach(x => x.classList.toggle('on', x === b)); st.medio = b.dataset.v; $('#cpaga').style.display = st.medio === 'efectivo' ? '' : 'none'; });
+$$('#prop .chip').forEach(b => b.onclick = () => { $$('#prop .chip').forEach(x => x.classList.toggle('on', x === b)); if (cfg.propina_tipo === 'monto') { st.propina = +b.dataset.v; st.propina_pct = 0; } else { st.propina = null; st.propina_pct = +b.dataset.v; } cotizar(); });
+const sc = $('#saldo'); if (sc) sc.onchange = () => { st.usar_saldo = sc.checked; cotizar(); };
+cotizar();
+$('#conf').onclick = async () => {
+const b = $('#conf'); b.disabled = true;
+try {
+const nom = $('#nom').value.trim(), tel = $('#tel').value.trim();
+if (!nom || !tel) throw new Error('Completá tu nombre y teléfono');
+if (st.tipo_entrega === 'entrega' && (!st.dir.dir || !st.dir.lat)) throw new Error('Elegí la dirección de entrega en el buscador o en el mapa');
+LS.set('dlv_cliente', JSON.stringify({ nombre: nom, tel, dir: st.dir.dir, lat: st.dir.lat, lng: st.dir.lng, ref: $('#ref').value }));
+const r = await api('r_dlv_pub_pedido', {}, { tipo: 'app', negocio_id: n.id, items: c.items, tipo_entrega: st.tipo_entrega, entrega_dir: st.tipo_entrega === 'entrega' ? st.dir.dir : null, entrega_lat: st.dir.lat, entrega_lng: st.dir.lng, entrega_ref: $('#ref').value, metros: st.cot && st.cot.metros_ruta, minutos: st.cot && st.cot.minutos_ruta,
+cliente_nombre: nom, cliente_tel: tel, medio_pago: st.medio, paga_con: st.medio === 'efectivo' ? $('#paga').value || null : null, propina: st.propina, propina_pct: st.propina_pct, notas: $('#notas').value, usar_saldo: st.usar_saldo });
+const mis = J('dlv_pedidos', []); mis.unshift({ id: r.id, k: r.k, codigo: r.codigo, negocio: n.nombre, fecha: new Date().toISOString() }); LS.set('dlv_pedidos', JSON.stringify(mis.slice(0, 30)));
+S.carrito = { negocio_id: null, items: [] }; guardarCarrito(); S.ini = null;
+location.hash = `#/seguir/${r.id}/${r.k}`;
+} catch (e) { $('#err').innerHTML = `<div class="aviso error">${esc(e.message)}</div>`; b.disabled = false; }
+};
+}
+
+async function enviar() {
+const cfg = S.ini.config; if (!cfg.directo_activo) { location.hash = '#/'; return; }
+const datos = J('dlv_cliente', {});
+const st = { o: { dir: '' }, d: { dir: datos.dir || '', lat: datos.lat, lng: datos.lng }, cot: null };
+app.innerHTML = `<p><a href="#/">← Volver</a></p><h1>📦 ${esc(textoDirecto())}</h1>
+<div class="card"><b>¿Dónde lo retiramos?</b><div id="o" style="margin-top:8px"></div></div>
+<div class="card"><b>¿Dónde lo entregamos?</b><div id="d" style="margin-top:8px"></div><div class="campo" style="margin-top:8px"><label>Referencia</label><input id="ref"></div></div>
+<div class="card"><div class="campo"><label>¿Qué enviás? / indicaciones</label><textarea id="notas" placeholder="Ej.: un sobre, preguntar por Juan"></textarea></div><div class="campo"><label>Tu nombre</label><input id="nom" value="${esc(datos.nombre || '')}"></div><div class="campo"><label>Tu teléfono</label><input id="tel" value="${esc(datos.tel || '')}"></div>
+<div class="seg" id="med"><button data-v="efectivo" class="on">💵 Efectivo</button><button data-v="transferencia">🏦 Transferencia</button></div></div>
+<div class="card" id="tot"><small style="color:var(--su)">Marcá los dos puntos para ver el precio.</small></div><div id="err"></div><button class="btn full" id="conf" style="padding:16px;background:var(--ve)">Pedir repartidor</button>`;
+let medio = 'efectivo', tc;
+$$('#med button').forEach(b => b.onclick = () => { $$('#med button').forEach(x => x.classList.toggle('on', x === b)); medio = b.dataset.v; });
+const cot = () => { clearTimeout(tc); tc = setTimeout(async () => { if (!st.o.lat || !st.d.lat) return; let met = null, min = null; const r = await RODAR.ruta(st.o, st.d).catch(() => null); if (r) { met = Math.round(r.metros); min = Math.round(r.minutos); }
+try { st.cot = await api('r_dlv_pub_cotizar', {}, { tipo: 'directo', recogida_lat: st.o.lat, recogida_lng: st.o.lng, entrega_lat: st.d.lat, entrega_lng: st.d.lng, metros: met, minutos: min }); st.cot.mr = met; st.cot.mm = min;
+$('#tot').innerHTML = `<div class="f"><span>Envío${st.cot.metros ? ` (${(st.cot.metros / 1000).toFixed(1)} km)` : ''}</span><span>${pesos(st.cot.envio)}</span></div>${+st.cot.service_fee ? `<div class="f"><span>Tarifa de servicio</span><span>${pesos(st.cot.service_fee)}</span></div>` : ''}<div class="f tot"><span>Total</span><span>${pesos(st.cot.total)}</span></div>`; } catch (e) { $('#err').innerHTML = `<div class="aviso error">${esc(e.message)}</div>`; } }, 300); };
+selectorDir($('#o'), st.o, 'Dirección de retiro', cot); selectorDir($('#d'), st.d, 'Dirección de entrega', cot);
+$('#conf').onclick = async () => { const b = $('#conf'); b.disabled = true;
+try { const nom = $('#nom').value.trim(), tel = $('#tel').value.trim(); if (!nom || !tel) throw new Error('Completá tu nombre y teléfono'); if (!st.o.lat || !st.d.lat) throw new Error('Marcá en el mapa el retiro y la entrega');
+LS.set('dlv_cliente', JSON.stringify({ ...datos, nombre: nom, tel }));
+const r = await api('r_dlv_pub_pedido', {}, { tipo: 'directo', recogida_dir: st.o.dir, recogida_lat: st.o.lat, recogida_lng: st.o.lng, entrega_dir: st.d.dir, entrega_lat: st.d.lat, entrega_lng: st.d.lng, entrega_ref: $('#ref').value, metros: st.cot && st.cot.mr, minutos: st.cot && st.cot.mm, cliente_nombre: nom, cliente_tel: tel, medio_pago: medio, notas: $('#notas').value });
+const mis = J('dlv_pedidos', []); mis.unshift({ id: r.id, k: r.k, codigo: r.codigo, negocio: textoDirecto(), fecha: new Date().toISOString() }); LS.set('dlv_pedidos', JSON.stringify(mis.slice(0, 30)));
+location.hash = `#/seguir/${r.id}/${r.k}`;
+} catch (e) { $('#err').innerHTML = `<div class="aviso error">${esc(e.message)}</div>`; b.disabled = false; } };
+}
+
+async function seguir(id, k) {
+let m = null, mkR = null, primero = true;
+const pintar = async () => {
+let p; try { p = await api('r_dlv_pub_seguir', { id, k }); } catch (e) { app.innerHTML = `<div class="vacio"><div>🔎</div>${esc(e.message)}</div>`; clearInterval(S.timer); return; }
+const o = ORDEN[p.estado] ?? -1, fin = ['entregado', 'cancelado'].includes(p.estado);
+if (primero) {
+app.innerHTML = `<p><a href="#/pedidos">← Mis pedidos</a></p><h1>Pedido #${esc(p.codigo)}</h1><div class="card"><div id="est"></div><div id="map" class="mapa" style="height:240px"></div></div><div class="card" id="det"></div><div id="acc"></div>`;
+m = mapa($('#map'), p.entrega_lat || p.recogida_lat, p.entrega_lng || p.recogida_lng, 14);
+if (p.entrega_lat) L.marker([p.entrega_lat, p.entrega_lng], { title: 'Entrega' }).addTo(m).bindPopup('Entrega');
+if (p.recogida_lat) L.circleMarker([p.recogida_lat, p.recogida_lng], { radius: 8, color: '#e8892b' }).addTo(m).bindPopup(esc(p.negocio || 'Retiro'));
+setTimeout(() => m.invalidateSize(), 200);
+$('#det').innerHTML = `<b>${esc(p.negocio || textoDirecto())}</b>${p.negocio_tel ? ` · <a href="tel:${esc(p.negocio_tel)}">${esc(p.negocio_tel)}</a>` : ''}<div style="margin:8px 0">${(p.items || []).map(i => `<div class="f"><span>${i.cantidad} × ${esc(i.nombre)}</span><span>${pesos(i.subtotal)}</span></div>`).join('')}</div>
+${+p.envio ? `<div class="f"><span>Envío</span><span>${pesos(p.envio)}</span></div>` : ''}${+p.service_fee ? `<div class="f"><span>Servicio</span><span>${pesos(p.service_fee)}</span></div>` : ''}${+p.propina ? `<div class="f"><span>Propina</span><span>${pesos(p.propina)}</span></div>` : ''}${+p.saldo_usado ? `<div class="f"><span>Saldo usado</span><span>− ${pesos(p.saldo_usado)}</span></div>` : ''}<div class="f tot"><span>Total (${esc(p.medio_pago)})</span><span>${pesos(p.total)}</span></div>
+<small style="color:var(--su)">${p.tipo_entrega === 'retiro' ? 'Retirás en el local' : 'Entrega en ' + esc(p.entrega_dir || '')}</small>`;
+primero = false;
+}
+$('#est').innerHTML = `<h2 style="margin-top:0">${esc(EST[p.estado] || p.estado)}</h2>${p.estado === 'cancelado' ? `<div class="aviso error">${esc(p.motivo_cancelacion || 'El pedido fue cancelado')}</div>` : `<div class="pasos">${PASOS.filter(x => p.tipo_entrega === 'entrega' || x[0] !== 'en_camino').map(([e, l]) => `<div class="paso ${ORDEN[e] <= o ? 'on' : ''}">${l}</div>`).join('')}</div>`}
+${p.repartidor ? `<div>🛵 Tu repartidor: móvil <b>${esc(p.repartidor.movil)}</b> ${esc(p.repartidor.nombre || '')}</div>` : ''}${p.codigo_entrega && !fin ? `<div style="margin-top:8px">Código para el repartidor: <span class="codigo">${esc(p.codigo_entrega)}</span></div>` : ''}`;
+if (p.repartidor && p.repartidor.lat) { if (!mkR) mkR = L.marker([p.repartidor.lat, p.repartidor.lng], { icon: L.divIcon({ className: '', html: '<div style="font-size:26px">🛵</div>', iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(m); else mkR.setLatLng([p.repartidor.lat, p.repartidor.lng]); }
+$('#acc').innerHTML = p.puede_cancelar ? `<button class="btn sec full" id="canc">${p.cancela_directo ? 'Cancelar pedido' : 'Pedir cancelación'}</button>` : '';
+const cb = $('#canc'); if (cb) cb.onclick = async () => { const mot = S.ini.config.cancel_motivo ? prompt('¿Por qué querés cancelar?') : 'Cancelado por el cliente'; if (mot === null) return; try { await api('r_dlv_pub_cancelar', { id, k }, { motivo: mot || 'Cancelado por el cliente' }); toast('Listo'); pintar(); } catch (e) { toast(e.message); } };
+if (fin) clearInterval(S.timer);
+};
+await pintar();
+S.timer = setInterval(pintar, 6000);
+}
+
+function misPedidos() {
+const mis = J('dlv_pedidos', []);
+app.innerHTML = `<h1>Mis pedidos</h1>${mis.length ? mis.map(p => `<a class="neg" style="text-decoration:none;color:inherit" href="#/seguir/${p.id}/${p.k}"><div class="lg">🧾</div><div class="t"><b>#${esc(p.codigo)} · ${esc(p.negocio || '')}</b><small>${new Date(p.fecha).toLocaleString('es-AR')}</small></div><span>›</span></a>`).join('') : '<div class="vacio"><div>🧾</div>Todavía no hiciste pedidos desde este teléfono.</div>'}<p><a href="#/">← Volver a negocios</a></p>`;
+}
+
+if (!RODAR.listo) app.innerHTML = '<div class="vacio"><div>⚙️</div>Falta configurar la conexión (config.js).</div>'; else ruta();
+})();
+</script>
+</body>
+</html>

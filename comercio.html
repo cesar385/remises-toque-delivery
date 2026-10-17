@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#215181">
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<title>Remises TOQUE! · Portal de comercios</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+:root{--az:#215181;--ve:#2f9e57;--na:#e8892b;--ro:#d64545;--tx:#1d2a2b;--su:#6b7a7b;--bo:#e3e9ec;--fo:#f3f6f8}
+*{box-sizing:border-box}body{margin:0;background:var(--fo);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px}
+button{font:inherit;cursor:pointer}input,select,textarea{font:inherit;width:100%;padding:10px 12px;border:1px solid var(--bo);border-radius:10px;background:#fff}textarea{min-height:60px}
+header{position:sticky;top:0;z-index:500;background:var(--az);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}header img{height:32px}header .sp{flex:1}header b{font-size:15px}
+header button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:18px;padding:6px 12px}
+nav{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--bo);overflow-x:auto;position:sticky;top:52px;z-index:400}nav button{border:0;background:none;padding:12px 14px;color:var(--su);border-bottom:3px solid transparent;white-space:nowrap}nav button.on{color:var(--az);border-color:var(--az);font-weight:700}
+main{max-width:980px;margin:0 auto;padding:14px}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--az);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:600}.btn.ve{background:var(--ve)}.btn.ro{background:var(--ro)}.btn.sec{background:#fff;color:var(--az);border:1px solid var(--az)}.btn.ch{padding:7px 10px;font-size:13px}.btn:disabled{opacity:.6}
+.card{background:#fff;border:1px solid var(--bo);border-radius:14px;padding:14px;margin-bottom:12px}
+.peds{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}.ped{background:#fff;border:1px solid var(--bo);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px}.ped.nuevo{border:2px solid var(--na);box-shadow:0 0 0 4px #e8892b22}
+.ped .top{display:flex;justify-content:space-between;align-items:center}.ped small{color:var(--su)}.ped .acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pill{display:inline-block;border-radius:12px;padding:2px 9px;font-size:12px;font-weight:700}.f{display:flex;justify-content:space-between;font-size:14px}
+.cod{font-family:monospace;font-size:20px;font-weight:800;letter-spacing:3px;background:#eef3f8;border-radius:8px;padding:2px 8px}
+.login{max-width:380px;margin:60px auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.08)}.login img{display:block;width:200px;margin:0 auto 10px}
+.campo{margin-bottom:10px}.campo label{display:block;font-size:13px;color:var(--su);margin-bottom:4px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:600px){.g2{grid-template-columns:1fr}}
+.prod{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f1f4f5}.prod .t{flex:1}.prod img{width:48px;height:48px;border-radius:8px;object-fit:cover}
+.sw{position:relative;display:inline-block;width:42px;height:24px}.sw input{opacity:0;width:0;height:0}.sw span{position:absolute;inset:0;background:#c9d3d6;border-radius:24px;cursor:pointer}.sw span:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}.sw input:checked+span{background:var(--ve)}.sw input:checked+span:before{transform:translateX(18px)}
+.err{background:#fdecec;color:#9b1c1c;border-radius:10px;padding:10px;margin:8px 0;display:none}.vacio{text-align:center;color:var(--su);padding:30px}
+.modal-f{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;display:grid;place-items:center;padding:12px}.modal{background:#fff;border-radius:16px;max-width:620px;width:100%;max-height:92vh;overflow:auto;padding:18px}
+.mapa{height:220px;border-radius:10px;border:1px solid var(--bo);margin-top:6px}.sug{position:absolute;z-index:1100;left:0;right:0;background:#fff;border:1px solid var(--bo);border-radius:10px;max-height:220px;overflow:auto}.sug a{display:block;padding:8px 10px;cursor:pointer;border-bottom:1px solid #f1f4f5}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d2a2b;color:#fff;padding:10px 16px;border-radius:10px;z-index:2000;display:none}
+table{width:100%;border-collapse:collapse}td,th{padding:8px 6px;border-bottom:1px solid #f1f4f5;text-align:left;font-size:14px}
+</style>
+</head>
+<body>
+<div id="raiz"></div><div id="toast"></div>
+<script src="config.js"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/backend.js"></script>
+<script>
+(function () {
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pesos = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+const hora = s => s ? String(s).slice(11, 16) : '';
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } }, del: k => { try { localStorage.removeItem(k); } catch { } } };
+const toast = m => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', 3500); };
+const raiz = $('#raiz');
+const api = async (fn, q, b) => { try { return await RODAR.rpc(fn, LS.get('dlv_com_token'), q || {}, b || {}); } catch (e) { if (e.status === 401) { LS.del('dlv_com_token'); login(); } throw e; } };
+const EST = { pendiente: ['Nuevo', '#e8892b'], confirmado: ['Aceptado', '#2f6fd6'], preparando: ['Preparando', '#7a4fd6'], listo: ['Listo', '#0e9aa7'], recogido: ['Recogido', '#215181'], en_camino: ['En camino', '#215181'], cancelacion_solicitada: ['Cancelación solicitada', '#b0003a'], entregado: ['Entregado', '#2f9e57'], cancelado: ['Cancelado', '#8b9899'] };
+const pill = e => { const x = EST[e] || [e, '#888']; return `<span class="pill" style="background:${x[1]}22;color:${x[1]}">${x[0]}</span>`; };
+const S = { d: null, tab: 'pedidos', vistos: new Set(JSON.parse(LS.get('dlv_com_vistos') || '[]')), timer: null };
+function modal(html, alAbrir) { const f = document.createElement('div'); f.className = 'modal-f'; f.innerHTML = `<div class="modal">${html}</div>`; f.onclick = e => { if (e.target === f) f.remove(); }; document.body.append(f); alAbrir && alAbrir(f); return f; }
+function sonar() { try { const a = new AudioContext(); [0, .25, .5].forEach(t => { const o = a.createOscillator(); o.frequency.value = 880; o.connect(a.destination); o.start(a.currentTime + t); o.stop(a.currentTime + t + .15); }); setTimeout(() => a.close(), 1200); } catch { } }
+
+function login() {
+clearInterval(S.timer);
+raiz.innerHTML = `<form class="login"><img src="img/logo.png" alt="Remises TOQUE!"><h2 style="text-align:center;margin:6px 0 2px">Portal de comercios</h2><p style="text-align:center;color:var(--su);margin:0 0 16px">Entrá con el correo y la contraseña que te dio la central.</p>
+<div class="campo"><label>Correo</label><input name="email" type="email" autocomplete="username" required></div><div class="campo"><label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required></div><div class="err" id="e"></div>
+<button class="btn" style="width:100%;justify-content:center">Ingresar</button><p style="text-align:center"><a href="index.html">Página principal</a></p></form>`;
+$('form').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target);
+try { const r = await RODAR.rpc('r_dlv_com_login', null, {}, { email: f.get('email'), password: f.get('password') }); LS.set('dlv_com_token', r.token); iniciar(); }
+catch (er) { const x = $('#e'); x.textContent = er.message; x.style.display = 'block'; } };
+}
+
+async function iniciar() {
+try { S.d = await api('r_dlv_com_inicio'); } catch (e) { if (e.status !== 401) raiz.innerHTML = `<div class="vacio">${esc(e.message)}<br><button class="btn" onclick="location.reload()">Reintentar</button></div>`; return; }
+const n = S.d.negocio, c = S.d.config;
+raiz.innerHTML = `<header><img src="img/logo-blanco.png" alt=""><b>${esc(n.nombre)}</b><span class="sp"></span><span id="ab" style="font-size:13px"></span><button id="salir">Salir</button></header>
+<nav>${[['pedidos', 'Pedidos'], ['historial', 'Historial'], ...(c.solicitar_repartidor ? [['repartidor', 'Solicitar repartidor']] : []), ['menu', 'Menú'], ['saldo', 'Saldo'], ['perfil', 'Mi negocio']].map(([k, l]) => `<button data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav><main id="m"></main>`;
+$('#salir').onclick = async () => { try { await api('r_dlv_com_logout'); } catch { } LS.del('dlv_com_token'); login(); };
+$$('nav button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; $$('nav button').forEach(x => x.classList.toggle('on', x === b)); pintar(); });
+pintar();
+clearInterval(S.timer); S.timer = setInterval(refrescar, 8000);
+}
+async function refrescar() {
+try { const d = await api('r_dlv_com_inicio'); const nuevos = d.pedidos.filter(p => p.estado === 'pendiente' && !S.vistos.has(p.id)); S.d = d; if (nuevos.length) { sonar(); toast('¡Pedido nuevo! #' + nuevos[0].codigo); } if (['pedidos', 'historial', 'saldo'].includes(S.tab)) pintar(); } catch { }
+}
+function pintar() {
+const m = $('#m'); const n = S.d.negocio, c = S.d.config;
+$('#ab').textContent = n.abierto ? '🟢 Abierto' : '⚪ Cerrado';
+if (S.tab === 'pedidos' || S.tab === 'historial') {
+const act = S.tab === 'pedidos';
+const lista = S.d.pedidos.filter(p => act ? !['entregado', 'cancelado'].includes(p.estado) : ['entregado', 'cancelado'].includes(p.estado));
+m.innerHTML = lista.length ? `<div class="peds">${lista.map(tarjeta).join('')}</div>` : `<div class="vacio">${act ? '🕐 No hay pedidos en curso. Esta pantalla se actualiza sola y suena cuando entra uno nuevo.' : 'Sin pedidos en los últimos 2 días.'}</div>`;
+$$('[data-a]', m).forEach(b => b.onclick = () => accion(+b.dataset.id, b.dataset.a));
+$$('[data-ver]', m).forEach(b => b.onclick = () => comanda(S.d.pedidos.find(p => p.id === +b.dataset.ver)));
+$$('[data-link]', m).forEach(b => b.onclick = () => { const p = S.d.pedidos.find(x => x.id === +b.dataset.link); const u = new URL(`delivery.html#/seguir/${p.id}/${p.k}`, location.href).href; const txt = `Seguí tu pedido #${p.codigo} en vivo: ${u}`; if (navigator.share) navigator.share({ text: txt }).catch(() => { }); else window.open('https://wa.me/' + String(p.cliente_tel || '').replace(/\D/g, '') + '?text=' + encodeURIComponent(txt)); });
+lista.filter(p => p.estado === 'pendiente').forEach(p => S.vistos.add(p.id)); LS.set('dlv_com_vistos', JSON.stringify([...S.vistos].slice(-200)));
+} else if (S.tab === 'repartidor') express(m);
+else if (S.tab === 'menu') menu(m);
+else if (S.tab === 'saldo') m.innerHTML = `<div class="card"><h3 style="margin-top:0">Saldo: <span style="color:${n.saldo < 0 ? 'var(--ro)' : 'var(--ve)'}">${pesos(n.saldo)}</span></h3><small style="color:var(--su)">Positivo: la central te debe ese monto. Negativo: adeudás envíos o comisiones.</small>
+<table style="margin-top:10px"><tr><th>Fecha</th><th>Detalle</th><th style="text-align:right">Monto</th></tr>${S.d.movimientos.map(x => `<tr><td>${esc(String(x.fecha).slice(0, 16))}</td><td>${esc(x.detalle || x.tipo)}</td><td style="text-align:right;color:${x.monto < 0 ? 'var(--ro)' : 'var(--ve)'}">${pesos(x.monto)}</td></tr>`).join('') || '<tr><td colspan="3" class="vacio">Sin movimientos</td></tr>'}</table></div>`;
+else if (S.tab === 'perfil') perfil(m);
+}
+function tarjeta(p) {
+const c = S.d.config, nuevo = p.estado === 'pendiente';
+const b = (a, t, cl = '') => `<button class="btn ch ${cl}" data-a="${a}" data-id="${p.id}">${t}</button>`;
+let acc = '';
+if (p.estado === 'pendiente') acc = b('aceptar', '✓ Aceptar', 've') + b('rechazar', 'Rechazar', 'ro');
+else if (p.estado === 'confirmado') acc = b('preparando', '🍳 Preparando') + b('listo', '📦 Listo', 've');
+else if (p.estado === 'preparando') acc = b('listo', '📦 Listo', 've');
+else if (p.estado === 'listo' && p.tipo_entrega === 'retiro') acc = b('entregado', '✓ Entregado', 've');
+if (!['entregado', 'cancelado', 'cancelacion_solicitada', 'pendiente'].includes(p.estado)) acc += b('cancelar', c.cancel_comercio ? 'Cancelar' : 'Pedir cancelación', 'sec');
+if (p.medio_pago === 'transferencia' && !p.pagado && !['cancelado'].includes(p.estado)) acc += b('pagado', '✓ Transferencia recibida', 'sec');
+if (c.comercio_efectivo && p.medio_pago === 'efectivo' && !p.efectivo_recibido && p.estado === 'entregado') acc += b('efectivo', '💵 Efectivo recibido', 'sec');
+if (p.devolucion_pendiente) acc += b('devuelto', '↩ Mercadería devuelta', 'sec');
+return `<div class="ped ${nuevo ? 'nuevo' : ''}"><div class="top"><b>#${esc(p.codigo)}</b>${pill(p.estado)}</div><small>${hora(p.creado)} · ${p.tipo === 'express' ? 'Express' : 'App'} · ${p.tipo_entrega === 'retiro' ? 'Retira en el local' : 'Envío'}</small>
+<div>${(p.items || []).map(i => `<div class="f"><span>${i.cantidad} × ${esc(i.nombre)}${i.notas ? ` <small>(${esc(i.notas)})</small>` : ''}</span><span>${pesos(i.subtotal)}</span></div>`).join('') || `<div class="f"><span>Monto del pedido</span><span>${pesos(p.subtotal)}</span></div>`}</div>
+<div class="f"><b>Tus productos</b><b>${pesos(p.subtotal)}</b></div><small>${esc(p.cliente_nombre || '')} ${esc(p.cliente_tel || '')} · ${esc(p.medio_pago)}${p.pagado ? ' ✅' : ''}${p.notas ? '<br>📝 ' + esc(p.notas) : ''}</small>
+${p.movil_numero ? `<small>🛵 Repartidor: móvil <b>${p.movil_numero}</b> ${esc(p.conductor || '')}</small>` : p.buscando_desde && !['entregado', 'cancelado'].includes(p.estado) ? '<small style="color:var(--na)">Buscando repartidor…</small>' : ''}
+${p.codigo_recoleccion && c.codigo_recoleccion && !['entregado', 'cancelado'].includes(p.estado) && p.tipo_entrega === 'entrega' ? `<div>Código para el repartidor: <span class="cod">${esc(p.codigo_recoleccion)}</span></div>` : ''}
+${p.devolucion_pendiente ? '<small style="color:var(--ro)">Devolución pendiente: pedile al repartidor el código de devolución.</small>' : ''}
+<div class="acc">${acc}<button class="btn ch sec" data-ver="${p.id}">🖨 Comanda</button>${c.comercio_seguimiento && p.tipo_entrega === 'entrega' && !['entregado', 'cancelado'].includes(p.estado) ? `<button class="btn ch sec" data-link="${p.id}">🔗 Seguimiento</button>` : ''}</div></div>`;
+}
+async function accion(id, a) {
+const extra = {};
+if (a === 'rechazar' || a === 'cancelar') { const m = prompt('Motivo'); if (m === null) return; extra.motivo = m || null; }
+if (a === 'devuelto') { const c = prompt('Código de devolución que te da el repartidor'); if (c === null) return; extra.codigo = c; }
+try { await api('r_dlv_com_accion', {}, { id, accion: a, ...extra }); toast('Listo'); refrescar(); } catch (e) { toast(e.message); }
+}
+function comanda(p) {
+const w = window.open('', '_blank'); if (!w) return; const desg = S.d.config.comanda_desglose;
+w.document.write(`<!doctype html><meta charset="utf-8"><title>Comanda #${esc(p.codigo)}</title><style>body{font-family:monospace;max-width:300px;margin:10px auto;font-size:13px}h2{text-align:center;margin:4px}hr{border:0;border-top:1px dashed #000}.f{display:flex;justify-content:space-between}</style><h2>${esc(S.d.negocio.nombre)}</h2><div style="text-align:center">Pedido #${esc(p.codigo)} · ${hora(p.creado)}</div><hr>
+${(p.items || []).map(i => `<div class="f"><span>${i.cantidad} × ${esc(i.nombre)}</span><span>${pesos(i.subtotal)}</span></div>${i.notas ? `<div>  · ${esc(i.notas)}</div>` : ''}`).join('')}<hr><div class="f"><b>Subtotal</b><b>${pesos(p.subtotal)}</b></div>${desg ? `<div class="f"><span>Envío</span><span>${pesos(p.envio)}</span></div><div class="f"><span>Servicio</span><span>${pesos(p.service_fee)}</span></div><div class="f"><span>Propina</span><span>${pesos(p.propina)}</span></div><div class="f"><b>TOTAL</b><b>${pesos(p.total)}</b></div>` : ''}<hr><div>${esc(p.cliente_nombre || '')} ${esc(p.cliente_tel || '')}</div><div>${p.tipo_entrega === 'retiro' ? 'RETIRA EN EL LOCAL' : esc(p.entrega_dir || '')}</div>${p.notas ? `<div>Notas: ${esc(p.notas)}</div>` : ''}<script>print()<\/script>`);
+w.document.close();
+}
+
+function selectorDir(cont, v) {
+cont.innerHTML = `<div style="position:relative"><input placeholder="Dirección de entrega" autocomplete="off"><div class="sug" style="display:none"></div></div><div class="mapa"></div>`;
+const inp = $('input', cont), sug = $('.sug', cont); let mk;
+const e = S.d.negocio; const m = L.map($('.mapa', cont)).setView([e.lat || (S.d.empresa || {}).lat || -30.95, e.lng || (S.d.empresa || {}).lng || -58.78], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+const poner = (lat, lng, c) => { v.lat = lat; v.lng = lng; if (!mk) { mk = L.marker([lat, lng], { draggable: true }).addTo(m); mk.on('dragend', ev => { const p = ev.target.getLatLng(); v.lat = p.lat; v.lng = p.lng; }); } else mk.setLatLng([lat, lng]); if (c) m.setView([lat, lng], 17); };
+m.on('click', async ev => { poner(ev.latlng.lat, ev.latlng.lng); try { const r = await RODAR.geoInversa(ev.latlng.lat, ev.latlng.lng); v.dir = r.direccion; inp.value = r.direccion; } catch { } });
+setTimeout(() => m.invalidateSize(), 200);
+let tm; inp.oninput = () => { v.dir = inp.value; clearTimeout(tm); tm = setTimeout(async () => { const q = inp.value.trim(); if (q.length < 3) return sug.style.display = 'none'; let r = []; try { r = await RODAR.geoBuscar(q); } catch { }
+sug.innerHTML = r.slice(0, 6).map((x, i) => `<a data-i="${i}">${esc(x.direccion)} <small>${esc(x.localidad || '')}</small></a>`).join('') || '<a>Sin resultados</a>'; sug.style.display = 'block';
+$$('a[data-i]', sug).forEach(a => a.onclick = () => { const x = r[+a.dataset.i]; v.dir = x.direccion + (x.localidad ? ', ' + x.localidad : ''); inp.value = v.dir; sug.style.display = 'none'; poner(x.lat, x.lng, true); }); }, 350); };
+}
+function express(m) {
+const v = {};
+m.innerHTML = `<div class="card"><h3 style="margin-top:0">Solicitar repartidor</h3><p style="color:var(--su);margin-top:0">Para clientes que te pidieron por teléfono, WhatsApp o en el local.</p>
+<div class="g2"><div class="campo"><label>Nombre del cliente</label><input id="xn"></div><div class="campo"><label>Teléfono del cliente</label><input id="xt"></div></div>
+<div class="campo"><label>Dirección de entrega</label><div id="xd"></div></div><div class="campo"><label>Referencia</label><input id="xr"></div>
+<div class="g2"><div class="campo"><label>Tipo de entrega</label><select id="xc"><option value="entregar_cobrar">Entregar y cobrar (el repartidor cobra pedido + envío)</option><option value="solo_entrega">Solo entrega (ya está pago)</option></select></div><div class="campo"><label>Monto del pedido</label><input id="xm" type="number" value="0"></div>
+<div class="campo"><label>¿Con cuánto paga? (opcional)</label><input id="xp" type="number"></div><div class="campo"><label>Listo en (minutos)</label><input id="xl" type="number" value="15"></div></div>
+<div class="campo"><label>Notas</label><textarea id="xo"></textarea></div><div id="xq" style="margin:8px 0;font-weight:700"></div><div class="err" id="xe"></div>
+<button class="btn sec" id="xcot">Cotizar envío</button> <button class="btn ve" id="xok">Pedir repartidor</button></div>`;
+selectorDir($('#xd'), v);
+const datos = async () => { let met = null, min = null; const n = S.d.negocio; if (v.lat && n.lat) { const r = await RODAR.ruta({ lat: n.lat, lng: n.lng }, v).catch(() => null); if (r) { met = Math.round(r.metros); min = Math.round(r.minutos); } }
+return { cliente_nombre: $('#xn').value, cliente_tel: $('#xt').value, entrega_dir: v.dir, entrega_lat: v.lat, entrega_lng: v.lng, entrega_ref: $('#xr').value, cobro: $('#xc').value, monto: $('#xm').value, paga_con: $('#xp').value || null, tiempo_recoleccion: $('#xl').value, notas: $('#xo').value, metros: met, minutos: min, medio_pago: 'efectivo' }; };
+const err = t => { const e = $('#xe'); e.textContent = t || ''; e.style.display = t ? 'block' : 'none'; };
+$('#xcot').onclick = async () => { err(); try { const d = await datos(); const q = await api('r_dlv_com_express', { cotizar: 1 }, d); $('#xq').textContent = `Envío ${pesos(q.envio)}${q.metros ? ' · ' + (q.metros / 1000).toFixed(1) + ' km' : ''}${d.cobro === 'entregar_cobrar' ? ' · el repartidor cobra ' + pesos((+d.monto || 0) + q.envio) : ''}`; } catch (e) { err(e.message); } };
+$('#xok').onclick = async () => { err(); const b = $('#xok'); b.disabled = true; try { const d = await datos(); if (!d.entrega_dir || !d.entrega_lat) throw new Error('Marcá la dirección de entrega'); const r = await api('r_dlv_com_express', {}, d); toast('Pedido #' + r.codigo + ': buscando repartidor'); S.tab = 'pedidos'; iniciar(); } catch (e) { err(e.message); b.disabled = false; } };
+}
+function menu(m) {
+const d = S.d, aprob = d.config.aprob_menu;
+const cats = d.menu, sin = d.productos.filter(p => !cats.some(c => c.id === p.menu_cat_id));
+const fila = p => `<div class="prod">${p.imagen ? `<img src="${esc(p.imagen)}">` : ''}<div class="t"><b>${esc(p.nombre)}</b> ${!p.aprobado ? '<span class="pill" style="background:#fff3e0;color:#8a5200">por aprobar</span>' : ''}${p.cambio ? '<span class="pill" style="background:#fff3e0;color:#8a5200">cambio pendiente</span>' : ''}<br><small style="color:var(--su)">${pesos(p.precio_promo || p.precio)}${p.precio_promo ? ` <s>${pesos(p.precio)}</s>` : ''}</small></div><label class="sw" title="Disponible"><input type="checkbox" data-disp="${p.id}" ${p.disponible ? 'checked' : ''}><span></span></label><button class="btn ch sec" data-ed="${p.id}">Editar</button></div>`;
+m.innerHTML = `${aprob ? '<div class="card" style="background:#fff8ec">Los productos nuevos y los cambios de nombre o precio quedan pendientes hasta que la central los apruebe. La disponibilidad se cambia al instante.</div>' : ''}
+<div style="margin-bottom:10px"><button class="btn" id="np">+ Producto</button> <button class="btn sec" id="nc">+ Categoría</button></div>
+${cats.map(c => `<div class="card"><h3 style="margin:0 0 4px">${esc(c.nombre)} <button class="btn ch sec" data-ec="${c.id}">✎</button></h3>${d.productos.filter(p => p.menu_cat_id === c.id).map(fila).join('') || '<small style="color:var(--su)">Sin productos</small>'}</div>`).join('')}
+${sin.length || !cats.length ? `<div class="card"><h3 style="margin:0 0 4px">Sin categoría</h3>${sin.map(fila).join('') || '<small style="color:var(--su)">Sin productos</small>'}</div>` : ''}`;
+$$('[data-disp]', m).forEach(i => i.onchange = async () => { try { await api('r_dlv_com_producto', {}, { id: +i.dataset.disp, accion: 'disponible' }); toast('Disponibilidad actualizada'); } catch (e) { toast(e.message); } });
+$$('[data-ed]', m).forEach(b => b.onclick = () => editar(d.productos.find(p => p.id === +b.dataset.ed)));
+$('#np').onclick = () => editar({ disponible: true });
+const cat = async (c = {}) => { const nombre = prompt('Nombre de la categoría', c.nombre || ''); if (!nombre) return; await api('r_dlv_com_producto', {}, { accion: 'categoria', cat_id: c.id, nombre }); iniciar(); };
+$('#nc').onclick = () => cat(); $$('[data-ec]', m).forEach(b => b.onclick = () => cat(cats.find(c => c.id === +b.dataset.ec)));
+function editar(p) {
+modal(`<h3 style="margin-top:0">${p.id ? 'Editar producto' : 'Nuevo producto'}</h3><div class="campo"><label>Nombre</label><input id="pn" value="${esc(p.nombre || '')}"></div><div class="campo"><label>Descripción</label><textarea id="pd">${esc(p.descripcion || '')}</textarea></div>
+<div class="g2"><div class="campo"><label>Precio</label><input id="pp" type="number" value="${esc(p.precio ?? '')}"></div><div class="campo"><label>Precio promo (opcional)</label><input id="ppr" type="number" value="${esc(p.precio_promo ?? '')}"></div></div>
+<div class="campo"><label>Categoría</label><select id="pc"><option value="">Sin categoría</option>${cats.map(c => `<option value="${c.id}" ${c.id === p.menu_cat_id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></div><div class="campo"><label>Imagen</label><input id="pi" type="file" accept="image/*"></div>
+<div style="display:flex;gap:8px;justify-content:space-between"><span>${p.id ? '<button class="btn ro" id="pb">Eliminar</button>' : ''}</span><span><button class="btn sec" id="px">Cancelar</button> <button class="btn ve" id="pg">Guardar</button></span></div>`, f => {
+$('#px', f).onclick = () => f.remove();
+const pb = $('#pb', f); if (pb) pb.onclick = async () => { if (!confirm('¿Eliminar el producto?')) return; const r = await api('r_dlv_com_producto', {}, { id: p.id, accion: 'borrar' }); toast(r.pendiente ? 'Eliminación enviada para aprobación' : 'Producto eliminado'); f.remove(); iniciar(); };
+$('#pg', f).onclick = async () => { try { const b = { id: p.id, nombre: $('#pn', f).value, descripcion: $('#pd', f).value, precio: $('#pp', f).value, precio_promo: $('#ppr', f).value || null, menu_cat_id: $('#pc', f).value || null, disponible: p.disponible !== false };
+const fi = $('#pi', f).files[0]; if (fi) b.imagen = (await RODAR.archivoADataURL(fi)).archivo;
+const r = await api('r_dlv_com_producto', {}, b); toast(r.pendiente ? 'Enviado a la central para aprobación' : 'Producto guardado'); f.remove(); iniciar(); } catch (e) { toast(e.message); } };
+});
+}
+}
+function perfil(m) {
+const n = S.d.negocio, hor = n.horario || {}, DIAS = [[1, 'Lunes'], [2, 'Martes'], [3, 'Miércoles'], [4, 'Jueves'], [5, 'Viernes'], [6, 'Sábado'], [0, 'Domingo']];
+m.innerHTML = `${S.d.cambio_pendiente ? '<div class="card" style="background:#fff8ec">Tenés cambios enviados esperando la aprobación de la central.</div>' : ''}
+<div class="card"><h3 style="margin-top:0">Mi negocio</h3><div class="g2"><div class="campo"><label>Nombre</label><input id="nn" value="${esc(n.nombre)}"></div><div class="campo"><label>Teléfono</label><input id="nt" value="${esc(n.telefono || '')}"></div>
+<div class="campo"><label>Tiempo de preparación (min)</label><input id="np" type="number" value="${esc(n.tiempo_prep || '')}"></div><div class="campo"><label>Pedido mínimo</label><input id="nm" type="number" value="${esc(n.pedido_minimo || '')}"></div></div>
+<div class="campo"><label>Descripción</label><textarea id="nd">${esc(n.descripcion || '')}</textarea></div><label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="nr" style="width:auto" ${n.retiro_local ? 'checked' : ''}> Permitir retiro en el local</label>
+<div class="campo"><label>Logo</label><input id="nl" type="file" accept="image/*"></div>
+<h4>Horario (vacío = siempre abierto)</h4><table>${DIAS.map(([d, l]) => `<tr><td>${l}</td><td><input type="time" data-a="${d}" value="${(hor[d] || [])[0] || ''}" style="width:auto"> a <input type="time" data-b="${d}" value="${(hor[d] || [])[1] || ''}" style="width:auto"></td></tr>`).join('')}</table>
+<p><button class="btn ve" id="ng">Guardar</button></p></div>
+<div class="card"><h3 style="margin-top:0">Cambiar contraseña</h3><div class="g2"><div class="campo"><label>Actual</label><input id="pa" type="password"></div><div class="campo"><label>Nueva</label><input id="pn" type="password"></div></div><button class="btn sec" id="pg">Cambiar contraseña</button></div>`;
+$('#ng').onclick = async () => { const horario = {}; let alguno = false; DIAS.forEach(([d]) => { const a = $(`[data-a="${d}"]`).value, b = $(`[data-b="${d}"]`).value; if (a && b) { horario[d] = [a, b]; alguno = true; } });
+const b = { nombre: $('#nn').value, telefono: $('#nt').value, tiempo_prep: $('#np').value, pedido_minimo: $('#nm').value, descripcion: $('#nd').value, retiro_local: $('#nr').checked, horario: alguno ? horario : null };
+const fi = $('#nl').files[0]; if (fi) b.logo = (await RODAR.archivoADataURL(fi)).archivo;
+try { const r = await api('r_dlv_com_perfil', {}, b); toast(r.pendiente ? 'Cambios enviados a la central para aprobación' : 'Datos guardados'); iniciar(); } catch (e) { toast(e.message); } };
+$('#pg').onclick = async () => { try { await api('r_dlv_com_perfil', {}, { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); $('#pa').value = $('#pn').value = ''; } catch (e) { toast(e.message); } };
+}
+
+if (!RODAR.listo) raiz.innerHTML = '<div class="vacio">Falta configurar la conexión (config.js).</div>';
+else if (LS.get('dlv_com_token')) iniciar(); else login();
+})();
+</script>
+</body>
+</html>
