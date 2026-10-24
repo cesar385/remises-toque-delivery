@@ -43,9 +43,9 @@ const navOriginal = construirNav;
 construirNav = function () {
 navOriginal();
 if (!tiene('admin', 'gestion', 'operador')) return;
-const items = [{ tit: '🛍 Delivery' }, { t: 'Negocios', r: 'dlv-negocios' }, { t: 'Categorías', r: 'dlv-categorias' }, { t: 'Pedidos', r: 'dlv-pedidos' },
+const items = [{ tit: '🛍 Delivery' }, { t: 'Negocios', r: 'dlv-negocios' }, { t: 'Categorías', r: 'dlv-categorias' }, { t: 'Pedidos', r: 'dlv-pedidos' }, { t: 'Repartidores', r: 'dlv-repartidores' },
 { t: 'Cambios de menú', r: 'dlv-cambios', roles: ['admin'], si: 'aprob' }, { t: 'Pagos a comercios', r: 'dlv-pagos', roles: ['admin', 'gestion'], si: 'pagos_comercios' },
-{ tit: '⚙️ Ajustes' }, { t: 'Configuración de Delivery', r: 'dlv-configuracion', roles: ['admin'] }, { sep: 1 }, { t: 'Portal de comercios', a: () => window.open('comercio.html') }, { t: 'Pedido web de delivery', a: () => window.open('delivery.html') }];
+{ tit: '⚙️ Ajustes' }, { t: 'Configuración de Delivery', r: 'dlv-configuracion', roles: ['admin'] }, { sep: 1 }, { t: 'Portal de comercios', a: () => window.open('comercio.html') }, { t: 'Portal de repartidores', a: () => window.open('repartidor.html') }, { t: 'Pedido web de delivery', a: () => window.open('delivery.html') }];
 const it = h(`<div class="item" data-g="delivery"><button>${ICO_DLV}<span>Delivery</span></button><div class="dropdown"><div class="dd-cols"></div></div></div>`);
 const cols = $('.dd-cols', it);
 const pintar = () => {
@@ -307,6 +307,35 @@ const qi = $('#qi', f); if (qi) qi.onclick = () => { icono = null; $('#iv', f).i
 modal({ titulo: c.id ? 'Editar Categoría' : 'Nueva Categoría', cuerpo: f, botones: [{ texto: 'Cancelar', clase: 'sec' }, { texto: c.id ? 'Guardar' : 'Crear', accion: async () => { await dapi('r_dlv_categoria_guardar', {}, { ...leer(f), id: c.id, icono }); toast('Categoría guardada', 'ok'); cargar(); } }] });
 }
 if (tiene('admin')) $('#nueva').onclick = () => editar({});
+cargar().catch(fallo);
+}
+});
+
+// ================= REPARTIDORES =================
+ruta('dlv-repartidores', {
+titulo: 'Repartidores', roles: ['admin', 'gestion', 'operador'], render(main) {
+const adm = tiene('admin', 'operador'); let filtro = 'pendiente';
+const ET = { pendiente: ['Por aprobar', '#e8892b'], aprobado: ['Aprobado', '#2f9e57'], rechazado: ['Rechazado', '#d64545'], suspendido: ['Suspendido', '#7a7a7a'] };
+main.innerHTML = cabecera('Repartidores', 'Solicitudes y altas del portal de repartidores', '<button class="btn sec" id="pr">Abrir portal</button>') + `<div class="card"><div class="head"><h3>🛵 Repartidores <small id="cc" style="color:var(--suave)"></small></h3><select id="fe" style="width:auto"><option value="pendiente">Por aprobar</option><option value="aprobado">Aprobados</option><option value="suspendido">Suspendidos</option><option value="rechazado">Rechazados</option><option value="">Todos</option></select></div><div class="body" id="lr"></div></div>`;
+$('#pr').onclick = () => window.open('repartidor.html');
+$('#fe').onchange = e => { filtro = e.target.value; cargar().catch(fallo); };
+async function cargar() {
+const rs = await dapi('r_rep_lista', { estado: filtro });
+$('#cc').textContent = `(${rs.length})`;
+$('#lr').innerHTML = rs.length ? tablaSimple(rs, [
+{ t: 'Repartidor', f: r => `<b>${esc(r.nombre)} ${esc(r.apellido)}</b><br><small>DNI ${esc(r.documento)} · ${esc(r.telefono || '')}</small>` },
+{ t: 'Vehículo', f: r => `${r.vehiculo === 'moto' ? '🏍 Moto' : '🚗 Auto'}<br><small>${esc(r.patente || '')} ${esc(r.marca || '')} ${esc(r.modelo || '')}</small>` },
+{ t: 'Móvil', f: r => r.movil ? '#' + r.movil : '—' },
+{ t: 'Documentos', f: r => (r.docs || []).length ? (r.docs || []).map((d, i) => d.archivo ? `<a href="${esc(d.archivo)}" target="_blank" rel="noopener">${esc(d.tipo || 'Archivo ' + (i + 1))}</a>` : '').join('<br>') : '<small>Sin archivos</small>' },
+{ t: 'Entregas', c: 'r', f: r => `${r.resumen.total.entregas}<br><small>${pesos(r.resumen.total.ganado)}</small>` },
+{ t: 'Estado', f: r => { const e = ET[r.estado] || [r.estado, '#888']; return `<span class="pill" style="background:${e[1]}22;color:${e[1]}">${e[0]}</span>${r.motivo ? '<br><small>' + esc(r.motivo) + '</small>' : ''}`; } },
+{ t: '', f: r => !adm ? '' : r.estado === 'pendiente' ? `<button class="btn chico verde" data-a="aprobar" data-id="${r.id}">Aprobar</button> <button class="btn chico sec" data-a="rechazar" data-id="${r.id}">Rechazar</button>` : r.estado === 'aprobado' ? `<button class="btn chico sec" data-a="suspender" data-id="${r.id}">Suspender</button>` : `<button class="btn chico verde" data-a="reactivar" data-id="${r.id}">${r.estado === 'rechazado' ? 'Aprobar' : 'Reactivar'}</button>` }
+]) : vacio('🛵', 'Sin repartidores', 'No hay repartidores en este estado.');
+$$('[data-a]', main).forEach(b => b.onclick = async () => {
+const a = b.dataset.a, body = { id: +b.dataset.id, accion: a };
+if (a === 'rechazar' || a === 'suspender') { const r = await pedir(a === 'rechazar' ? 'Rechazar solicitud' : 'Suspender repartidor', [{ k: 'motivo', l: 'Motivo (lo ve el repartidor)', w: 'full' }]); if (!r || !r.motivo) return; body.motivo = r.motivo; }
+try { await dapi('r_rep_resolver', {}, body); toast('Listo', 'ok'); cargar(); } catch (e) { fallo(e); } });
+}
 cargar().catch(fallo);
 }
 });
