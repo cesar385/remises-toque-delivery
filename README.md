@@ -229,3 +229,5 @@ Aplicar `sql/34_repartidores.sql` (ya incluido en `supabase/rodar.sql`; se puede
 - Un móvil nuevo necesita saldo/plan para recibir pedidos (como cualquier móvil): si no lo tiene, el portal lo avisa.
 
 **Vincular con conductores:** si el DNI de quien se anota como repartidor ya es de un conductor de la central, se vincula **la misma cuenta** (no se crea otra), siempre que escriba su contraseña actual. Queda con dos móviles: el de la central y uno nuevo de reparto (moto o auto), que la central aprueba. En *Delivery → Repartidores* se ve la marca "🔗 También conductor".
+
+**Pasar a repartidor desde la app del conductor:** en el menú de `conductor.html` → *Pasar a repartidor*. Si todavía no es repartidor, pide la solicitud (moto o auto + patente) con su misma cuenta; la central la aprueba en *Delivery → Repartidores*. Una vez aprobado, desde ahí cambia entre su móvil de conductor y su móvil de reparto **sin cerrar sesión** (solo si no tiene un viaje o pedido en curso; el móvil que deja queda libre). El portal `repartidor.html` reutiliza la sesión si ya entró en la app de conductores.

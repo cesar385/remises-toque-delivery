@@ -1088,7 +1088,7 @@ function pintarMenu() {
       <div class="mest"><span class="pill" style="background:${ec}">${et}</span><span class="ms">Saldo <b style="color:${e.saldo < 0 ? '#ffb3b3' : '#c9f29b'}">${pesos(e.saldo)}</b></span></div></div>
     <button class="mfs ${fuera ? 'lib' : ''}" data-k="fuera">${fuera ? '▶️ Ponerme libre' : '⏸️ Fuera de servicio'}</button>
     <div class="mg">Trabajo</div>
-    ${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
+    ${it('modo', '🛵', 'Pasar a repartidor', 'Repartí con tu moto o auto, o volvé a conductor', '#fff1e0')}${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
     <div class="mg">Ayuda</div>
     ${it('soporte', '💬', 'Soporte con la central', 'Escribile a la central', '#e6f6f4')}${it('manual', '📘', 'Manual de uso', 'Cómo usar la app', '#eef0fb')}
     <div class="mg">Mi cuenta</div>
@@ -1192,6 +1192,20 @@ async function menu(k) {
   if (k === 'clave') {
     const el = hoja('Cambiar clave', '<form id="cf"><div class="campo"><label>Actual</label><input type="password" name="actual"></div><div class="campo"><label>Nueva</label><input type="password" name="nueva"></div><button class="btn grande">Guardar</button></form>');
     $('#cf', el).onsubmit = async ev => { ev.preventDefault(); try { await api('/api/me/password', Object.fromEntries(new FormData(ev.target))); toast('Clave actualizada', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
+  }
+  if (k === 'modo') {
+    const md = await api('/api/conductor/modos'), rp = md.repartidor, d = md.datos || {};
+    const VEH = { moto: '🏍 Moto', auto: '🚗 Auto' };
+    const lista = md.moviles.map(x => `<button class="btn ${x.id === md.actual ? '' : 'sec'}" data-mv="${x.id}" ${x.id === md.actual ? 'disabled' : ''} style="width:100%;justify-content:flex-start;margin-bottom:8px;text-align:left"><span>${x.es_reparto ? '🛵 Repartidor' : '🚕 Conductor'} · Móvil <b>${x.numero}</b> · ${esc(x.patente || '')}${x.es_reparto ? ' · ' + (VEH[x.tipo_vehiculo] || '') : ''}${x.id === md.actual ? ' <small>(usando ahora)</small>' : ''}${x.es_reparto && rp && rp.estado !== 'aprobado' ? ' <small>(' + (rp.estado === 'pendiente' ? 'en revisión' : esc(rp.estado)) + ')</small>' : ''}</span></button>`).join('');
+    const pedir = !rp ? `<div class="fs-card" style="margin-top:12px"><h3 style="margin:0 0 6px">🛵 Quiero repartir también</h3><p style="margin:0 0 10px;color:#6b7a7b">Usás esta misma cuenta. La central revisa tu pedido y te habilita; ahí podés pasar a repartidor desde acá, sin cerrar sesión.</p>
+      <form id="rf"><div class="campo"><label>¿En qué vas a repartir?</label><select name="vehiculo"><option value="moto">🏍 Moto</option><option value="auto" ${d.tipo_vehiculo === 'auto' ? 'selected' : ''}>🚗 Auto</option></select></div>
+      <div class="campo"><label>Patente</label><input name="patente" value="${esc(d.patente || '')}" style="text-transform:uppercase" required></div><div class="campo"><label>Marca y modelo (opcional)</label><input name="marca" placeholder="Ej: Honda Wave"></div>
+      <button class="btn verde grande" style="width:100%">Enviar solicitud</button></form></div>`
+      : rp.estado === 'pendiente' ? '<div class="fs-card" style="margin-top:12px">⏳ <b>Tu solicitud de repartidor está en revisión.</b> Te avisamos cuando la central te habilite.</div>'
+      : rp.estado !== 'aprobado' ? `<div class="fs-card" style="margin-top:12px">⛔ Tu cuenta de repartidor está <b>${esc(rp.estado)}</b>.${rp.motivo ? '<br>' + esc(rp.motivo) : ''}</div>` : '';
+    const el = hoja('Modo de trabajo', `<p style="margin-top:0;color:#6b7a7b">Elegí con qué móvil trabajás. Para cambiar tenés que estar sin viaje o pedido en curso.</p>${lista}${pedir}<p style="text-align:center;margin-top:14px"><a href="repartidor.html" target="_blank">Abrir mi portal de repartidor (ganancias y entregas)</a></p>`);
+    $$('[data-mv]', el).forEach(b => b.onclick = async () => { if (!confirm('¿Cambiar de móvil? Vas a quedar conectado con el nuevo.')) return; try { await api('/api/conductor/cambiar-movil', { movil_id: +b.dataset.mv }); toast('Listo, cambiaste de móvil', 'ok'); location.reload(); } catch (er) { toast(er.message, 'error'); } });
+    const rf = $('#rf', el); if (rf) rf.onsubmit = async ev => { ev.preventDefault(); try { await api('/api/conductor/repartidor', Object.fromEntries(new FormData(rf))); toast('Solicitud enviada a la central', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
   }
   if (k === 'fuera') await fueraDeServicio();
   if (k === 'manual') window.open('manual-conductor.html', '_blank');
