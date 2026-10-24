@@ -325,7 +325,7 @@ $('#cc').textContent = `(${rs.length})`;
 $('#lr').innerHTML = rs.length ? tablaSimple(rs, [
 { t: 'Repartidor', f: r => `<b>${esc(r.nombre)} ${esc(r.apellido)}</b><br><small>DNI ${esc(r.documento)} · ${esc(r.telefono || '')}</small>` },
 { t: 'Vehículo', f: r => `${r.vehiculo === 'moto' ? '🏍 Moto' : '🚗 Auto'}<br><small>${esc(r.patente || '')} ${esc(r.marca || '')} ${esc(r.modelo || '')}</small>` },
-{ t: 'Móvil', f: r => r.movil ? '#' + r.movil : '—' },
+{ t: 'Móvil', f: r => (r.movil ? '#' + r.movil : '—') + ((r.otros_moviles || []).length ? `<br><small>🔗 También conductor: móvil ${r.otros_moviles.join(', ')}</small>` : '') },
 { t: 'Documentos', f: r => (r.docs || []).length ? (r.docs || []).map((d, i) => d.archivo ? `<a href="${esc(d.archivo)}" target="_blank" rel="noopener">${esc(d.tipo || 'Archivo ' + (i + 1))}</a>` : '').join('<br>') : '<small>Sin archivos</small>' },
 { t: 'Entregas', c: 'r', f: r => `${r.resumen.total.entregas}<br><small>${pesos(r.resumen.total.ganado)}</small>` },
 { t: 'Estado', f: r => { const e = ET[r.estado] || [r.estado, '#888']; return `<span class="pill" style="background:${e[1]}22;color:${e[1]}">${e[0]}</span>${r.motivo ? '<br><small>' + esc(r.motivo) + '</small>' : ''}`; } },
