@@ -69,7 +69,7 @@ function entrada(modo = 'login') {
     $('#cu').innerHTML = `<form><div class="vehs" style="margin-bottom:12px"><button type="button" class="veh on" data-v="moto"><span>🏍</span>Moto</button><button type="button" class="veh" data-v="auto"><span>🚗</span>Auto</button></div>
 <div class="g2"><div class="campo"><label>Nombre</label><input name="nombre" required></div><div class="campo"><label>Apellido</label><input name="apellido" required></div>
 <div class="campo"><label>DNI</label><input name="documento" inputmode="numeric" required></div><div class="campo"><label>Teléfono</label><input name="telefono" type="tel" required></div></div>
-<div class="campo"><label>Email (opcional)</label><input name="email" type="email"></div><div class="campo"><label>Contraseña (mín. 6 caracteres)</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div>
+<div class="campo"><label>Email (opcional)</label><input name="email" type="email"></div><div class="campo"><label>Contraseña (mín. 6 caracteres)</label><input name="password" type="password" autocomplete="new-password" required><small style="color:var(--su)">¿Ya sos conductor de la central? Poné tu DNI y tu contraseña actual: vinculamos tu misma cuenta.</small></div>
 <div class="g2"><div class="campo"><label>Patente</label><input name="patente" required style="text-transform:uppercase"></div><div class="campo"><label>Marca y modelo</label><input name="marca" placeholder="Ej: Honda Wave"></div></div>
 <div class="campo"><label>Alias o CBU para cobrar (opcional)</label><input name="alias"></div>
 <div class="campo"><label>Documentación (DNI, licencia, seguro, cédula) — fotos</label><input id="fd" type="file" accept="image/*,application/pdf" multiple></div><div id="ld" style="font-size:13px;color:var(--su);margin-bottom:8px"></div>
@@ -77,7 +77,7 @@ function entrada(modo = 'login') {
     let vehiculo = 'moto';
     $$('.veh').forEach(b => b.onclick = () => { vehiculo = b.dataset.v; $$('.veh').forEach(x => x.classList.toggle('on', x === b)); });
     $('#fd').onchange = async e => { for (const fi of e.target.files) { try { const r = await RODAR.archivoADataURL(fi); S.docs.push({ tipo: fi.name.slice(0, 40), archivo: r.archivo }); } catch (er) { err(er.message); } } e.target.value = ''; $('#ld').textContent = S.docs.length ? '📎 ' + S.docs.length + ' archivo(s) cargado(s)' : ''; };
-    $('form').onsubmit = async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); try { await RODAR.rpc('r_rep_registro', null, {}, { ...f, vehiculo, docs: S.docs }); const r = await RODAR.rpc('r_rep_login', null, {}, { usuario: f.documento, password: f.password }); LS.set(TK, r.token); toast('¡Solicitud enviada!'); iniciar(); } catch (er) { err(er.message); } };
+    $('form').onsubmit = async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); try { const rr = await RODAR.rpc('r_rep_registro', null, {}, { ...f, vehiculo, docs: S.docs }); const r = await RODAR.rpc('r_rep_login', null, {}, { usuario: f.documento, password: f.password }); LS.set(TK, r.token); toast(rr.vinculado ? 'Cuenta de conductor vinculada. Solicitud enviada' : '¡Solicitud enviada!'); iniciar(); } catch (er) { err(er.message); } };
   }
 }
 

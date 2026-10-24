@@ -227,3 +227,5 @@ Aplicar `sql/34_repartidores.sql` (ya incluido en `supabase/rodar.sql`; se puede
 - **Por dentro** cada repartidor es un usuario `conductor` con un móvil propio (con su tipo moto/auto), así entra al despacho de siempre: los pedidos en vivo se reciben en `conductor.html` con el mismo DNI y contraseña.
 - **En el portal:** ganancias (hoy, semana, mes, total), pedidos en curso con cuánto cobrar, historial de entregas, cambio de vehículo/patente/documentos, alias y contraseña. Ganancia por entrega = envío + propina − comisión del repartidor.
 - Un móvil nuevo necesita saldo/plan para recibir pedidos (como cualquier móvil): si no lo tiene, el portal lo avisa.
+
+**Vincular con conductores:** si el DNI de quien se anota como repartidor ya es de un conductor de la central, se vincula **la misma cuenta** (no se crea otra), siempre que escriba su contraseña actual. Queda con dos móviles: el de la central y uno nuevo de reparto (moto o auto), que la central aprueba. En *Delivery → Repartidores* se ve la marca "🔗 También conductor".
