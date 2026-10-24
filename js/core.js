@@ -188,7 +188,7 @@ function construirNav() {
       id: 'admin', t: 'Administración', ico: ICO.admin, roles: ['admin', 'gestion'], items: [
         { tit: '🚕 Flota' }, { t: 'Móviles', r: 'moviles', roles: ['admin'] }, { t: 'Penalizados', r: 'moviles-penalizados' }, { t: 'Solicitudes conductor', r: 'solicitudes-conductor', roles: ['admin'] },
         { t: 'Zonas & Paradas', r: 'zonas-paradas', roles: ['admin'] }, { t: 'Zonas peligrosas', r: 'zonas-peligrosas', roles: ['admin'] },
-        { tit: '💰 Finanzas' }, { t: 'Cuentas', r: 'cuentas' }, { t: 'Pagos de base MP', r: 'mp-recargas' }, { t: 'Saldos Mercado Pago', r: 'saldos-mercadopago' }, { t: 'Viajes Mercado Pago', r: 'mp-viajes' },
+        { tit: '💰 Finanzas' }, { t: 'Cuentas', r: 'cuentas' }, { t: 'Pagos de base', r: 'mp-recargas' }, { t: 'Saldos Mercado Pago', r: 'saldos-mercadopago' }, { t: 'Viajes Mercado Pago', r: 'mp-viajes' },
         { t: 'Medios de pago', r: 'medios-pago', roles: ['admin'] }, { t: 'Módulos de la plataforma', r: 'modulos', roles: ['admin'] }, { t: 'Planes', r: 'planes' },
         { tit: '⚙️ Configuración' }, { t: 'Tarifas', r: 'tarifas', roles: ['admin'] }, { t: 'Usuarios', r: 'usuarios', roles: ['admin'] }, { t: 'Clientes corporativos', r: 'corporativos', roles: ['admin'] }, { t: 'Canales de solicitud', r: 'canales-solicitud', roles: ['admin'] },
         { t: 'Días feriados', r: 'feriados', roles: ['admin'] }, { t: 'Documentación reguladora', r: 'documentacion-reguladora', roles: ['admin'] }, { t: 'Configuración y demo', r: 'configuracion', roles: ['admin'] }, { t: 'Apps y enlaces (QR)', r: 'apps-enlaces', roles: ['admin'] }, { t: 'Página principal', r: 'pagina-principal', roles: ['admin'] },
@@ -361,11 +361,25 @@ async function cargarSaldo() {
   const r2 = await pedir('Pagar base · Móvil ' + b.numero, [{ k: 'monto', l: `Monto ($) · ${b.texto}. Saldo ${b.saldo}${b.deuda > 0 ? ', debe ' + b.deuda : ''}`, t: 'number', min: 1 }], { monto: Math.ceil(b.sugerido || b.cuota || 0) || '' });
   if (!r2) return;
   try {
-    try { const y = await RODAR.mercadopagoCrear(localStorage.getItem('rodar_token'), +r2.monto, +r.movil_id); window.open(y.url, '_blank'); return; }
-    catch (er) { if (!er.noConectado) return fallo(er); }
-    const x = await api('/api/cargar-saldo', { body: { movil_id: r.movil_id, monto: r2.monto } });
-    const alias = x.alias || b.alias || 'danderfertcesar.mp';
-    modal({ titulo: 'Transferí desde Mercado Pago', cuerpo: `<p>Hacé una transferencia por <b>$${esc(String(r2.monto))}</b> al alias:</p><p style="font-size:22px;font-weight:700;user-select:all">${esc(alias)}</p><p>${esc(x.mensaje || '')}</p>`, botones: [{ texto: 'Abrir Mercado Pago', accion: () => window.open('https://www.mercadopago.com.ar/', '_blank') }, { texto: 'Listo' }] });
+    // Billeteras que la central habilitó (Administración → Medios de pago). Si hay una sola, no se pregunta.
+    let provs = []; try { provs = await api('/api/pagos/proveedores'); } catch { /* base sin SQL 31: queda Mercado Pago */ }
+    if (!provs.length) provs = [{ codigo: 'mercadopago', nombre: 'Mercado Pago', api: true }];
+    let prov = provs[0];
+    if (provs.length > 1) {
+      const r3 = await pedir('¿Con qué billetera pagás?', [{ k: 'p', l: 'Billetera', t: 'select', op: provs.map(p => [p.codigo, p.nombre]) }]);
+      if (!r3) return;
+      prov = provs.find(p => p.codigo === r3.p) || provs[0];
+    }
+    // Mercado Pago y Ualá se cobran y acreditan solos si la función "pagos" está instalada; si no, o para el resto, se transfiere al alias de la central.
+    if (prov.api) {
+      try { const y = await RODAR.pagoCrear(localStorage.getItem('rodar_token'), +r2.monto, +r.movil_id, prov.codigo); window.open(y.url, '_blank'); return; }
+      catch (er) { if (!er.noConectado) return fallo(er); }
+    }
+    const x = await api('/api/cargar-saldo', { body: { movil_id: r.movil_id, monto: r2.monto, proveedor: prov.codigo } });
+    const alias = x.alias || (prov.codigo === 'mercadopago' ? b.alias || 'danderfertcesar.mp' : ''); // el alias de ejemplo solo se usa con Mercado Pago
+    if (!alias && !x.link) return toast(`La central todavía no cargó el alias de ${prov.nombre}. Avisale para que lo cargue.`, 'error');
+    const abrir = x.link || (prov.codigo === 'mercadopago' ? 'https://www.mercadopago.com.ar/' : '');
+    modal({ titulo: 'Transferí desde ' + prov.nombre, cuerpo: `${alias ? `<p>Hacé una transferencia por <b>$${esc(String(r2.monto))}</b> al alias:</p><p style="font-size:22px;font-weight:700;user-select:all">${esc(alias)}</p>` : `<p>Pagá <b>$${esc(String(r2.monto))}</b> con el link de pago.</p>`}<p>${esc(x.mensaje || '')}</p>`, botones: [abrir && { texto: x.link ? 'Abrir link de pago' : 'Abrir ' + prov.nombre, accion: () => window.open(abrir, '_blank') }, { texto: 'Listo' }].filter(Boolean) });
   } catch (e) { fallo(e); }
 }
 const pagarBase = cargarSaldo;

@@ -27,7 +27,7 @@ async function editarMovil(m, listo) {
   const cuerpo = h(`<div><div class="tabs"><button class="act" data-t="datos">Datos</button><button data-t="docs">Documentación</button></div><div data-p="datos"></div><div data-p="docs" class="oculto"></div></div>`);
   const f = formulario([
     { t: 'titulo', l: '🚗 Identificación' }, { k: 'numero', l: 'Número de móvil', t: 'number' }, { k: 'patente', l: 'Patente' }, { k: 'licencia', l: 'Licencia' },
-    { t: 'titulo', l: 'Vehículo' }, { k: 'marca', l: 'Marca' }, { k: 'modelo', l: 'Modelo' }, { k: 'anio', l: 'Año', t: 'number' }, { k: 'color', l: 'Color' },
+    { t: 'titulo', l: 'Vehículo' }, { k: 'tipo_vehiculo', l: 'Tipo de vehículo', t: 'select', op: [['auto', '🚗 Auto'], ['moto', '🏍 Moto']] }, { k: 'marca', l: 'Marca' }, { k: 'modelo', l: 'Modelo' }, { k: 'anio', l: 'Año', t: 'number' }, { k: 'color', l: 'Color' },
     { t: 'titulo', l: '⚙ Operación' }, { k: 'titular_id', l: 'Titular', t: 'select', op: [['', '— sin titular —'], ...titulares.map(u => [u.id, `${u.nombre} ${u.apellido} (${u.documento})`])] },
     { k: 'tarifador', t: 'check', cl: 'Usa tarifador de la app' }, { k: 'simulado', t: 'check', cl: 'Móvil simulado (demo)' }, { k: 'exigir_obd', t: 'check', cl: 'Exigir dispositivo OBD' }, { k: 'habilitado', t: 'check', cl: 'Habilitado' },
     { k: 'conductores', l: 'Conductores habilitados', t: 'multi', w: 'full', op: conductores.map(u => [u.id, `${u.nombre} ${u.apellido}`]) },
@@ -42,7 +42,7 @@ async function editarMovil(m, listo) {
   }
   pintarDocs();
   $$('.tabs button', cuerpo).forEach(b => b.onclick = () => { $$('.tabs button', cuerpo).forEach(x => x.classList.toggle('act', x === b)); $$('[data-p]', cuerpo).forEach(p => p.classList.toggle('oculto', p.dataset.p !== b.dataset.t)); });
-  modal({ titulo: m.id ? 'Modificar móvil ' + m.numero : 'Nuevo móvil', ancho: true, cuerpo, botones: [{ texto: 'Cerrar', clase: 'sec' }, { texto: '💾 Guardar', clase: 'verde', accion: async () => { await api('/api/moviles', { body: { ...leer(f), id: m.id, docs } }); toast('Móvil guardado', 'ok'); R.cat = await api('/api/catalogos'); listo && listo(); } }] });
+  modal({ titulo: m.id ? 'Modificar móvil ' + m.numero : 'Nuevo móvil', ancho: true, cuerpo, botones: [{ texto: 'Cerrar', clase: 'sec' }, { texto: '💾 Guardar', clase: 'verde', accion: async () => { const dm = leer(f); const gm = await api('/api/moviles', { body: { ...dm, id: m.id, docs } }); await api('/api/moviles/' + (m.id || gm.id) + '/tipo', { body: { tipo: dm.tipo_vehiculo || 'auto' } }); toast('Móvil guardado', 'ok'); R.cat = await api('/api/catalogos'); listo && listo(); } }] });
 }
 
 // ---------- Penalizados ----------
@@ -251,10 +251,18 @@ ruta('medios-pago', {
       <div class="card"><div class="head"><h3>Tasas de procesamiento (referencia)</h3></div>${tablaSimple(Object.entries(d.mp.tasas || {}).map(([k, v]) => ({ k, v })), [{ t: 'Liberación', f: x => ({ inmediata: 'En el momento', d10: '10 días', d18: '18 días', d35: '35 días' }[x.k] || x.k) }, { t: 'Procesamiento', f: x => `<input type="number" step="0.01" data-tasa="${x.k}" value="${x.v}" style="width:90px"> %` }])}<div class="body" style="color:var(--suave);font-size:12.5px">Verificá las tasas vigentes en tu cuenta de Mercado Pago; se usan para calcular el neto de la central.</div></div></div>`;
     const f = formulario([{ t: 'html', html: '<p style="color:var(--suave);margin:0">Sin servidor propio no se guarda el token secreto de Mercado Pago. Las cargas se cobran con tu <b>link de pago</b> (Mercado Pago → Link de pago) o por <b>transferencia al alias</b>, y se acreditan desde <i>Cargas de saldo MP</i>.</p>' }, { k: 'link_pago', l: 'Link de pago (opcional)', w: 'full', ph: 'https://mpago.la/…' }, { k: 'alias_cobro', l: 'Alias / CVU para transferencias', w: 'full' }, { k: 'plazo', l: 'Plazo de liberación elegido', t: 'select', op: [['inmediata', 'En el momento'], ['d10', '10 días'], ['d18', '18 días'], ['d35', '35 días']] }, { k: 'absorbe', l: 'Quién absorbe la comisión', t: 'select', op: [['central', 'La central'], ['movil', 'El móvil (se descuenta al rendir)']] }], d.mp);
     $('#mpf').append(f);
+    // Billeteras para "Pagar base": cuáles ofrece la app del conductor y a qué alias/CVU se transfiere
+    let pv = null; try { pv = await api('/api/pagos/config'); } catch { /* falta correr sql/31_pagos_proveedores.sql */ }
+    if (pv) main.insertAdjacentHTML('beforeend', `<div class="card"><div class="head"><h3>Billeteras para cargas de saldo</h3></div><div class="body" style="color:var(--suave);font-size:12.5px">Las que tienen ⚡ se acreditan solas cuando instalás la función <b>pagos</b> con las credenciales del proveedor (ver README); si no, funcionan como transferencia. Las demás se cobran por transferencia al alias o CVU que cargues acá y las confirmás en <i>Finanzas → Pagos de base</i>. El conductor elige entre las habilitadas.</div>${tablaSimple(pv.proveedores, [{ t: 'Habilitada', f: p => `<input type="checkbox" data-pv="${p.codigo}" data-k="habilitado" ${p.habilitado ? 'checked' : ''}>` }, { t: 'Billetera', f: p => esc(p.nombre) + (p.api ? ' ⚡' : '') }, { t: 'Alias / CVU de la central', f: p => `<input data-pv="${p.codigo}" data-k="alias" value="${esc(p.alias || '')}" placeholder="alias.o.cvu">` }, { t: 'Link de pago (opcional)', f: p => `<input data-pv="${p.codigo}" data-k="link" value="${esc(p.link || '')}" placeholder="https://…">` }])}</div>`);
     $('#g').onclick = async () => {
       const medios = d.medios.map(m => { const o = { codigo: m.codigo }; $$(`[data-m="${m.codigo}"]`).forEach(i => o[i.dataset.k] = i.type === 'checkbox' ? i.checked : i.value); return o; });
       const tasas = {}; $$('[data-tasa]').forEach(i => tasas[i.dataset.tasa] = +i.value);
-      await api('/api/medios-pago', { body: { medios, mp: { ...leer(f), tasas } } }); toast('Guardado', 'ok'); R.cat = await api('/api/catalogos');
+      await api('/api/medios-pago', { body: { medios, mp: { ...leer(f), tasas } } });
+      if (pv) {
+        const proveedores = pv.proveedores.map(p => { const o = { codigo: p.codigo }; Array.from($$(`[data-pv="${p.codigo}"]`)).forEach(i => o[i.dataset.k] = i.type === 'checkbox' ? i.checked : i.value); return o; });
+        await api('/api/pagos/config', { body: { proveedores } });
+      }
+      toast('Guardado', 'ok'); R.cat = await api('/api/catalogos');
     };
   }
 });

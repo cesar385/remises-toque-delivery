@@ -14,7 +14,7 @@
     ['GET', '/api/simulador', 'r_simulador'], ['POST', '/api/simulador', 'r_simulador_guardar'], ['GET', '/api/config/webhook', 'r_config_webhook'],
     ['GET', '/api/config/dispatch', 'r_config_dispatch'], ['POST', '/api/config/dispatch', 'r_config_dispatch_guardar'],
     // operación
-    ['GET', '/api/mapa', 'r_mapa'], ['POST', '/api/moviles/:id/estado', 'r_movil_estado'], ['POST', '/api/moviles/:id/mensaje', 'r_movil_mensaje'],
+    ['GET', '/api/mapa', 'r_mapa'], ['POST', '/api/moviles/:id/estado', 'r_movil_estado'], ['POST', '/api/moviles/:id/mensaje', 'r_movil_mensaje'], ['POST', '/api/moviles/:id/tipo', 'r_movil_tipo'],
     ['POST', '/api/flota/mensaje', 'r_flota_mensaje'], ['GET', '/api/flota/mensajes', 'r_flota_mensajes'],
     ['GET', '/api/clientes/buscar', 'r_clientes_buscar'], ['GET', '/api/clientes/tel/:tel', 'r_cliente_tel'], ['PUT', '/api/clientes/:id', 'r_cliente_guardar'],
     ['POST', '/api/clientes/anotacion', 'r_cliente_anotacion'], ['POST', '/api/clientes/:id/bloqueo', 'r_cliente_bloqueo'], ['POST', '/api/clientes/:id/baja', 'r_cliente_baja'],
@@ -28,7 +28,7 @@
     ['GET', '/api/soporte', 'r_soporte'], ['GET', '/api/soporte/:id', 'r_soporte_conv'], ['POST', '/api/soporte/:id', 'r_soporte_enviar'], ['POST', '/api/soporte-nuevo', 'r_soporte_nuevo'], ['DELETE', '/api/soporte/:id', 'r_soporte_borrar'], ['POST', '/api/soporte-borrar-cerradas', 'r_soporte_borrar_cerradas'],
     // administración
     ['GET', '/api/moviles', 'r_moviles'], ['POST', '/api/moviles', 'r_movil_guardar'], ['DELETE', '/api/moviles/:id', 'r_movil_borrar'], ['POST', '/api/sistema/reiniciar', 'r_sistema_reiniciar'],
-    ['GET', '/api/base', 'r_base_info'], ['POST', '/api/whatsapp/preparar', 'r_wa_preparar'], ['POST', '/api/whatsapp/resultado', 'r_wa_resultado'], ['GET', '/api/pub/landing', 'r_pub_landing'], ['GET', '/api/landing', 'r_landing'], ['POST', '/api/landing', 'r_landing_guardar'],
+    ['GET', '/api/base', 'r_base_info'], ['GET', '/api/pagos/proveedores', 'r_pagos_proveedores'], ['GET', '/api/pagos/config', 'r_pagos_config'], ['POST', '/api/pagos/config', 'r_pagos_config_guardar'], ['POST', '/api/whatsapp/preparar', 'r_wa_preparar'], ['POST', '/api/whatsapp/resultado', 'r_wa_resultado'], ['GET', '/api/pub/landing', 'r_pub_landing'], ['GET', '/api/landing', 'r_landing'], ['POST', '/api/landing', 'r_landing_guardar'],
     ['GET', '/api/penalizados', 'r_penalizados'], ['POST', '/api/penalizados', 'r_penalizar'], ['DELETE', '/api/penalizados/:id', 'r_penalizacion_quitar'],
     ['GET', '/api/solicitudes', 'r_solicitudes'], ['POST', '/api/solicitudes/:id/:accion', 'r_solicitud_accion'],
     ['GET', '/api/zonas', 'r_zonas'], ['POST', '/api/zonas', 'r_zona_guardar'], ['DELETE', '/api/zonas/:id', 'r_zona_borrar'],
@@ -281,18 +281,19 @@
     return j;
   }
 
-  // ---- Pagar base con Mercado Pago: la función de Supabase "mercadopago" crea el pago y lo acredita sola cuando MP lo aprueba ----
-  async function mercadopagoCrear(token, monto, movilId) {
+  // ---- Pagar base con una billetera: la función de Supabase "pagos" crea el cobro en el proveedor (Mercado Pago, Ualá, ...) y lo acredita sola cuando se aprueba ----
+  async function pagoCrear(token, monto, movilId, proveedor) {
     if (!SB) throw new ErrorApi('Falta configurar Supabase.');
     let r;
     try {
-      r = await fetch(CFG.supabaseUrl.replace(/\/$/, '') + '/functions/v1/mercadopago', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.supabaseKey, Authorization: 'Bearer ' + CFG.supabaseKey }, body: JSON.stringify({ accion: 'crear', token, monto, movil_id: movilId || null }) });
+      r = await fetch(CFG.supabaseUrl.replace(/\/$/, '') + '/functions/v1/pagos', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CFG.supabaseKey, Authorization: 'Bearer ' + CFG.supabaseKey }, body: JSON.stringify({ accion: 'crear', proveedor: proveedor || 'mercadopago', token, monto, movil_id: movilId || null }) });
     } catch { throw new ErrorApi('Sin conexión con el servidor. Revisá internet.'); }
     let j = {}; try { j = await r.json(); } catch { }
-    if (r.status === 404) throw new ErrorApi('El pago con Mercado Pago todavía no está instalado en Supabase (ver README).', { noConectado: true });
-    if (!r.ok) throw new ErrorApi(j.error || 'No se pudo crear el pago', { noConectado: r.status === 503 });
+    if (r.status === 404) throw new ErrorApi('El pago automático todavía no está instalado en Supabase (ver README).', { noConectado: true });
+    if (!r.ok) throw new ErrorApi(j.error || 'No se pudo crear el pago', { noConectado: r.status === 503 || !!j.noAutomatico });
     return j;
   }
+  const mercadopagoCrear = (token, monto, movilId) => pagoCrear(token, monto, movilId, 'mercadopago'); // compatibilidad
 
   // ---- CSV ----
   function csv(filas, nombre) {
@@ -321,7 +322,7 @@
     });
   }
 
-  window.RODAR = { SB, listo, rpc, llamar, whatsappEnviar, mercadopagoCrear, tiempoReal, csv, clima, geoBuscar, geoInversa, ruta, compDir, enTexto, partirDir, archivoADataURL, normalizar, ErrorApi, setEmpresa: e => empresaGeo = e };
+  window.RODAR = { SB, listo, rpc, llamar, whatsappEnviar, mercadopagoCrear, pagoCrear, tiempoReal, csv, clima, geoBuscar, geoInversa, ruta, compDir, enTexto, partirDir, archivoADataURL, normalizar, ErrorApi, setEmpresa: e => empresaGeo = e };
 })();
 
 // ---------- cálculo de tarifa (mismo criterio que rodar.calcular_monto en la base) ----------
