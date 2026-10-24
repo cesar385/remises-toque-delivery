@@ -6463,6 +6463,7 @@ notify pgrst, 'reload schema';
 
 -- ======== 34_repartidores.sql ========
 -- ===================== Portal de repartidores (repartidor.html) =====================
+-- Si el DNI ya es de un conductor de la central, se vincula esa misma cuenta (pide su contraseña actual): una sola cuenta, dos móviles.
 -- Un repartidor se anota solo (moto o auto + datos + documentos), la central lo aprueba y desde el portal ve sus ganancias,
 -- sus entregas y maneja su vehículo. Los pedidos en vivo se reciben en conductor.html (misma cuenta y mismo móvil).
 -- Por dentro, cada repartidor es un usuario con rol 'conductor' + un móvil propio (moto o auto): así entra al despacho de siempre.
@@ -6481,29 +6482,40 @@ language plpgsql security definer set search_path = rodar, public, extensions as
 #variable_conflict use_variable
 
 declare doc text := regexp_replace(coalesce(rodar.t(p_b, 'documento'), ''), '[^0-9A-Za-z]', '', 'g'); veh text := coalesce(rodar.t(p_b, 'vehiculo'), '');
-  pw text := coalesce(p_b ->> 'password', ''); uid bigint; mid bigint; num int; docs jsonb := case when jsonb_typeof(p_b -> 'docs') = 'array' then p_b -> 'docs' else '[]'::jsonb end;
+  pw text := coalesce(p_b ->> 'password', ''); uid bigint; mid bigint; num int; ex rodar.usuarios; vinc boolean := false; docs_n jsonb := case when jsonb_typeof(p_b -> 'docs') = 'array' then p_b -> 'docs' else '[]'::jsonb end;
 begin
   if rodar.t(p_b, 'nombre') is null or rodar.t(p_b, 'apellido') is null then raise exception 'Ingresá tu nombre y apellido'; end if;
   if length(doc) < 6 then raise exception 'Ingresá tu DNI'; end if;
   if rodar.t(p_b, 'telefono') is null then raise exception 'Ingresá tu teléfono'; end if;
-  if length(pw) < 6 then raise exception 'La contraseña tiene que tener al menos 6 caracteres'; end if;
   if veh not in ('moto', 'auto') then raise exception 'Elegí si repartís en moto o en auto'; end if;
   if rodar.t(p_b, 'patente') is null then raise exception 'Ingresá la patente de tu vehículo'; end if;
-  if jsonb_array_length(docs) > 8 then raise exception 'Demasiados documentos'; end if;
-  if exists (select 1 from rodar.usuarios where documento = doc or usuario = doc) then raise exception 'Ya existe una cuenta con ese DNI. Ingresá con tu DNI y contraseña.'; end if;
-  if (select count(*) from rodar.limite_pedidos where clave = 'rep:' || doc and ts > now() - interval '10 minutes') >= 3 then raise exception 'Demasiados intentos, probá en unos minutos'; end if;
+  if jsonb_array_length(docs_n) > 8 then raise exception 'Demasiados documentos'; end if;
+  if (select count(*) from rodar.limite_pedidos where clave = 'rep:' || doc and ts > now() - interval '10 minutes') >= 5 then raise exception 'Demasiados intentos, probá en unos minutos'; end if;
   insert into rodar.limite_pedidos(clave) values ('rep:' || doc);
-  insert into rodar.usuarios(documento, usuario, nombre, apellido, email, telefono, cbu, alias_bancario, password_hash, roles, habilitado, docs)
-  values (doc, doc, rodar.t(p_b, 'nombre'), rodar.t(p_b, 'apellido'), rodar.t(p_b, 'email'), rodar.t(p_b, 'telefono'), rodar.t(p_b, 'cbu'), rodar.t(p_b, 'alias'), rodar.hash(pw), 'conductor', true, docs::text)
-  returning id into uid;
+  select * into ex from rodar.usuarios where documento = doc or usuario = doc;
+  if found then
+    -- el DNI ya tiene cuenta (por ejemplo, es conductor de la central): se vincula la MISMA cuenta si demuestra que es suya con su contraseña actual
+    if exists (select 1 from rodar.dlv_repartidores where usuario_id = ex.id) then raise exception 'Ya estás anotado como repartidor. Ingresá con tu DNI y contraseña.'; end if;
+    if not rodar.verificar(pw, ex.password_hash) then raise exception 'Ese DNI ya tiene una cuenta en la central. Para vincularla escribí tu contraseña actual (la que usás en la app de conductores).'; end if;
+    if not ex.habilitado then raise exception 'Tu cuenta está deshabilitada. Contactá a la central.'; end if;
+    uid := ex.id; vinc := true;
+    update rodar.usuarios set roles = case when 'conductor' = any(string_to_array(roles, ',')) then roles else roles || ',conductor' end,
+      telefono = coalesce(telefono, rodar.t(p_b, 'telefono')), email = coalesce(email, rodar.t(p_b, 'email')), cbu = coalesce(cbu, rodar.t(p_b, 'cbu')), alias_bancario = coalesce(alias_bancario, rodar.t(p_b, 'alias')),
+      docs = case when jsonb_array_length(docs_n) > 0 then (coalesce(nullif(usuarios.docs, ''), '[]')::jsonb || docs_n)::text else usuarios.docs end where id = uid;
+  else
+    if length(pw) < 6 then raise exception 'La contraseña tiene que tener al menos 6 caracteres'; end if;
+    insert into rodar.usuarios(documento, usuario, nombre, apellido, email, telefono, cbu, alias_bancario, password_hash, roles, habilitado, docs)
+    values (doc, doc, rodar.t(p_b, 'nombre'), rodar.t(p_b, 'apellido'), rodar.t(p_b, 'email'), rodar.t(p_b, 'telefono'), rodar.t(p_b, 'cbu'), rodar.t(p_b, 'alias'), rodar.hash(pw), 'conductor', true, docs_n::text)
+    returning id into uid;
+  end if;
   select coalesce(max(numero), 0) + 1 into num from rodar.moviles;
   insert into rodar.moviles(numero, patente, marca, modelo, color, titular_id, tarifador, habilitado, tipo_vehiculo, plan_id, docs)
-  values (num, upper(rodar.t(p_b, 'patente')), rodar.t(p_b, 'marca'), rodar.t(p_b, 'modelo'), rodar.t(p_b, 'color'), uid, true, false, veh, (select id from rodar.planes order by id limit 1), docs::text)
+  values (num, upper(rodar.t(p_b, 'patente')), rodar.t(p_b, 'marca'), rodar.t(p_b, 'modelo'), rodar.t(p_b, 'color'), uid, true, false, veh, (select id from rodar.planes order by id limit 1), docs_n::text)
   returning id into mid;
   insert into rodar.movil_conductores(movil_id, usuario_id) values (mid, uid);
   insert into rodar.dlv_repartidores(usuario_id, movil_id) values (uid, mid);
-  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Nuevo repartidor para aprobar: ' || rodar.t(p_b, 'nombre') || ' ' || rodar.t(p_b, 'apellido') || ' (' || veh || ')'));
-  return jsonb_build_object('ok', true); end $$;
+  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Nuevo repartidor para aprobar: ' || coalesce(ex.nombre, rodar.t(p_b, 'nombre')) || ' ' || coalesce(ex.apellido, rodar.t(p_b, 'apellido')) || ' (' || veh || ')' || case when vinc then ' · ya es conductor de la central' else '' end));
+  return jsonb_build_object('ok', true, 'vinculado', vinc); end $$;
 
 -- ---------- login ----------
 create or replace function public.r_rep_login(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
@@ -6600,7 +6612,8 @@ declare u rodar.usuarios := rodar.need(p_token, 'admin', 'operador', 'gestion');
 begin
   return coalesce((select jsonb_agg(jsonb_build_object('id', r.usuario_id, 'estado', r.estado, 'motivo', r.motivo, 'creado', r.creado, 'nombre', us.nombre, 'apellido', us.apellido, 'documento', us.documento,
       'telefono', us.telefono, 'email', us.email, 'cbu', us.cbu, 'alias', us.alias_bancario, 'docs', coalesce(us.docs, '[]')::jsonb, 'movil_id', m.id, 'movil', m.numero, 'vehiculo', m.tipo_vehiculo, 'patente', m.patente,
-      'marca', m.marca, 'modelo', m.modelo, 'color', m.color, 'movil_estado', m.estado, 'resumen', rodar.rep_resumen(r.usuario_id))
+      'marca', m.marca, 'modelo', m.modelo, 'color', m.color, 'movil_estado', m.estado, 'resumen', rodar.rep_resumen(r.usuario_id),
+      'otros_moviles', coalesce((select jsonb_agg(x.numero order by x.numero) from rodar.movil_conductores mc join rodar.moviles x on x.id = mc.movil_id where mc.usuario_id = r.usuario_id and x.id <> coalesce(r.movil_id, 0)), '[]'))
       order by case r.estado when 'pendiente' then 0 else 1 end, r.creado desc)
     from rodar.dlv_repartidores r join rodar.usuarios us on us.id = r.usuario_id left join rodar.moviles m on m.id = r.movil_id
     where coalesce(rodar.t(p_q, 'estado'), '') in ('', r.estado)), '[]'); end $$;
