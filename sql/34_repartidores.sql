@@ -161,6 +161,66 @@ begin
   perform rodar.accion(u, 'Repartidores', 'Usuario #' || r.usuario_id, 'Repartidor ' || nuevo);
   return jsonb_build_object('ok', true, 'estado', nuevo); end $$;
 
+-- ---------- desde la app del conductor: pasar a repartidor (y volver) sin cerrar sesión ----------
+-- Modos del conductor logueado: sus móviles (de la central y de reparto), cuál está usando y el estado de su solicitud de repartidor.
+create or replace function public.r_cond_modos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+declare u rodar.usuarios := rodar.usuario(p_token); m rodar.moviles := rodar.movil_sesion(p_token); r rodar.dlv_repartidores;
+begin
+  select * into r from rodar.dlv_repartidores where usuario_id = u.id;
+  return jsonb_build_object('actual', m.id, 'actual_es_reparto', coalesce(m.id = r.movil_id, false),
+    'repartidor', case when r.usuario_id is null then null else jsonb_build_object('estado', r.estado, 'motivo', r.motivo, 'movil_id', r.movil_id) end,
+    'moviles', coalesce((select jsonb_agg(jsonb_build_object('id', x.id, 'numero', x.numero, 'patente', x.patente, 'tipo_vehiculo', x.tipo_vehiculo, 'habilitado', x.habilitado, 'es_reparto', x.id = r.movil_id) order by x.numero)
+      from rodar.movil_conductores mc join rodar.moviles x on x.id = mc.movil_id where mc.usuario_id = u.id), '[]'),
+    'datos', jsonb_build_object('patente', m.patente, 'marca', m.marca, 'modelo', m.modelo, 'color', m.color, 'tipo_vehiculo', m.tipo_vehiculo)); end $$;
+
+-- Un conductor pide ser repartidor con la cuenta que ya tiene: crea su móvil de reparto (moto o auto), que la central aprueba.
+create or replace function public.r_cond_repartidor_solicitar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+declare u rodar.usuarios := rodar.usuario(p_token); veh text := coalesce(rodar.t(p_b, 'vehiculo'), ''); mid bigint; num int;
+begin
+  perform rodar.movil_sesion(p_token);
+  if not rodar.tiene(u, 'conductor') then raise exception 'El usuario no es conductor'; end if;
+  if exists (select 1 from rodar.dlv_repartidores where usuario_id = u.id) then raise exception 'Ya pediste ser repartidor'; end if;
+  if veh not in ('moto', 'auto') then raise exception 'Elegí si repartís en moto o en auto'; end if;
+  if rodar.t(p_b, 'patente') is null then raise exception 'Ingresá la patente de tu vehículo'; end if;
+  select coalesce(max(numero), 0) + 1 into num from rodar.moviles;
+  insert into rodar.moviles(numero, patente, marca, modelo, color, titular_id, tarifador, habilitado, tipo_vehiculo, plan_id, docs)
+  values (num, upper(rodar.t(p_b, 'patente')), rodar.t(p_b, 'marca'), rodar.t(p_b, 'modelo'), rodar.t(p_b, 'color'), u.id, true, false, veh, (select id from rodar.planes order by id limit 1), '[]')
+  returning id into mid;
+  insert into rodar.movil_conductores(movil_id, usuario_id) values (mid, u.id);
+  insert into rodar.dlv_repartidores(usuario_id, movil_id) values (u.id, mid);
+  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Nuevo repartidor para aprobar: ' || rodar.nombre(u) || ' (' || veh || ') · ya es conductor de la central'));
+  return jsonb_build_object('ok', true); end $$;
+
+-- Cambia el móvil de la sesión (de conductor a repartidor o al revés): deja libre el actual y se conecta con el nuevo.
+create or replace function public.r_cond_cambiar_movil(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+declare u rodar.usuarios := rodar.usuario(p_token); a rodar.moviles := rodar.movil_sesion(p_token); n rodar.moviles; r rodar.dlv_repartidores;
+begin
+  select * into n from rodar.moviles where id = rodar.n(p_b, 'movil_id')::bigint;
+  if not found or not exists (select 1 from rodar.movil_conductores where movil_id = n.id and usuario_id = u.id) then raise exception 'Ese móvil no es tuyo'; end if;
+  if n.id = a.id then return jsonb_build_object('ok', true); end if;
+  select * into r from rodar.dlv_repartidores where usuario_id = u.id and movil_id = n.id;
+  if found and r.estado <> 'aprobado' then
+    if r.estado = 'pendiente' then raise exception 'Tu solicitud de repartidor todavía está en revisión'; end if;
+    raise exception 'Tu cuenta de repartidor no está habilitada';
+  end if;
+  if not n.habilitado then raise exception 'Ese móvil está deshabilitado'; end if;
+  if a.estado in ('confirmado', 'con_pasajero') or exists (select 1 from rodar.viajes where movil_id = a.id and estado in ('ofrecido', 'confirmado', 'en_curso')) then raise exception 'Terminá el viaje o pedido en curso antes de cambiar'; end if;
+  if n.conductor_id is not null and n.conductor_id <> u.id and n.estado <> 'desconectado' and not n.simulado then raise exception 'Otro conductor está usando ese móvil'; end if;
+  update rodar.moviles set estado = 'desconectado', conductor_id = null, parada_id = null where id = a.id;
+  perform rodar.evento_movil(a.id, 'logout', null, 'Cambió a otro móvil (' || n.numero || ')');
+  perform rodar.emitir_movil(a.id);
+  update rodar.sesiones set movil_id = n.id where token = p_token;
+  update rodar.moviles set conductor_id = u.id, simulado = false, estado = 'disponible' where id = n.id;
+  delete from rodar.sim_estado where movil_id = n.id;
+  perform rodar.evento_movil(n.id, 'login', null, 'Ingreso ' || rodar.nombre(u) || ' (cambio de móvil)');
+  perform rodar.emitir_movil(n.id);
+  return jsonb_build_object('ok', true, 'movil', n.numero); end $$;
+
+
 grant execute on function public.r_rep_registro(text, jsonb, jsonb), public.r_rep_login(text, jsonb, jsonb), public.r_rep_salir(text, jsonb, jsonb), public.r_rep_inicio(text, jsonb, jsonb),
-  public.r_rep_perfil(text, jsonb, jsonb), public.r_rep_lista(text, jsonb, jsonb), public.r_rep_resolver(text, jsonb, jsonb) to anon, authenticated;
+  public.r_rep_perfil(text, jsonb, jsonb), public.r_rep_lista(text, jsonb, jsonb), public.r_rep_resolver(text, jsonb, jsonb),
+  public.r_cond_modos(text, jsonb, jsonb), public.r_cond_repartidor_solicitar(text, jsonb, jsonb), public.r_cond_cambiar_movil(text, jsonb, jsonb) to anon, authenticated;
 notify pgrst, 'reload schema';
