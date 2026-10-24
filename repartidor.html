@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#215181">
+<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<title>Remises TOQUE! · Portal de repartidores</title>
+<style>
+:root{--az:#215181;--ve:#2f9e57;--na:#e8892b;--ro:#d64545;--tx:#1d2a2b;--su:#6b7a7b;--bo:#e3e9ec;--fo:#f3f6f8}
+*{box-sizing:border-box}body{margin:0;background:var(--fo);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px}
+button{font:inherit;cursor:pointer}input,select,textarea{font:inherit;width:100%;padding:10px 12px;border:1px solid var(--bo);border-radius:10px;background:#fff}textarea{min-height:60px}
+header{position:sticky;top:0;z-index:500;background:var(--az);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}header img{height:32px}header .sp{flex:1}header b{font-size:15px}
+header button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:18px;padding:6px 12px}
+nav{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--bo);overflow-x:auto;position:sticky;top:52px;z-index:400}nav button{border:0;background:none;padding:12px 14px;color:var(--su);border-bottom:3px solid transparent;white-space:nowrap}nav button.on{color:var(--az);border-color:var(--az);font-weight:700}
+main{max-width:980px;margin:0 auto;padding:14px}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--az);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:600}.btn.ve{background:var(--ve)}.btn.ro{background:var(--ro)}.btn.sec{background:#fff;color:var(--az);border:1px solid var(--az)}.btn.ch{padding:7px 10px;font-size:13px}.btn:disabled{opacity:.6}
+.card{background:#fff;border:1px solid var(--bo);border-radius:14px;padding:14px;margin-bottom:12px}
+.peds{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}.ped{background:#fff;border:1px solid var(--bo);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px}.ped.nuevo{border:2px solid var(--na);box-shadow:0 0 0 4px #e8892b22}
+.ped .top{display:flex;justify-content:space-between;align-items:center}.ped small{color:var(--su)}.ped .acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pill{display:inline-block;border-radius:12px;padding:2px 9px;font-size:12px;font-weight:700}.f{display:flex;justify-content:space-between;font-size:14px}
+.cod{font-family:monospace;font-size:20px;font-weight:800;letter-spacing:3px;background:#eef3f8;border-radius:8px;padding:2px 8px}
+.login{max-width:380px;margin:60px auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.08)}.login img{display:block;width:200px;margin:0 auto 10px}
+.campo{margin-bottom:10px}.campo label{display:block;font-size:13px;color:var(--su);margin-bottom:4px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:600px){.g2{grid-template-columns:1fr}}
+.prod{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f1f4f5}.prod .t{flex:1}.prod img{width:48px;height:48px;border-radius:8px;object-fit:cover}
+.sw{position:relative;display:inline-block;width:42px;height:24px}.sw input{opacity:0;width:0;height:0}.sw span{position:absolute;inset:0;background:#c9d3d6;border-radius:24px;cursor:pointer}.sw span:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}.sw input:checked+span{background:var(--ve)}.sw input:checked+span:before{transform:translateX(18px)}
+.err{background:#fdecec;color:#9b1c1c;border-radius:10px;padding:10px;margin:8px 0;display:none}.vacio{text-align:center;color:var(--su);padding:30px}
+.modal-f{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;display:grid;place-items:center;padding:12px}.modal{background:#fff;border-radius:16px;max-width:620px;width:100%;max-height:92vh;overflow:auto;padding:18px}
+.mapa{height:220px;border-radius:10px;border:1px solid var(--bo);margin-top:6px}.sug{position:absolute;z-index:1100;left:0;right:0;background:#fff;border:1px solid var(--bo);border-radius:10px;max-height:220px;overflow:auto}.sug a{display:block;padding:8px 10px;cursor:pointer;border-bottom:1px solid #f1f4f5}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d2a2b;color:#fff;padding:10px 16px;border-radius:10px;z-index:2000;display:none}
+table{width:100%;border-collapse:collapse}td,th{padding:8px 6px;border-bottom:1px solid #f1f4f5;text-align:left;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{background:#fff;border:1px solid var(--bo);border-radius:14px;padding:12px;text-align:center}.stat b{display:block;font-size:20px;color:var(--az)}.stat small{color:var(--su)}
+.aviso{border-radius:12px;padding:12px 14px;margin-bottom:12px}.aviso.na{background:#fff4e5;color:#8a4b00}.aviso.ro{background:#fdecec;color:#9b1c1c}.aviso.ve{background:#e8f6ee;color:#1b6b3a}
+.vehs{display:grid;grid-template-columns:1fr 1fr;gap:10px}.veh{border:2px solid var(--bo);border-radius:14px;background:#fff;padding:16px 8px;text-align:center;font-size:15px;font-weight:700}.veh span{display:block;font-size:34px}.veh.on{border-color:var(--az);background:#eef3f8}
+.tabs2{display:flex;gap:6px;margin-bottom:12px}.tabs2 button{flex:1;border:0;background:#e8eef2;border-radius:10px;padding:10px;font-weight:700;color:var(--su)}.tabs2 button.on{background:var(--az);color:#fff}
+</style>
+</head>
+<body>
+<div id="raiz"></div><div id="toast"></div>
+<script src="config.js"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="js/backend.js"></script>
+<script>
+(function () {
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pesos = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } }, del: k => { try { localStorage.removeItem(k); } catch { } } };
+const toast = m => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', 3500); };
+const raiz = $('#raiz'), TK = 'rep_token';
+const S = { d: null, tab: 'inicio', timer: null, docs: [] };
+const api = async (fn, q, b) => { try { return await RODAR.rpc(fn, LS.get(TK), q || {}, b || {}); } catch (e) { if (e.status === 401 || /SESION_VENCIDA/.test(e.message || '')) { LS.del(TK); entrada(); } throw e; } };
+const VEH = { moto: ['🏍', 'Moto'], auto: ['🚗', 'Auto'] };
+const ESTADOS_PEDIDO = { confirmado: 'Aceptado', preparando: 'En preparación', listo: 'Listo para retirar', recogido: 'Retirado', en_camino: 'En camino' };
+const fecha = s => s ? new Date(String(s).replace(' ', 'T')).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+
+// ---------- entrada: ingresar / anotarme ----------
+function entrada(modo = 'login') {
+  clearInterval(S.timer); S.docs = [];
+  raiz.innerHTML = `<div class="login" style="margin-top:30px"><img src="img/logo.png" alt="Remises TOQUE!"><h2 style="text-align:center;margin:6px 0 2px">Repartidores</h2><p style="text-align:center;color:var(--su);margin:0 0 14px">Repartí con tu moto o tu auto y cobrá por cada entrega.</p>
+<div class="tabs2"><button data-m="login" class="${modo === 'login' ? 'on' : ''}">Ingresar</button><button data-m="registro" class="${modo === 'registro' ? 'on' : ''}">Quiero repartir</button></div><div id="cu"></div><div class="err" id="e"></div></div>`;
+  $$('.tabs2 button').forEach(b => b.onclick = () => entrada(b.dataset.m));
+  const err = m => { const x = $('#e'); x.textContent = m; x.style.display = 'block'; };
+  if (modo === 'login') {
+    $('#cu').innerHTML = `<form><div class="campo"><label>DNI</label><input name="usuario" inputmode="numeric" autocomplete="username" required></div><div class="campo"><label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required></div><button class="btn" style="width:100%;justify-content:center">Ingresar</button></form>
+<p style="text-align:center;margin-bottom:0"><a href="conductor.html">Ya estoy aprobado: abrir la app de reparto</a></p>`;
+    $('form').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); try { const r = await RODAR.rpc('r_rep_login', null, {}, { usuario: f.get('usuario'), password: f.get('password') }); LS.set(TK, r.token); iniciar(); } catch (er) { err(er.message); } };
+  } else {
+    $('#cu').innerHTML = `<form><div class="vehs" style="margin-bottom:12px"><button type="button" class="veh on" data-v="moto"><span>🏍</span>Moto</button><button type="button" class="veh" data-v="auto"><span>🚗</span>Auto</button></div>
+<div class="g2"><div class="campo"><label>Nombre</label><input name="nombre" required></div><div class="campo"><label>Apellido</label><input name="apellido" required></div>
+<div class="campo"><label>DNI</label><input name="documento" inputmode="numeric" required></div><div class="campo"><label>Teléfono</label><input name="telefono" type="tel" required></div></div>
+<div class="campo"><label>Email (opcional)</label><input name="email" type="email"></div><div class="campo"><label>Contraseña (mín. 6 caracteres)</label><input name="password" type="password" minlength="6" autocomplete="new-password" required></div>
+<div class="g2"><div class="campo"><label>Patente</label><input name="patente" required style="text-transform:uppercase"></div><div class="campo"><label>Marca y modelo</label><input name="marca" placeholder="Ej: Honda Wave"></div></div>
+<div class="campo"><label>Alias o CBU para cobrar (opcional)</label><input name="alias"></div>
+<div class="campo"><label>Documentación (DNI, licencia, seguro, cédula) — fotos</label><input id="fd" type="file" accept="image/*,application/pdf" multiple></div><div id="ld" style="font-size:13px;color:var(--su);margin-bottom:8px"></div>
+<button class="btn ve" style="width:100%;justify-content:center">Enviar solicitud</button><p style="font-size:13px;color:var(--su)">La central revisa tus datos y te habilita. Después ingresás acá con tu DNI.</p></form>`;
+    let vehiculo = 'moto';
+    $$('.veh').forEach(b => b.onclick = () => { vehiculo = b.dataset.v; $$('.veh').forEach(x => x.classList.toggle('on', x === b)); });
+    $('#fd').onchange = async e => { for (const fi of e.target.files) { try { const r = await RODAR.archivoADataURL(fi); S.docs.push({ tipo: fi.name.slice(0, 40), archivo: r.archivo }); } catch (er) { err(er.message); } } e.target.value = ''; $('#ld').textContent = S.docs.length ? '📎 ' + S.docs.length + ' archivo(s) cargado(s)' : ''; };
+    $('form').onsubmit = async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); try { await RODAR.rpc('r_rep_registro', null, {}, { ...f, vehiculo, docs: S.docs }); const r = await RODAR.rpc('r_rep_login', null, {}, { usuario: f.documento, password: f.password }); LS.set(TK, r.token); toast('¡Solicitud enviada!'); iniciar(); } catch (er) { err(er.message); } };
+  }
+}
+
+// ---------- portal ----------
+async function iniciar() {
+  try { S.d = await api('r_rep_inicio'); } catch (e) { return; }
+  clearInterval(S.timer); S.timer = setInterval(() => { api('r_rep_inicio').then(d => { S.d = d; if (['inicio', 'entregas'].includes(S.tab)) pintar(); }).catch(() => { }); }, 30000);
+  pintar();
+}
+function pintar() {
+  const d = S.d, r = d.repartidor, m = d.movil;
+  raiz.innerHTML = `<header><img src="img/logo.png" alt=""><b>Hola, ${esc(r.nombre)}</b><span class="sp"></span><button id="sa">Salir</button></header>
+<nav>${[['inicio', 'Inicio'], ['entregas', 'Mis entregas'], ['vehiculo', 'Mi vehículo'], ['cuenta', 'Mi cuenta']].map(([k, l]) => `<button data-t="${k}" class="${S.tab === k ? 'act' : ''}">${l}</button>`).join('')}</nav><main id="m"></main>`;
+  $('#sa').onclick = async () => { try { await api('r_rep_salir'); } catch { } LS.del(TK); entrada(); };
+  $$('nav button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; pintar(); });
+  const mm = $('#m');
+  ({ inicio, entregas, vehiculo, cuenta })[S.tab](mm);
+}
+function aviso() {
+  const r = S.d.repartidor;
+  if (r.estado === 'pendiente') return '<div class="aviso na">⏳ <b>Tu solicitud está en revisión.</b> La central te va a habilitar a la brevedad. Mientras tanto podés completar tus datos y documentación en <i>Mi vehículo</i>.</div>';
+  if (r.estado === 'rechazado') return `<div class="aviso ro">❌ <b>Tu solicitud fue rechazada.</b>${r.motivo ? '<br>' + esc(r.motivo) : ''}<br>Corregí tus datos o documentos y contactá a la central.</div>`;
+  if (r.estado === 'suspendido') return `<div class="aviso ro">⛔ <b>Tu cuenta está suspendida.</b>${r.motivo ? '<br>' + esc(r.motivo) : ''}</div>`;
+  return '';
+}
+function inicio(m) {
+  const d = S.d, r = d.repartidor, mv = d.movil, rs = d.resumen, ok = r.estado === 'aprobado';
+  const cu = mv && mv.cuenta;
+  m.innerHTML = `${aviso()}
+${ok ? `<div class="card" style="text-align:center"><div style="font-size:42px">${VEH[mv.tipo_vehiculo]?.[0] || '🛵'}</div><div>Móvil <b>${mv.numero}</b> · ${esc(VEH[mv.tipo_vehiculo]?.[1] || '')} · ${esc(mv.patente || '')}</div>
+<a class="btn ve" href="conductor.html" style="margin-top:10px;text-decoration:none;font-size:17px;padding:14px 22px">🟢 Abrir app de reparto</a><div style="color:var(--su);font-size:13px;margin-top:8px">Ahí te conectás y recibís los pedidos. Entrá con tu DNI y elegí el móvil ${mv.numero}.</div></div>` : ''}
+${ok && cu && (cu.bloqueado || cu.sin_saldo) ? `<div class="aviso ro">💲 Tu cuenta no tiene saldo para recibir pedidos (${esc(cu.texto || '')}). Contactá a la central.</div>` : ''}
+<div class="stats">${[['Hoy', rs.hoy], ['Esta semana', rs.semana], ['Este mes', rs.mes]].map(([t, x]) => `<div class="stat"><small>${t}</small><b>${pesos(x.ganado)}</b><small>${x.entregas} entrega${x.entregas === 1 ? '' : 's'}</small></div>`).join('')}</div>
+<h3>Pedidos en curso</h3>${d.en_curso.length ? d.en_curso.map(p => `<div class="card"><div class="f"><b>#${esc(p.codigo)} · ${esc(p.negocio || 'Envío directo')}</b><span class="pill" style="background:#7a4fd622;color:#7a4fd6">${esc(ESTADOS_PEDIDO[p.estado] || p.estado)}</span></div>
+<div style="margin-top:6px">🏪 ${esc(p.recogida_dir || '—')}<br>🏠 ${esc(p.cliente || '')} · ${esc(p.entrega_dir || '')}</div><div class="f" style="margin-top:6px"><span>Tu ganancia: <b>${pesos(p.ganancia)}</b></span>${+p.cobrar ? `<span>💵 Cobrar <b>${pesos(p.cobrar)}</b></span>` : '<span>Ya pagado</span>'}</div></div>`).join('') : '<div class="vacio">No tenés pedidos en curso.</div>'}`;
+}
+function entregas(m) {
+  const d = S.d, t = d.resumen.total;
+  m.innerHTML = `<div class="card"><div class="f"><span>Entregas realizadas</span><b>${t.entregas}</b></div><div class="f"><span>Total ganado</span><b>${pesos(t.ganado)}</b></div><small style="color:var(--su)">Ganancia = envío + propina − lo que retiene la central.</small></div>
+${d.entregas.length ? `<div class="card"><table>${d.entregas.map(e => `<tr><td><b>#${esc(e.codigo)}</b><br><small>${fecha(e.fecha)} · ${esc(e.negocio)}</small><br><small>${esc(e.entrega_dir || '')}</small></td><td style="text-align:right"><b>${pesos(e.ganancia)}</b>${+e.propina ? `<br><small>incl. propina ${pesos(e.propina)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<div class="vacio">Todavía no hiciste entregas.</div>'}`;
+}
+function vehiculo(m) {
+  const mv = S.d.movil || {}, r = S.d.repartidor; S.docs = [...(r.docs || [])]; let veh = mv.tipo_vehiculo || 'moto';
+  m.innerHTML = `${aviso()}<div class="card"><h3 style="margin-top:0">Mi vehículo</h3><p style="color:var(--su);margin-top:0">Solo vas a recibir los pedidos que piden tu tipo de vehículo.</p>
+<div class="vehs" style="margin-bottom:12px">${Object.entries(VEH).map(([k, [i, t]]) => `<button type="button" class="veh ${veh === k ? 'on' : ''}" data-v="${k}"><span>${i}</span>${t}</button>`).join('')}</div>
+<div class="g2"><div class="campo"><label>Patente</label><input id="vp" value="${esc(mv.patente || '')}" style="text-transform:uppercase"></div><div class="campo"><label>Marca</label><input id="vm" value="${esc(mv.marca || '')}"></div>
+<div class="campo"><label>Modelo</label><input id="vo" value="${esc(mv.modelo || '')}"></div><div class="campo"><label>Color</label><input id="vc" value="${esc(mv.color || '')}"></div></div>
+<div class="campo"><label>Documentación</label><div id="ld"></div><input id="fd" type="file" accept="image/*,application/pdf" multiple></div><button class="btn ve" id="vg">Guardar</button></div>`;
+  $$('.veh', m).forEach(b => b.onclick = () => { veh = b.dataset.v; $$('.veh', m).forEach(x => x.classList.toggle('on', x === b)); });
+  const lista = () => { $('#ld').innerHTML = S.docs.map((x, i) => `<div class="f" style="padding:3px 0"><span>📎 ${esc(x.tipo || 'Archivo')}</span><a href="#" data-q="${i}">Quitar</a></div>`).join('') || '<small style="color:var(--su)">Sin archivos</small>'; $$('[data-q]', m).forEach(a => a.onclick = e => { e.preventDefault(); S.docs.splice(+a.dataset.q, 1); lista(); }); };
+  lista();
+  $('#fd').onchange = async e => { for (const fi of e.target.files) { try { const r = await RODAR.archivoADataURL(fi); S.docs.push({ tipo: fi.name.slice(0, 40), archivo: r.archivo }); } catch (er) { toast(er.message); } } e.target.value = ''; lista(); };
+  $('#vg').onclick = async () => { try { await api('r_rep_perfil', {}, { vehiculo: veh, patente: $('#vp').value, marca: $('#vm').value, modelo: $('#vo').value, color: $('#vc').value, docs: S.docs }); toast('Datos guardados'); iniciar(); } catch (e) { toast(e.message); } };
+}
+function cuenta(m) {
+  const r = S.d.repartidor;
+  m.innerHTML = `<div class="card"><h3 style="margin-top:0">Mis datos</h3><div class="f"><span>DNI</span><b>${esc(r.documento)}</b></div><div class="g2" style="margin-top:10px"><div class="campo"><label>Teléfono</label><input id="ct" value="${esc(r.telefono || '')}"></div><div class="campo"><label>Email</label><input id="ce" value="${esc(r.email || '')}"></div></div>
+<div class="campo"><label>Alias para cobrar</label><input id="ca" value="${esc(r.alias || '')}"></div><div class="campo"><label>CBU</label><input id="cb" value="${esc(r.cbu || '')}"></div><button class="btn ve" id="cg">Guardar</button></div>
+<div class="card"><h3 style="margin-top:0">Cambiar contraseña</h3><div class="g2"><div class="campo"><label>Actual</label><input id="pa" type="password"></div><div class="campo"><label>Nueva</label><input id="pn" type="password"></div></div><button class="btn sec" id="pg">Cambiar contraseña</button></div>`;
+  $('#cg').onclick = async () => { try { await api('r_rep_perfil', {}, { telefono: $('#ct').value, email: $('#ce').value, alias: $('#ca').value, cbu: $('#cb').value }); toast('Datos guardados'); iniciar(); } catch (e) { toast(e.message); } };
+  $('#pg').onclick = async () => { try { await api('r_rep_perfil', {}, { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); $('#pa').value = $('#pn').value = ''; } catch (e) { toast(e.message); } };
+}
+
+if (!RODAR.listo) raiz.innerHTML = '<div class="vacio">Falta configurar la conexión (config.js).</div>';
+else if (LS.get(TK)) iniciar(); else entrada();
+})();
+</script>
+</body>
+</html>

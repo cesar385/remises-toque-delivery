@@ -217,3 +217,13 @@ Aplicar `sql/33_rubros_vehiculo.sql` (ya incluido en `supabase/rodar.sql`; se pu
 - **Rubros:** en *Delivery → Categorías* cada rubro tiene un **tipo**: *Comida* (se prepara) o *Productos* (farmacia, kiosco, ferretería, mercado… se arma). El tipo cambia los textos: "Armando" en vez de "Preparando" (comercio, avisos y seguimiento del cliente). La demo suma una ferretería.
 - **Vehículo:** el negocio decide si el reparto es en **moto, auto o cualquiera**. Prioridad: lo que elige para ese pedido > el defecto del negocio (*Mi negocio* / ajustes en el panel) > el del rubro > cualquiera. Se cambia mientras el pedido no tenga repartidor asignado ni oferta en curso.
 - **Despacho:** cada móvil tiene *Tipo de vehículo* (auto por defecto; se carga en *Móviles → Modificar*). Si el viaje pide moto o auto, solo se le ofrece a móviles de ese tipo (`rodar.elegible`). **Ojo:** los móviles existentes quedan como *auto*; marcá como *moto* los que correspondan.
+
+## Portal de repartidores (`repartidor.html`)
+
+Aplicar `sql/34_repartidores.sql` (ya incluido en `supabase/rodar.sql`; se puede correr más de una vez).
+
+- **Registro:** el repartidor se anota solo en `repartidor.html` → *Quiero repartir*: moto o auto, DNI, teléfono, patente, alias/CBU y fotos de documentos. Queda **por aprobar**; la central recibe un aviso.
+- **Aprobación:** *Delivery → Repartidores* (panel): ver datos y documentos, **aprobar / rechazar / suspender / reactivar** (rechazar y suspender piden motivo, que el repartidor ve). Al aprobar se habilita su móvil; al suspender se desconecta.
+- **Por dentro** cada repartidor es un usuario `conductor` con un móvil propio (con su tipo moto/auto), así entra al despacho de siempre: los pedidos en vivo se reciben en `conductor.html` con el mismo DNI y contraseña.
+- **En el portal:** ganancias (hoy, semana, mes, total), pedidos en curso con cuánto cobrar, historial de entregas, cambio de vehículo/patente/documentos, alias y contraseña. Ganancia por entrega = envío + propina − comisión del repartidor.
+- Un móvil nuevo necesita saldo/plan para recibir pedidos (como cualquier móvil): si no lo tiene, el portal lo avisa.
