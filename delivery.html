@@ -239,7 +239,9 @@ ${+p.envio ? `<div class="f"><span>Envío</span><span>${pesos(p.envio)}</span></
 <small style="color:var(--su)">${p.tipo_entrega === 'retiro' ? 'Retirás en el local' : 'Entrega en ' + esc(p.entrega_dir || '')}</small>`;
 primero = false;
 }
-$('#est').innerHTML = `<h2 style="margin-top:0">${esc(EST[p.estado] || p.estado)}</h2>${p.estado === 'cancelado' ? `<div class="aviso error">${esc(p.motivo_cancelacion || 'El pedido fue cancelado')}</div>` : `<div class="pasos">${PASOS.filter(x => p.tipo_entrega === 'entrega' || x[0] !== 'en_camino').map(([e, l]) => `<div class="paso ${ORDEN[e] <= o ? 'on' : ''}">${l}</div>`).join('')}</div>`}
+const V = p.vocab || {}, prod = V.tipo === 'productos'; // rubros que no son comida: "Armando" en vez de "Preparando"
+const ETIQ = e => e === 'preparando' && prod ? V.prep_largo : EST[e] || e;
+$('#est').innerHTML = `<h2 style="margin-top:0">${esc(ETIQ(p.estado))}</h2>${p.estado === 'cancelado' ? `<div class="aviso error">${esc(p.motivo_cancelacion || 'El pedido fue cancelado')}</div>` : `<div class="pasos">${PASOS.filter(x => p.tipo_entrega === 'entrega' || x[0] !== 'en_camino').map(([e, l]) => `<div class="paso ${ORDEN[e] <= o ? 'on' : ''}">${e === 'preparando' && prod ? esc(V.prep) : l}</div>`).join('')}</div>`}
 ${p.repartidor ? `<div>🛵 Tu repartidor: móvil <b>${esc(p.repartidor.movil)}</b> ${esc(p.repartidor.nombre || '')}</div>` : ''}${p.codigo_entrega && !fin ? `<div style="margin-top:8px">Código para el repartidor: <span class="codigo">${esc(p.codigo_entrega)}</span></div>` : ''}`;
 if (p.repartidor && p.repartidor.lat) { if (!mkR) mkR = L.marker([p.repartidor.lat, p.repartidor.lng], { icon: L.divIcon({ className: '', html: '<div style="font-size:26px">🛵</div>', iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(m); else mkR.setLatLng([p.repartidor.lat, p.repartidor.lng]); }
 $('#acc').innerHTML = p.puede_cancelar ? `<button class="btn sec full" id="canc">${p.cancela_directo ? 'Cancelar pedido' : 'Pedir cancelación'}</button>` : '';

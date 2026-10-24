@@ -157,12 +157,27 @@ Al finalizar un viaje, el servidor compara los metros que midió la app con el r
 ## Pagar base (Mercado Pago y cobro automático)
 - En la app del conductor y en el panel, el botón se llama **Pagar base**. Muestra el saldo, el estado, la deuda y un monto sugerido, y abre Mercado Pago.
 - **Cobro automático de la base:** creá un plan con periodicidad *Diaria* (Finanzas → Tipos de abonos). Cada día se descuenta la cuota de la cuenta del móvil sin que nadie haga nada; si la cuenta queda por debajo del límite del plan, el móvil se bloquea hasta pagar.
-- **Pago con Mercado Pago (se acredita solo):**
-  1. `supabase functions deploy mercadopago --no-verify-jwt`
-  2. `supabase secrets set MP_ACCESS_TOKEN=<tu access token de producción de Mercado Pago>`
-  3. Volvé a correr `supabase/rodar.sql` (incluye `17_pagar_base.sql`).
-  Mercado Pago avisa a la función cuando el pago se aprueba y la base se acredita una sola vez. Sin la función instalada, el botón cae al método anterior (link/alias y confirmación manual por la central).
-- Esta parte no pudo probarse contra Mercado Pago real: probala primero con un monto chico.
+- **Billeteras (Mercado Pago, Ualá, Naranja X, Personal Pay u otra):** en *Administración → Medios de pago → Billeteras para cargas de saldo* elegís cuáles ofrece la app del conductor y cargás el alias/CVU de la central para cada una. Si hay más de una habilitada, el conductor elige con cuál paga.
+
+  | Billetera | Cómo se cobra | Se acredita |
+  |---|---|---|
+  | Mercado Pago ⚡ | Checkout de Mercado Pago (API) | Sola |
+  | Ualá ⚡ | Ualá Bis API v2 | Sola |
+  | Naranja X, Personal Pay, otra billetera | Transferencia al alias/CVU de la central (sirve cualquier billetera o app bancaria: las transferencias son interoperables) | La central la confirma en *Finanzas → Pagos de base* |
+
+  Naranja X y Personal Pay no publican (a octubre de 2026) una API abierta para comercios; si te dan credenciales, se suman con un adaptador nuevo en `supabase/functions/_shared/adaptadores.ts` (ver más abajo).
+- **Instalar el cobro automático (Mercado Pago y Ualá):**
+  1. Correr de nuevo `supabase/rodar.sql` (incluye `sql/31_pagos_proveedores.sql`; no borra datos).
+  2. `supabase functions deploy pagos --no-verify-jwt`
+  3. Secretos comunes: `supabase secrets set RODAR_WEBHOOK_TOKEN=<el de Configuración y demo> SITE_URL=https://TU-USUARIO.github.io/central/`
+  4. Mercado Pago: `supabase secrets set MP_ACCESS_TOKEN=<access token de producción>`
+  5. Ualá: `supabase secrets set UALA_USER=... UALA_CLIENT_ID=... UALA_CLIENT_SECRET=...` (credenciales de Ualá Bis → API). Para probar en su entorno de pruebas agregá `UALA_ENV=stage` y `UALA_AUTH_URL=<dirección de auth de pruebas que figura en su documentación>`.
+  6. Opcional: si tenés pagos de Mercado Pago creados antes de este cambio y todavía pendientes, desplegá también `supabase functions deploy mercadopago --no-verify-jwt` (reenvía los avisos viejos a la lógica nueva).
+
+  El proveedor avisa a la función cuando se aprueba el pago; la función **vuelve a consultarlo al proveedor con tus credenciales** y recién ahí lo acredita, una sola vez y solo si el monto coincide. Sin la función instalada, o sin credenciales de ese proveedor, la billetera funciona como transferencia con confirmación manual.
+- **Sumar otro proveedor con API:** en `supabase/functions/_shared/adaptadores.ts` escribí un adaptador (`crear` y `verificar`), registralo en `crearAdaptadores()`, agregalo al catálogo de `sql/31_pagos_proveedores.sql` (`rodar.pagos_catalogo()`, con `"api": true`) y corré `deno test supabase/functions/_shared/`.
+- **Ualá:** monto mínimo $25; solo se acredita cuando la orden figura como *APPROVED* (en *PROCESSED* el desembolso está pendiente y se espera). Ualá no firma sus avisos: por eso se verifica la orden con tus credenciales antes de acreditar. La API v1 de Ualá Bis se depreca el 31/12/2026; esta integración usa la v2.
+- La lógica de acreditación (SQL) y los adaptadores están probados con pruebas automáticas, pero **no contra Mercado Pago ni Ualá reales**: probá cada billetera primero con un monto chico (en Ualá, mínimo $25).
 
 ## Radio y segundo plano
 - Cuando habla un móvil, la central ve **"Móvil N · nombre"**; cuando habla la central, el conductor ve **"Central · operador"**.
@@ -194,3 +209,11 @@ Al finalizar un viaje, el servidor compara los metros que midió la app con el r
 ## Conductor: datos propios y modo activo
 - **Mi perfil** (app del conductor): el conductor edita su nombre, apellido, teléfono, email y datos de recupero. El DNI y los datos del auto los cambia la central; el alias y la billetera se cargan en *Mi billetera virtual*. Requiere `sql/23_perfil_conductor.sql` (ya incluido en `supabase/rodar.sql`).
 - El **audio de radio** y el **modo activo (segundo plano)** ya no están en el menú: quedan siempre encendidos.
+
+## Rubros (no solo comida) y vehículo del reparto (moto / auto)
+
+Aplicar `sql/33_rubros_vehiculo.sql` (ya incluido en `supabase/rodar.sql`; se puede correr más de una vez).
+
+- **Rubros:** en *Delivery → Categorías* cada rubro tiene un **tipo**: *Comida* (se prepara) o *Productos* (farmacia, kiosco, ferretería, mercado… se arma). El tipo cambia los textos: "Armando" en vez de "Preparando" (comercio, avisos y seguimiento del cliente). La demo suma una ferretería.
+- **Vehículo:** el negocio decide si el reparto es en **moto, auto o cualquiera**. Prioridad: lo que elige para ese pedido > el defecto del negocio (*Mi negocio* / ajustes en el panel) > el del rubro > cualquiera. Se cambia mientras el pedido no tenga repartidor asignado ni oferta en curso.
+- **Despacho:** cada móvil tiene *Tipo de vehículo* (auto por defecto; se carga en *Móviles → Modificar*). Si el viaje pide moto o auto, solo se le ofrece a móviles de ese tipo (`rodar.elegible`). **Ojo:** los móviles existentes quedan como *auto*; marcá como *moto* los que correspondan.

@@ -68,7 +68,7 @@ async function iniciar() {
 try { S.d = await api('r_dlv_com_inicio'); } catch (e) { if (e.status !== 401) raiz.innerHTML = `<div class="vacio">${esc(e.message)}<br><button class="btn" onclick="location.reload()">Reintentar</button></div>`; return; }
 const n = S.d.negocio, c = S.d.config;
 raiz.innerHTML = `<header><img src="img/logo-blanco.png" alt=""><b>${esc(n.nombre)}</b><span class="sp"></span><span id="ab" style="font-size:13px"></span><button id="salir">Salir</button></header>
-<nav>${[['pedidos', 'Pedidos'], ['historial', 'Historial'], ...(c.solicitar_repartidor ? [['repartidor', 'Solicitar repartidor']] : []), ['menu', 'Menú'], ['saldo', 'Saldo'], ['perfil', 'Mi negocio']].map(([k, l]) => `<button data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav><main id="m"></main>`;
+<nav>${[['pedidos', 'Pedidos'], ['historial', 'Historial'], ...(c.solicitar_repartidor ? [['repartidor', 'Solicitar repartidor']] : []), ['menu', (S.d.negocio.vocab || {}).catalogo || 'Menú'], ['saldo', 'Saldo'], ['perfil', 'Mi negocio']].map(([k, l]) => `<button data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav><main id="m"></main>`;
 $('#salir').onclick = async () => { try { await api('r_dlv_com_logout'); } catch { } LS.del('dlv_com_token'); login(); };
 $$('nav button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; $$('nav button').forEach(x => x.classList.toggle('on', x === b)); pintar(); });
 pintar();
@@ -85,6 +85,7 @@ const act = S.tab === 'pedidos';
 const lista = S.d.pedidos.filter(p => act ? !['entregado', 'cancelado'].includes(p.estado) : ['entregado', 'cancelado'].includes(p.estado));
 m.innerHTML = lista.length ? `<div class="peds">${lista.map(tarjeta).join('')}</div>` : `<div class="vacio">${act ? '🕐 No hay pedidos en curso. Esta pantalla se actualiza sola y suena cuando entra uno nuevo.' : 'Sin pedidos en los últimos 2 días.'}</div>`;
 $$('[data-a]', m).forEach(b => b.onclick = () => accion(+b.dataset.id, b.dataset.a));
+$$('[data-veh]', m).forEach(s => s.onchange = async () => { try { await api('r_dlv_com_vehiculo', {}, { id: +s.dataset.veh, vehiculo: s.value }); toast('Vehículo del reparto: ' + s.options[s.selectedIndex].text); iniciar(); } catch (e) { toast(e.message); iniciar(); } });
 $$('[data-ver]', m).forEach(b => b.onclick = () => comanda(S.d.pedidos.find(p => p.id === +b.dataset.ver)));
 $$('[data-link]', m).forEach(b => b.onclick = () => { const p = S.d.pedidos.find(x => x.id === +b.dataset.link); const u = new URL(`delivery.html#/seguir/${p.id}/${p.k}`, location.href).href; const txt = `Seguí tu pedido #${p.codigo} en vivo: ${u}`; if (navigator.share) navigator.share({ text: txt }).catch(() => { }); else window.open('https://wa.me/' + String(p.cliente_tel || '').replace(/\D/g, '') + '?text=' + encodeURIComponent(txt)); });
 lista.filter(p => p.estado === 'pendiente').forEach(p => S.vistos.add(p.id)); LS.set('dlv_com_vistos', JSON.stringify([...S.vistos].slice(-200)));
@@ -95,11 +96,11 @@ else if (S.tab === 'saldo') m.innerHTML = `<div class="card"><h3 style="margin-t
 else if (S.tab === 'perfil') perfil(m);
 }
 function tarjeta(p) {
-const c = S.d.config, nuevo = p.estado === 'pendiente';
+const c = S.d.config, nuevo = p.estado === 'pendiente', V = S.d.negocio.vocab || {};
 const b = (a, t, cl = '') => `<button class="btn ch ${cl}" data-a="${a}" data-id="${p.id}">${t}</button>`;
 let acc = '';
 if (p.estado === 'pendiente') acc = b('aceptar', '✓ Aceptar', 've') + b('rechazar', 'Rechazar', 'ro');
-else if (p.estado === 'confirmado') acc = b('preparando', '🍳 Preparando') + b('listo', '📦 Listo', 've');
+else if (p.estado === 'confirmado') acc = b('preparando', V.prep_boton || '🍳 Preparando') + b('listo', '📦 Listo', 've');
 else if (p.estado === 'preparando') acc = b('listo', '📦 Listo', 've');
 else if (p.estado === 'listo' && p.tipo_entrega === 'retiro') acc = b('entregado', '✓ Entregado', 've');
 if (!['entregado', 'cancelado', 'cancelacion_solicitada', 'pendiente'].includes(p.estado)) acc += b('cancelar', c.cancel_comercio ? 'Cancelar' : 'Pedir cancelación', 'sec');
@@ -109,6 +110,7 @@ if (p.devolucion_pendiente) acc += b('devuelto', '↩ Mercadería devuelta', 'se
 return `<div class="ped ${nuevo ? 'nuevo' : ''}"><div class="top"><b>#${esc(p.codigo)}</b>${pill(p.estado)}</div><small>${hora(p.creado)} · ${p.tipo === 'express' ? 'Express' : 'App'} · ${p.tipo_entrega === 'retiro' ? 'Retira en el local' : 'Envío'}</small>
 <div>${(p.items || []).map(i => `<div class="f"><span>${i.cantidad} × ${esc(i.nombre)}${i.notas ? ` <small>(${esc(i.notas)})</small>` : ''}</span><span>${pesos(i.subtotal)}</span></div>`).join('') || `<div class="f"><span>Monto del pedido</span><span>${pesos(p.subtotal)}</span></div>`}</div>
 <div class="f"><b>Tus productos</b><b>${pesos(p.subtotal)}</b></div><small>${esc(p.cliente_nombre || '')} ${esc(p.cliente_tel || '')} · ${esc(p.medio_pago)}${p.pagado ? ' ✅' : ''}${p.notas ? '<br>📝 ' + esc(p.notas) : ''}</small>
+${p.tipo_entrega === 'entrega' && !['entregado', 'cancelado', 'cancelacion_solicitada'].includes(p.estado) ? (p.movil_numero || ['recogido', 'en_camino'].includes(p.estado) || p.viaje_estado === 'ofrecido' ? `<small>Reparto en: <b>${{ moto: '🏍 moto', auto: '🚗 auto' }[p.vehiculo] || 'moto o auto'}</b></small>` : `<div class="f"><small>🛵 Repartidor en:</small><select class="veh" data-veh="${p.id}" style="width:auto">${[['cualquiera', 'Moto o auto'], ['moto', '🏍 Moto'], ['auto', '🚗 Auto']].map(([v, t]) => `<option value="${v}" ${(p.vehiculo || 'cualquiera') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`) : ''}
 ${p.movil_numero ? `<small>🛵 Repartidor: móvil <b>${p.movil_numero}</b> ${esc(p.conductor || '')}</small>` : p.buscando_desde && !['entregado', 'cancelado'].includes(p.estado) ? '<small style="color:var(--na)">Buscando repartidor…</small>' : ''}
 ${p.codigo_recoleccion && c.codigo_recoleccion && !['entregado', 'cancelado'].includes(p.estado) && p.tipo_entrega === 'entrega' ? `<div>Código para el repartidor: <span class="cod">${esc(p.codigo_recoleccion)}</span></div>` : ''}
 ${p.devolucion_pendiente ? '<small style="color:var(--ro)">Devolución pendiente: pedile al repartidor el código de devolución.</small>' : ''}
@@ -185,7 +187,8 @@ function perfil(m) {
 const n = S.d.negocio, hor = n.horario || {}, DIAS = [[1, 'Lunes'], [2, 'Martes'], [3, 'Miércoles'], [4, 'Jueves'], [5, 'Viernes'], [6, 'Sábado'], [0, 'Domingo']];
 m.innerHTML = `${S.d.cambio_pendiente ? '<div class="card" style="background:#fff8ec">Tenés cambios enviados esperando la aprobación de la central.</div>' : ''}
 <div class="card"><h3 style="margin-top:0">Mi negocio</h3><div class="g2"><div class="campo"><label>Nombre</label><input id="nn" value="${esc(n.nombre)}"></div><div class="campo"><label>Teléfono</label><input id="nt" value="${esc(n.telefono || '')}"></div>
-<div class="campo"><label>Tiempo de preparación (min)</label><input id="np" type="number" value="${esc(n.tiempo_prep || '')}"></div><div class="campo"><label>Pedido mínimo</label><input id="nm" type="number" value="${esc(n.pedido_minimo || '')}"></div></div>
+<div class="campo"><label>${esc((n.vocab || {}).prep_tiempo || 'Tiempo de preparación (min)')}</label><input id="np" type="number" value="${esc(n.tiempo_prep || '')}"></div><div class="campo"><label>Pedido mínimo</label><input id="nm" type="number" value="${esc(n.pedido_minimo || '')}"></div></div>
+<div class="campo"><label>Vehículo para tus repartos (por defecto)</label><select id="nv">${[['', 'El de mi rubro (' + ({ moto: 'moto', auto: 'auto' }[n.vehiculo_efectivo] || 'moto o auto') + ')'], ['cualquiera', 'Moto o auto'], ['moto', '🏍 Moto'], ['auto', '🚗 Auto']].map(([v, t]) => `<option value="${v}" ${(n.vehiculo_defecto || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>Podés cambiarlo en cada pedido (ej.: una heladera necesita auto).</small></div>
 <div class="campo"><label>Descripción</label><textarea id="nd">${esc(n.descripcion || '')}</textarea></div><label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="nr" style="width:auto" ${n.retiro_local ? 'checked' : ''}> Permitir retiro en el local</label>
 <div class="campo"><label>Logo</label><input id="nl" type="file" accept="image/*"></div>
 <h4>Horario (vacío = siempre abierto)</h4><table>${DIAS.map(([d, l]) => `<tr><td>${l}</td><td><input type="time" data-a="${d}" value="${(hor[d] || [])[0] || ''}" style="width:auto"> a <input type="time" data-b="${d}" value="${(hor[d] || [])[1] || ''}" style="width:auto"></td></tr>`).join('')}</table>
@@ -194,7 +197,7 @@ m.innerHTML = `${S.d.cambio_pendiente ? '<div class="card" style="background:#ff
 $('#ng').onclick = async () => { const horario = {}; let alguno = false; DIAS.forEach(([d]) => { const a = $(`[data-a="${d}"]`).value, b = $(`[data-b="${d}"]`).value; if (a && b) { horario[d] = [a, b]; alguno = true; } });
 const b = { nombre: $('#nn').value, telefono: $('#nt').value, tiempo_prep: $('#np').value, pedido_minimo: $('#nm').value, descripcion: $('#nd').value, retiro_local: $('#nr').checked, horario: alguno ? horario : null };
 const fi = $('#nl').files[0]; if (fi) b.logo = (await RODAR.archivoADataURL(fi)).archivo;
-try { const r = await api('r_dlv_com_perfil', {}, b); toast(r.pendiente ? 'Cambios enviados a la central para aprobación' : 'Datos guardados'); iniciar(); } catch (e) { toast(e.message); } };
+try { const r = await api('r_dlv_com_perfil', {}, b); await api('r_dlv_com_vehiculo', {}, { defecto: $('#nv').value }); toast(r.pendiente ? 'Cambios enviados a la central para aprobación' : 'Datos guardados'); iniciar(); } catch (e) { toast(e.message); } };
 $('#pg').onclick = async () => { try { await api('r_dlv_com_perfil', {}, { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); $('#pa').value = $('#pn').value = ''; } catch (e) { toast(e.message); } };
 }
 
