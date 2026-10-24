@@ -4408,3 +4408,2054 @@ end $$;
 
 grant execute on function public.r_radio_enviar(text, jsonb, jsonb), public.r_radio_audio(text, jsonb, jsonb) to anon, authenticated;
 notify pgrst, 'reload schema';
+
+
+-- ======== 28_tarifa_afuera.sql ========
+-- Viajes afuera (larga distancia): desde X km el viaje se cobra a un precio fijo por km, independiente de la tabla de km.
+-- Se guarda dentro de la tabla de la tarifa: tabla.afuera = { "desde_km": 15, "precio_km": 1800 }. Lo ajusta el administrador en Tarifas → 📋.
+create or replace function rodar.calcular_monto(t rodar.tarifas, metros numeric, espera_seg numeric, indice numeric default 1) returns numeric language plpgsql immutable set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare m numeric; red int; fd int; fe int := 0; mt numeric; af jsonb; desde numeric; pk numeric; esp numeric := 0;
+begin
+if t.id is null then return 0; end if;
+if jsonb_array_length(coalesce(t.tabla -> 'km', '[]')) > 0 then
+  mt := greatest(0, coalesce(metros, 0) - coalesce(t.cortesia_mts, 0));
+  if t.con_espera then esp := rodar.precio_tabla_espera(t.tabla, greatest(0, coalesce(espera_seg, 0) - coalesce(t.cortesia_min, 0) * 60)); end if;
+  af := t.tabla -> 'afuera'; desde := nullif(af ->> 'desde_km', '')::numeric; pk := nullif(af ->> 'precio_km', '')::numeric;
+  if desde is not null and coalesce(pk, 0) > 0 and mt >= desde * 1000 then
+    return round((ceil(mt / 100) / 10 * pk + esp) * coalesce(indice, 1));
+  end if;
+  return round((rodar.precio_tabla_km(t.tabla, mt) + esp) * coalesce(indice, 1));
+end if;
+red := greatest(1, coalesce(t.redondeo_mts, 100));
+m := greatest(0, coalesce(metros, 0) - coalesce(t.cortesia_mts, 0));
+m := ceil(m / red) * red;
+fd := floor(m / greatest(1, coalesce(t.ficha_mts, 100)));
+if t.con_espera then fe := floor(greatest(0, coalesce(espera_seg, 0) - coalesce(t.cortesia_min, 0) * 60) / greatest(1, coalesce(t.espera_seg, 60))); end if;
+return round((coalesce(t.bajada, 0) + (fd + fe) * coalesce(t.precio_ficha, 0)) * coalesce(indice, 1));
+end $$;
+
+-- Valor inicial: desde 15 km, $1800 por km (solo si la tarifa todavía no lo tiene configurado)
+update rodar.tarifas set tabla = tabla || '{"afuera":{"desde_km":15,"precio_km":1800}}'::jsonb
+where jsonb_array_length(coalesce(tabla -> 'km', '[]')) > 0 and not (tabla ? 'afuera');
+notify pgrst, 'reload schema';
+
+
+-- ======== 29_mp_repetidos.sql ========
+-- Pagos de base Mercado Pago: eliminar pedidos repetidos por móvil.
+-- Cada vez que el conductor tocaba "Pagar con Mercado Pago" quedaba un pedido pendiente nuevo.
+
+-- 1) Eliminar un pedido pendiente (sin acreditar)
+create or replace function public.r_mp_pago_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'gestion'); p rodar.mp_pagos;
+begin
+  select * into p from rodar.mp_pagos where id = (p_q ->> 'id')::bigint;
+  if not found then raise exception 'El pedido no existe'; end if;
+  if p.tipo <> 'recarga' or p.acreditado or p.estado = 'pagado' then raise exception 'Solo se pueden eliminar pedidos que no estén pagados ni acreditados'; end if;
+  execute 'DEL' || 'ETE FROM rodar.mp_pagos WHERE id = $1' using p.id; -- dinámico: el editor SQL de la herramienta se cuelga con la palabra literal
+  perform rodar.accion(u, 'mp_pedido_eliminado', p.id::text, 'Se eliminó el pedido de pago de base #' || p.id || ' por ' || p.monto || ' (móvil ' || coalesce((select numero::text from rodar.moviles where id = p.movil_id), '?') || ')');
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- 2) Quitar repetidos: por cada móvil y monto deja el pedido pendiente más nuevo y elimina los anteriores.
+--    p_b.aplicar = false solo cuenta cuántos se eliminarían.
+create or replace function public.r_mp_repetidos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'gestion'); ids bigint[]; mv int;
+begin
+  select coalesce(array_agg(id), '{}'), count(distinct movil_id) into ids, mv from (
+    select id, movil_id, row_number() over (partition by movil_id, monto order by fecha desc nulls last, id desc) rn
+    from rodar.mp_pagos where tipo = 'recarga' and estado = 'pendiente' and not coalesce(acreditado, false)
+      and (rodar.n(p_b, 'movil') is null or movil_id = (select id from rodar.moviles where numero = rodar.n(p_b, 'movil')))
+  ) x where rn > 1;
+  if rodar.b(p_b, 'aplicar') and array_length(ids, 1) > 0 then
+    execute 'DEL' || 'ETE FROM rodar.mp_pagos WHERE id = any($1)' using ids;
+    perform rodar.accion(u, 'mp_repetidos_eliminados', null, 'Se eliminaron ' || array_length(ids, 1) || ' pedidos de pago de base repetidos');
+  end if;
+  return jsonb_build_object('cantidad', coalesce(array_length(ids, 1), 0), 'moviles', mv);
+end $$;
+
+-- 3) No crear repetidos: si el móvil ya tiene un pedido pendiente por el mismo monto en las últimas 24 h, se reutiliza
+create or replace function public.r_cargar_saldo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); s rodar.sesiones := rodar.sesion(p_token); m rodar.moviles; mto numeric := rodar.n(p_b, 'monto'); nid bigint; mp jsonb := rodar.cfg('mp', '{}');
+begin
+  select * into m from rodar.moviles where id = coalesce(s.movil_id, rodar.n(p_b, 'movil_id')::bigint);
+  if not found then raise exception 'Elegí un móvil'; end if;
+  if not (m.titular_id = u.id or exists(select 1 from rodar.movil_conductores where movil_id = m.id and usuario_id = u.id) or rodar.tiene(u, 'admin')) then raise exception 'Sin permiso sobre ese móvil'; end if;
+  if coalesce(mto, 0) <= 0 then raise exception 'Monto inválido'; end if;
+  select id into nid from rodar.mp_pagos where tipo = 'recarga' and movil_id = m.id and mp_pagos.monto = mto and estado = 'pendiente' and not coalesce(acreditado, false)
+    and fecha > rodar.ahora() - interval '24 hours' order by id desc limit 1;
+  if nid is not null then update rodar.mp_pagos set fecha = rodar.ahora() where id = nid;
+  else insert into rodar.mp_pagos(tipo, movil_id, monto, estado, fecha) values ('recarga', m.id, mto, 'pendiente', rodar.ahora()) returning id into nid; end if;
+  return jsonb_build_object('id', nid, 'link', nullif(mp ->> 'link_pago', ''), 'alias', nullif(mp ->> 'alias_cobro', ''),
+    'mensaje', 'La carga #' || nid || ' quedó pendiente. ' || case when coalesce(mp ->> 'alias_cobro', '') <> '' then 'Transferí a ' || (mp ->> 'alias_cobro') || ' indicando la carga #' || nid || '. ' else '' end ||
+      'Cuando la central confirme el pago se acredita en tu cuenta.');
+end $$;
+
+grant execute on function public.r_mp_pago_borrar(text, jsonb, jsonb), public.r_mp_repetidos(text, jsonb, jsonb), public.r_cargar_saldo(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 30_delivery.sql ========
+-- ===================== Delivery (clon del módulo Delivery de CabGo) =====================
+-- Negocios, categorías, menú, pedidos, envíos express y directos, comisiones, saldos de comercios,
+-- portal de comercios y pedido web de clientes. Se puede volver a correr: no borra datos.
+
+-- ---------- tablas ----------
+create table if not exists rodar.dlv_categorias (
+  id bigserial primary key, nombre text not null, descripcion text, icono text, orden int default 0,
+  demo boolean default false, creado timestamp default now());
+
+create table if not exists rodar.dlv_negocios (
+  id bigserial primary key, nombre text not null, telefono text, email text, categoria_id bigint references rodar.dlv_categorias(id) on delete set null,
+  direccion text, localidad text, lat double precision, lng double precision,
+  cuit text, banco text, cuenta text, tipo_cuenta text, cedula_rep text,
+  estado text not null default 'activo', descripcion text, logo text, portada text,
+  horario jsonb, radio_km numeric, pedido_minimo numeric, tiempo_prep int default 20, retiro_local boolean default true,
+  comision_pct numeric, comision_rep_pct numeric, calendario_pago text default 'ninguno',
+  servicios_negocio jsonb, servicios_cliente jsonb, orden int default 0, destacado boolean default false,
+  cambio_pendiente jsonb, demo boolean default false, creado timestamp default now());
+
+create table if not exists rodar.dlv_negocio_usuarios (
+  id bigserial primary key, negocio_id bigint not null references rodar.dlv_negocios(id) on delete cascade,
+  nombre text, email text not null, telefono text, rol text default 'propietario', password_hash text,
+  habilitado boolean default true, creado timestamp default now());
+create unique index if not exists dlv_negocio_usuarios_email on rodar.dlv_negocio_usuarios(lower(email));
+
+create table if not exists rodar.dlv_sesiones (
+  token text primary key, usuario_id bigint references rodar.dlv_negocio_usuarios(id) on delete cascade,
+  inicio timestamp default now(), ultimo timestamp, activa boolean default true);
+
+create table if not exists rodar.dlv_menu_categorias (
+  id bigserial primary key, negocio_id bigint not null references rodar.dlv_negocios(id) on delete cascade,
+  nombre text not null, orden int default 0);
+
+create table if not exists rodar.dlv_productos (
+  id bigserial primary key, negocio_id bigint not null references rodar.dlv_negocios(id) on delete cascade,
+  menu_cat_id bigint references rodar.dlv_menu_categorias(id) on delete set null,
+  nombre text not null, descripcion text, precio numeric not null default 0, precio_promo numeric, imagen text,
+  disponible boolean default true, orden int default 0,
+  aprobado boolean default true, cambio jsonb, creado timestamp default now());
+
+create table if not exists rodar.dlv_pedidos (
+  id bigserial primary key, codigo text unique, negocio_id bigint references rodar.dlv_negocios(id) on delete set null,
+  tipo text not null default 'app',              -- app | express | directo
+  tipo_entrega text default 'entrega',          -- entrega | retiro
+  cobro text default 'entregar_cobrar',         -- solo_entrega | entregar_cobrar (express)
+  cliente_id bigint, cliente_nombre text, cliente_tel text,
+  recogida_dir text, recogida_lat double precision, recogida_lng double precision,
+  entrega_dir text, entrega_ref text, entrega_lat double precision, entrega_lng double precision,
+  items jsonb default '[]', subtotal numeric default 0, envio numeric default 0, service_fee numeric default 0,
+  propina numeric default 0, descuento numeric default 0, saldo_usado numeric default 0, total numeric default 0,
+  paga_con numeric, medio_pago text default 'efectivo', pagado boolean default false, comprobante text,
+  metros numeric, minutos numeric, tiempo_recoleccion int,
+  estado text not null default 'pendiente', viaje_id bigint, movil_id bigint, conductor_id bigint,
+  codigo_recoleccion text, codigo_entrega text, codigo_devolucion text, devolucion_pendiente boolean default false,
+  comision_negocio numeric default 0, comision_repartidor numeric default 0, recompensa numeric default 0, cashback numeric default 0,
+  efectivo_recibido boolean default false, motivo_cancelacion text, cancelado_por text, notas text,
+  buscando_desde timestamp, avisado boolean default false, historial jsonb default '[]',
+  creado timestamp default now(), confirmado_at timestamp, listo_at timestamp, recogido_at timestamp,
+  entregado_at timestamp, cancelado_at timestamp, demo boolean default false);
+create index if not exists dlv_pedidos_estado on rodar.dlv_pedidos(estado);
+create index if not exists dlv_pedidos_viaje on rodar.dlv_pedidos(viaje_id);
+create index if not exists dlv_pedidos_negocio on rodar.dlv_pedidos(negocio_id, creado desc);
+
+create table if not exists rodar.dlv_movimientos (
+  id bigserial primary key, negocio_id bigint not null references rodar.dlv_negocios(id) on delete cascade,
+  fecha timestamp default now(), tipo text, monto numeric not null, pedido_id bigint, detalle text, usuario text);
+
+create table if not exists rodar.dlv_billetera (
+  cliente_id bigint primary key, saldo numeric not null default 0, actualizado timestamp default now());
+
+-- ---------- configuración ----------
+create or replace function rodar.dlv_cfg_def() returns jsonb language sql immutable as $$ select '{
+ "modo_catalogo":"marketplace","negocio_marca_id":null,
+ "comision_negocio":10,"comision_repartidor":10,"recompensa_prepay":0,"cashback":0,"pagar_con_saldo":false,"comision_express":false,
+ "tarifa_base":800,"tarifa_km":400,"tarifa_min":0,"tarifa_minima":0,
+ "b2b_fija":null,"b2b_sin_fee":false,
+ "directo_activo":false,"directo_texto":"","directo_por_distancia":false,"directo_base":800,"directo_km":400,"directo_minima":0,"directo_fija":null,"directo_sin_fee":false,
+ "fee_modo":"porcentaje","fee_valor":0,"fee_base":"productos","peajes":false,"tarifa_zona":false,
+ "propina_tipo":"porcentaje","propina_opciones":[5,10,15],
+ "radio_km":5,"aviso_sin_tomar":0,"cancelar_sin_repartidor":null,"minimo_tramos":[],
+ "retiro_local":true,"aprob_negocio":false,"aprob_menu":false,"pagos_comercios":false,"carga_masiva":true,"solicitar_repartidor":true,
+ "chat_soporte":true,"zonas_busqueda":false,
+ "aprobar_transferencias":false,"aviso_comprobante":false,"foto_recoleccion":false,"foto_entrega":false,"codigo_recoleccion":true,
+ "comercio_efectivo":false,"comercio_seguimiento":false,"comanda_desglose":false,"devolucion_codigo":false,"gps_recoger":false,
+ "codigo_cliente":false,"imagenes_completas":false,
+ "cancel_cliente_antes":true,"cancel_cliente_despues":false,"cancel_repartidor":false,"cancel_comercio":false,"cancel_solo_admin":true,
+ "cancel_motivo":true,"cancel_reembolso":false,"cancel_recogido":"nadie","adeudo_recogido":false,"cobrar_al_aceptar":false,
+ "comercio_login":true,"reversa_tarjeta":false,
+ "servicios_negocio":["entrega"],"servicios_cliente":["entrega"],"remision_recarga":false
+}'::jsonb $$;
+create or replace function rodar.dlv_cfg() returns jsonb language sql stable as $$
+  select rodar.dlv_cfg_def() || coalesce(rodar.cfg('delivery'), '{}'::jsonb) $$;
+create or replace function rodar.dlv_num(c jsonb, k text, def numeric default 0) returns numeric language sql immutable as $$
+  select coalesce(rodar.n(c, k), def) $$;
+
+-- ---------- utilidades ----------
+create or replace function rodar.dlv_codigo() returns text language sql volatile as $$
+  select upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6)) $$;
+create or replace function rodar.dlv_pin() returns text language sql volatile as $$
+  select (1000 + floor(random() * 9000))::int::text $$;
+create or replace function rodar.dlv_saldo(p_negocio bigint) returns numeric language sql stable as $$
+  select coalesce(sum(monto), 0) from rodar.dlv_movimientos where negocio_id = p_negocio $$;
+create or replace function rodar.dlv_hist(p_id bigint, p_texto text) returns void language sql as $$
+  update rodar.dlv_pedidos set historial = coalesce(historial, '[]'::jsonb) || jsonb_build_array(jsonb_build_object('fecha', rodar.ahora(), 'texto', p_texto)) where id = p_id $$;
+-- horario {"1":["09:00","23:00"], ...} (0 = domingo). Sin horario = siempre abierto.
+create or replace function rodar.dlv_abierto(h jsonb) returns boolean language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare d text := extract(dow from rodar.ahora())::int::text; r jsonb; ahora time := rodar.ahora()::time;
+begin
+  if h is null or h = '{}'::jsonb then return true; end if;
+  r := h -> d;
+  if r is null or jsonb_typeof(r) <> 'array' or jsonb_array_length(r) < 2 then return false; end if;
+  if (r->>0)::time <= (r->>1)::time then return ahora between (r->>0)::time and (r->>1)::time; end if;
+  return ahora >= (r->>0)::time or ahora <= (r->>1)::time; -- pasa la medianoche
+end $$;
+
+-- costo de envío: base + km + minutos con piso. p_tipo: app | express | directo
+create or replace function rodar.dlv_envio(p_metros numeric, p_minutos numeric, p_tipo text) returns numeric language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); km numeric := greatest(0, coalesce(p_metros, 0)) / 1000; v numeric;
+begin
+  if p_tipo = 'express' and rodar.n(c, 'b2b_fija') is not null then
+    v := rodar.n(c, 'b2b_fija');
+  elsif p_tipo = 'directo' then
+    if rodar.b(c, 'directo_por_distancia') then
+      v := rodar.dlv_num(c, 'directo_base') + rodar.dlv_num(c, 'directo_km') * km;
+      return round(greatest(v, rodar.dlv_num(c, 'directo_minima')));
+    elsif rodar.n(c, 'directo_fija') is not null then v := rodar.n(c, 'directo_fija');
+    else v := rodar.dlv_num(c, 'tarifa_base') + rodar.dlv_num(c, 'tarifa_km') * km + rodar.dlv_num(c, 'tarifa_min') * coalesce(p_minutos, 0);
+    end if;
+  else
+    v := rodar.dlv_num(c, 'tarifa_base') + rodar.dlv_num(c, 'tarifa_km') * km + rodar.dlv_num(c, 'tarifa_min') * coalesce(p_minutos, 0);
+  end if;
+  return round(greatest(v, rodar.dlv_num(c, 'tarifa_minima')));
+end $$;
+
+create or replace function rodar.dlv_fee(p_subtotal numeric, p_envio numeric, p_tipo text) returns numeric language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); base numeric;
+begin
+  if (p_tipo = 'express' and rodar.b(c, 'b2b_sin_fee')) or (p_tipo = 'directo' and rodar.b(c, 'directo_sin_fee')) then return 0; end if;
+  if c->>'fee_modo' = 'fijo' then return round(rodar.dlv_num(c, 'fee_valor')); end if;
+  base := coalesce(p_subtotal, 0) + case when c->>'fee_base' = 'productos_envio' then coalesce(p_envio, 0) else 0 end;
+  return round(base * rodar.dlv_num(c, 'fee_valor') / 100);
+end $$;
+
+-- pedido mínimo por distancia (tramos [{"desde_km":0,"minimo":0}, ...]); rige el mayor entre tramo y negocio
+create or replace function rodar.dlv_minimo(p_negocio rodar.dlv_negocios, p_metros numeric) returns numeric language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); t jsonb; m numeric := 0; km numeric := coalesce(p_metros, 0) / 1000;
+begin
+  for t in select * from jsonb_array_elements(coalesce(c->'minimo_tramos', '[]'::jsonb)) order by (value->>'desde_km')::numeric loop
+    if (t->>'desde_km')::numeric <= km then m := coalesce((t->>'minimo')::numeric, 0); end if;
+  end loop;
+  return greatest(m, coalesce(p_negocio.pedido_minimo, 0));
+end $$;
+
+-- distancia estimada por calles cuando el navegador no mandó la ruta (línea recta × 1,3)
+create or replace function rodar.dlv_metros(a float8, b float8, c float8, d float8) returns numeric language sql immutable as $$
+  select round((coalesce(rodar.dist(a, b, c, d), 0) * 1.3)::numeric) $$;
+
+-- arma ítems desde la base (precio real, sólo productos disponibles y aprobados del negocio)
+create or replace function rodar.dlv_items(p_negocio bigint, p_items jsonb) returns jsonb language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare it jsonb; p rodar.dlv_productos; out jsonb := '[]'; q int; pr numeric;
+begin
+  for it in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
+    q := greatest(1, coalesce((it->>'cantidad')::int, 1));
+    if it->>'producto_id' is not null then
+      select * into p from rodar.dlv_productos where id = (it->>'producto_id')::bigint and negocio_id = p_negocio;
+      if not found then raise exception 'Un producto del pedido ya no existe'; end if;
+      if not p.disponible or not p.aprobado then raise exception '"%" no está disponible', p.nombre; end if;
+      pr := coalesce(nullif(p.precio_promo, 0), p.precio);
+      out := out || jsonb_build_array(jsonb_build_object('producto_id', p.id, 'nombre', p.nombre, 'precio', pr, 'cantidad', q, 'notas', it->>'notas', 'subtotal', pr * q));
+    else -- ítem libre (pedido cargado a mano)
+      pr := coalesce((it->>'precio')::numeric, 0);
+      out := out || jsonb_build_array(jsonb_build_object('nombre', coalesce(it->>'nombre', 'Ítem'), 'precio', pr, 'cantidad', q, 'notas', it->>'notas', 'subtotal', pr * q));
+    end if;
+  end loop;
+  return out;
+end $$;
+
+-- ---------- cotización ----------
+-- d: negocio_id, items, entrega_lat/lng, recogida_lat/lng (directo), metros, minutos, tipo, tipo_entrega, propina, propina_pct, monto (express)
+create or replace function rodar.dlv_cotizar(d jsonb) returns jsonb language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); n rodar.dlv_negocios; tipo text := coalesce(rodar.t(d, 'tipo'), 'app'); te text := coalesce(rodar.t(d, 'tipo_entrega'), 'entrega');
+  items jsonb := '[]'; sub numeric := 0; env numeric := 0; fee numeric := 0; pro numeric := 0; met numeric := rodar.n(d, 'metros'); mins numeric := rodar.n(d, 'minutos');
+  olat float8; olng float8; dlat float8 := (d->>'entrega_lat')::float8; dlng float8 := (d->>'entrega_lng')::float8; minimo numeric := 0; radio numeric; avisos jsonb := '[]';
+begin
+  if tipo <> 'directo' then
+    select * into n from rodar.dlv_negocios where id = rodar.n(d, 'negocio_id');
+    if not found then raise exception 'Elegí un negocio'; end if;
+    olat := n.lat; olng := n.lng;
+  else
+    olat := (d->>'recogida_lat')::float8; olng := (d->>'recogida_lng')::float8;
+  end if;
+  if tipo = 'app' then
+    items := rodar.dlv_items(n.id, d->'items');
+    select coalesce(sum((x->>'subtotal')::numeric), 0) into sub from jsonb_array_elements(items) x;
+  elsif tipo = 'express' then sub := coalesce(rodar.n(d, 'monto'), 0);
+  end if;
+  if te = 'entrega' then
+    if met is null and olat is not null and dlat is not null then met := rodar.dlv_metros(olat, olng, dlat, dlng); end if;
+    if mins is null and met is not null then mins := round(met / 1000 * 2.4); end if;
+    env := rodar.dlv_envio(met, mins, tipo);
+    if tipo = 'app' then
+      radio := coalesce(n.radio_km, rodar.n(c, 'radio_km'));
+      if radio is not null and radio > 0 and met is not null and met / 1.3 > radio * 1000 then
+        avisos := avisos || to_jsonb('La dirección está fuera del radio de entrega del negocio (' || radio || ' km)'); end if;
+      minimo := rodar.dlv_minimo(n, met);
+    end if;
+  elsif tipo = 'app' then minimo := coalesce(n.pedido_minimo, 0);
+  end if;
+  if tipo <> 'express' then fee := rodar.dlv_fee(sub, env, tipo); end if;
+  pro := coalesce(rodar.n(d, 'propina'), round(sub * coalesce(rodar.n(d, 'propina_pct'), 0) / 100), 0);
+  if tipo = 'app' and minimo > 0 and sub < minimo then avisos := avisos || to_jsonb('El pedido mínimo es $' || minimo); end if;
+  return jsonb_build_object('items', items, 'subtotal', sub, 'envio', env, 'service_fee', fee, 'propina', pro,
+    'total', sub + env + fee + pro, 'metros', met, 'minutos', mins, 'minimo', minimo, 'avisos', avisos);
+end $$;
+
+-- ---------- creación de pedidos ----------
+-- d: además de lo de cotizar: cliente_nombre, cliente_tel, entrega_dir, entrega_ref, recogida_dir, notas, medio_pago, paga_con,
+--    cobro (express), tiempo_recoleccion, envio_manual, cliente_id, usar_saldo
+create or replace function rodar.dlv_crear(d jsonb, p_origen text) returns rodar.dlv_pedidos language plpgsql as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); q jsonb := rodar.dlv_cotizar(d); n rodar.dlv_negocios; p rodar.dlv_pedidos; tipo text := coalesce(rodar.t(d, 'tipo'), 'app');
+  env numeric := coalesce(rodar.n(d, 'envio_manual'), (q->>'envio')::numeric); cod text; v_saldo numeric := 0; usar numeric := 0; tot numeric; cli bigint := rodar.n(d, 'cliente_id');
+begin
+  if tipo = 'app' and jsonb_array_length(q->'avisos') > 0 then raise exception '%', q->'avisos'->>0; end if;
+  if tipo = 'app' and jsonb_array_length(q->'items') = 0 then raise exception 'El pedido no tiene productos'; end if;
+  if rodar.t(d, 'tipo_entrega') is distinct from 'retiro' and rodar.t(d, 'entrega_dir') is null then raise exception 'Ingresá la dirección de entrega'; end if;
+  if tipo <> 'directo' then
+    select * into n from rodar.dlv_negocios where id = rodar.n(d, 'negocio_id');
+    if n.estado <> 'activo' and p_origen = 'cliente' then raise exception 'El negocio no está recibiendo pedidos'; end if;
+    if p_origen = 'cliente' and not rodar.dlv_abierto(n.horario) then raise exception 'El negocio está cerrado en este momento'; end if;
+  end if;
+  tot := (q->>'subtotal')::numeric + env + (q->>'service_fee')::numeric + (q->>'propina')::numeric;
+  if cli is not null and rodar.b(d, 'usar_saldo') and rodar.b(c, 'pagar_con_saldo') then
+    select coalesce(saldo, 0) into v_saldo from rodar.dlv_billetera where cliente_id = cli;
+    usar := least(coalesce(v_saldo, 0), tot);
+    if usar > 0 then update rodar.dlv_billetera set saldo = saldo - usar, actualizado = rodar.ahora() where cliente_id = cli; end if;
+  end if;
+  loop cod := rodar.dlv_codigo(); exit when not exists (select 1 from rodar.dlv_pedidos where codigo = cod); end loop;
+  insert into rodar.dlv_pedidos(codigo, negocio_id, tipo, tipo_entrega, cobro, cliente_id, cliente_nombre, cliente_tel,
+    recogida_dir, recogida_lat, recogida_lng, entrega_dir, entrega_ref, entrega_lat, entrega_lng,
+    items, subtotal, envio, service_fee, propina, saldo_usado, total, paga_con, medio_pago, metros, minutos, tiempo_recoleccion,
+    estado, codigo_recoleccion, codigo_entrega, notas, creado, confirmado_at)
+  values (cod, n.id, tipo, coalesce(rodar.t(d, 'tipo_entrega'), 'entrega'), coalesce(rodar.t(d, 'cobro'), 'entregar_cobrar'), cli,
+    rodar.t(d, 'cliente_nombre'), rodar.t(d, 'cliente_tel'),
+    coalesce(rodar.t(d, 'recogida_dir'), n.direccion), coalesce((d->>'recogida_lat')::float8, n.lat), coalesce((d->>'recogida_lng')::float8, n.lng),
+    rodar.t(d, 'entrega_dir'), rodar.t(d, 'entrega_ref'), (d->>'entrega_lat')::float8, (d->>'entrega_lng')::float8,
+    q->'items', (q->>'subtotal')::numeric, env, (q->>'service_fee')::numeric, (q->>'propina')::numeric, usar, tot - usar,
+    rodar.n(d, 'paga_con'), coalesce(rodar.t(d, 'medio_pago'), 'efectivo'), (q->>'metros')::numeric, (q->>'minutos')::numeric,
+    coalesce(rodar.n(d, 'tiempo_recoleccion')::int, n.tiempo_prep),
+    case when tipo = 'app' then 'pendiente' else 'confirmado' end,
+    case when rodar.b(c, 'codigo_recoleccion') then rodar.dlv_pin() end, case when rodar.b(c, 'codigo_cliente') then rodar.dlv_pin() end,
+    rodar.t(d, 'notas'), rodar.ahora(), case when tipo <> 'app' then rodar.ahora() end)
+  returning * into p;
+  perform rodar.dlv_hist(p.id, 'Pedido creado (' || p_origen || ')');
+  -- express y directos piden repartidor enseguida
+  if tipo in ('express', 'directo') and p.tipo_entrega = 'entrega' then perform rodar.dlv_pedir_repartidor(p.id); end if;
+  perform rodar.emit('panel', 'dlv_pedido', jsonb_build_object('id', p.id, 'estado', p.estado));
+  if tipo = 'app' then perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Nuevo pedido de delivery #' || p.codigo || coalesce(' · ' || n.nombre, ''))); end if;
+  select * into p from rodar.dlv_pedidos where id = p.id;
+  return p;
+end $$;
+
+-- ---------- repartidor: el pedido se despacha como un viaje de la central ----------
+create or replace function rodar.dlv_pedir_repartidor(p_id bigint) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; n rodar.dlv_negocios; ids bigint[]; nulo rodar.usuarios; cobrar numeric; txt text;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id for update;
+  if p.tipo_entrega = 'retiro' then raise exception 'El pedido es para retirar en el local'; end if;
+  if p.viaje_id is not null and exists (select 1 from rodar.viajes where id = p.viaje_id and estado not in ('anulado', 'finalizado')) then return; end if;
+  select * into n from rodar.dlv_negocios where id = p.negocio_id;
+  cobrar := case when p.tipo = 'express' and p.cobro = 'solo_entrega' then 0
+                 when p.pagado or p.medio_pago in ('tarjeta', 'billetera', 'transferencia', 'b2b', 'vale') then 0 else p.total end;
+  txt := 'DELIVERY #' || p.codigo || coalesce(' · ' || n.nombre, '') ||
+         case when cobrar > 0 then ' · COBRAR $' || round(cobrar) else ' · YA PAGADO' end ||
+         coalesce(' · Paga con $' || round(p.paga_con), '') ||
+         coalesce(' · Cód. retiro ' || p.codigo_recoleccion, '') ||
+         coalesce(' · Entregar a ' || p.cliente_nombre, '') || coalesce(' (' || p.cliente_tel || ')', '') || coalesce(' · ' || p.entrega_ref, '') || coalesce(' · ' || p.notas, '');
+  ids := rodar.crear_viaje(jsonb_build_object(
+    'canal', 'web', 'origen_tipo', 'delivery', 'telefono', null, 'alias', coalesce(n.nombre, 'Envío directo'),
+    'origen_dir', p.recogida_dir, 'origen_lat', p.recogida_lat, 'origen_lng', p.recogida_lng,
+    'destino_dir', p.entrega_dir, 'destino_lat', p.entrega_lat, 'destino_lng', p.entrega_lng, 'destino_ref', p.entrega_ref,
+    'datos_movil', txt, 'monto_fijo', p.envio, 'medio_pago', 'efectivo', 'pin_requerido', false), nulo);
+  update rodar.dlv_pedidos set viaje_id = ids[1], buscando_desde = rodar.ahora(), avisado = false where id = p_id;
+  perform rodar.dlv_hist(p_id, 'Buscando repartidor (viaje #' || ids[1] || ')');
+  begin perform rodar.procesar(); exception when others then null; end;
+end $$;
+
+-- ---------- liquidación al entregar ----------
+create or replace function rodar.dlv_liquidar(p_id bigint) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); p rodar.dlv_pedidos; n rodar.dlv_negocios; pct numeric; com numeric := 0; rep numeric := 0; cb numeric := 0; neto numeric;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id;
+  if p.negocio_id is not null then
+    select * into n from rodar.dlv_negocios where id = p.negocio_id;
+    pct := coalesce(n.comision_pct, rodar.dlv_num(c, 'comision_negocio'));
+    if p.tipo = 'app' or (p.tipo = 'express' and rodar.b(c, 'comision_express')) then com := round(p.subtotal * pct / 100); end if;
+    if p.tipo = 'express' and p.cobro = 'solo_entrega' then
+      neto := -(p.envio + com); -- el comercio cobró al cliente: adeuda el envío (y la comisión si corresponde)
+    else
+      neto := p.subtotal - com;  -- el repartidor/plataforma cobró: se le debe el subtotal menos la comisión
+    end if;
+    insert into rodar.dlv_movimientos(negocio_id, fecha, tipo, monto, pedido_id, detalle)
+    values (n.id, rodar.ahora(), 'pedido', neto, p.id, 'Pedido #' || p.codigo || case when com > 0 then ' (comisión $' || com || ')' else '' end);
+  end if;
+  rep := round(p.envio * coalesce(n.comision_rep_pct, rodar.dlv_num(c, 'comision_repartidor')) / 100);
+  if p.cliente_id is not null and rodar.dlv_num(c, 'cashback') > 0 and p.subtotal > 0 then
+    cb := round(p.subtotal * rodar.dlv_num(c, 'cashback') / 100);
+    insert into rodar.dlv_billetera(cliente_id, saldo) values (p.cliente_id, cb)
+    on conflict (cliente_id) do update set saldo = rodar.dlv_billetera.saldo + excluded.saldo, actualizado = rodar.ahora();
+  end if;
+  update rodar.dlv_pedidos set comision_negocio = com, comision_repartidor = rep, cashback = cb where id = p_id;
+end $$;
+
+-- cambio de estado central (todas las pantallas pasan por acá)
+create or replace function rodar.dlv_estado(p_id bigint, p_estado text, p_quien text, p_motivo text default null) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; c jsonb := rodar.dlv_cfg();
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id for update;
+  if not found then raise exception 'Pedido no encontrado'; end if;
+  if p.estado in ('entregado', 'cancelado') and p_estado <> p.estado then raise exception 'El pedido ya está %', p.estado; end if;
+  if p_estado = 'cancelado' then
+    if rodar.b(c, 'cancel_motivo') and p_motivo is null and p_quien <> 'sistema' then raise exception 'Indicá el motivo de la cancelación'; end if;
+    if p.saldo_usado > 0 and p.cliente_id is not null then
+      update rodar.dlv_billetera set saldo = saldo + p.saldo_usado where cliente_id = p.cliente_id;
+    end if;
+    update rodar.dlv_pedidos set estado = 'cancelado', cancelado_at = rodar.ahora(), motivo_cancelacion = p_motivo, cancelado_por = p_quien,
+      devolucion_pendiente = (p.recogido_at is not null and rodar.b(c, 'devolucion_codigo')),
+      codigo_devolucion = case when p.recogido_at is not null and rodar.b(c, 'devolucion_codigo') then rodar.dlv_pin() end
+    where id = p_id;
+    if p.viaje_id is not null then -- después de marcar cancelado, para que el disparador del viaje no lo toque
+      update rodar.viajes set estado = 'anulado', anulado_at = rodar.ahora(), motivo_anulacion = 'Pedido de delivery cancelado'
+      where id = p.viaje_id and estado in ('pendiente', 'ofrecido', 'confirmado', 'reserva');
+    end if;
+  else
+    update rodar.dlv_pedidos set estado = p_estado,
+      confirmado_at = case when p_estado = 'confirmado' then coalesce(confirmado_at, rodar.ahora()) else confirmado_at end,
+      listo_at = case when p_estado = 'listo' then rodar.ahora() else listo_at end,
+      recogido_at = case when p_estado in ('recogido', 'en_camino') then coalesce(recogido_at, rodar.ahora()) else recogido_at end,
+      entregado_at = case when p_estado = 'entregado' then rodar.ahora() else entregado_at end,
+      motivo_cancelacion = case when p_estado = 'cancelacion_solicitada' then p_motivo else motivo_cancelacion end
+    where id = p_id;
+    if p_estado = 'entregado' then perform rodar.dlv_liquidar(p_id); end if;
+  end if;
+  perform rodar.dlv_hist(p_id, initcap(replace(p_estado, '_', ' ')) || ' · ' || p_quien || coalesce(' · ' || p_motivo, ''));
+  perform rodar.emit('panel', 'dlv_pedido', jsonb_build_object('id', p_id, 'estado', p_estado));
+  perform rodar.emit('dlv-' || p_id, 'estado', jsonb_build_object('id', p_id, 'estado', p_estado));
+end $$;
+
+-- el viaje del repartidor mueve el pedido
+create or replace function rodar.dlv_trg_viaje() returns trigger language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos;
+begin
+  if new.estado is not distinct from old.estado and new.movil_id is not distinct from old.movil_id then return new; end if;
+  select * into p from rodar.dlv_pedidos where viaje_id = new.id;
+  if not found or p.estado in ('entregado', 'cancelado') then return new; end if;
+  if new.movil_id is not null and new.movil_id is distinct from p.movil_id then
+    update rodar.dlv_pedidos set movil_id = new.movil_id, conductor_id = new.conductor_id where id = p.id;
+    perform rodar.dlv_hist(p.id, 'Repartidor asignado: móvil ' || coalesce((select numero::text from rodar.moviles where id = new.movil_id), '?'));
+  end if;
+  if new.estado = 'en_curso' and old.estado is distinct from 'en_curso' then perform rodar.dlv_estado(p.id, 'en_camino', 'repartidor');
+  elsif new.estado = 'finalizado' then perform rodar.dlv_estado(p.id, 'entregado', 'repartidor');
+  elsif new.estado = 'anulado' then
+    update rodar.dlv_pedidos set viaje_id = null, movil_id = null, conductor_id = null, buscando_desde = null where id = p.id;
+    perform rodar.dlv_hist(p.id, 'El viaje del repartidor se anuló; el pedido quedó sin repartidor');
+  end if;
+  return new;
+end $$;
+create or replace trigger dlv_viaje after update on rodar.viajes for each row execute function rodar.dlv_trg_viaje();
+
+-- ciclo: avisa pedidos sin tomar y cancela los que superan el tiempo (pg_cron cada 30 s y al consultar)
+create or replace function rodar.dlv_ciclo() returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); r record; av numeric := rodar.n(c, 'aviso_sin_tomar'); ca numeric := rodar.n(c, 'cancelar_sin_repartidor');
+begin
+  for r in select p.* from rodar.dlv_pedidos p left join rodar.viajes v on v.id = p.viaje_id
+    where p.estado not in ('entregado', 'cancelado') and p.buscando_desde is not null and (v.id is null or v.estado in ('pendiente', 'ofrecido')) loop
+    if ca > 0 and r.buscando_desde < rodar.ahora() - make_interval(mins => ca::int) and not r.pagado and r.medio_pago = 'efectivo' then
+      perform rodar.dlv_estado(r.id, 'cancelado', 'sistema', 'Ningún repartidor tomó el pedido');
+    elsif av > 0 and not r.avisado and r.buscando_desde < rodar.ahora() - make_interval(mins => av::int) then
+      update rodar.dlv_pedidos set avisado = true where id = r.id;
+      perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Pedido #' || r.codigo || ': ningún repartidor lo tomó todavía'));
+    end if;
+  end loop;
+end $$;
+do $$ begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.unschedule(jobid) from cron.job where jobname = 'rodar-delivery';
+    perform cron.schedule('rodar-delivery', '30 seconds', 'select rodar.dlv_ciclo()');
+  end if;
+exception when others then null; end $$;
+
+-- ---------- vistas jsonb ----------
+create or replace function rodar.dlv_negocio_json(n rodar.dlv_negocios) returns jsonb language sql stable as $$
+  select to_jsonb(n) - 'cambio_pendiente' || jsonb_build_object(
+    'categoria', (select nombre from rodar.dlv_categorias where id = n.categoria_id),
+    'saldo', rodar.dlv_saldo(n.id), 'abierto', rodar.dlv_abierto(n.horario),
+    'pedidos', (select count(*) from rodar.dlv_pedidos where negocio_id = n.id),
+    'productos', (select count(*) from rodar.dlv_productos where negocio_id = n.id),
+    'tiene_cambio', n.cambio_pendiente is not null) $$;
+
+create or replace function rodar.dlv_pedido_json(p rodar.dlv_pedidos) returns jsonb language sql stable as $$
+  select to_jsonb(p) || jsonb_build_object(
+    'negocio', (select nombre from rodar.dlv_negocios where id = p.negocio_id),
+    'negocio_tel', (select telefono from rodar.dlv_negocios where id = p.negocio_id),
+    'movil_numero', (select numero from rodar.moviles where id = p.movil_id),
+    'movil_lat', (select lat from rodar.moviles where id = p.movil_id), 'movil_lng', (select lng from rodar.moviles where id = p.movil_id),
+    'conductor', (select trim(nombre || ' ' || coalesce(apellido, '')) from rodar.usuarios where id = p.conductor_id),
+    'viaje_estado', (select estado from rodar.viajes where id = p.viaje_id), 'k', rodar.firma(p.id)) $$;
+
+-- =================== API administración (panel) ===================
+create or replace function public.r_dlv_config(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin', 'gestion', 'operador');
+  return jsonb_build_object('config', rodar.dlv_cfg(), 'negocios', rodar.lista('select id, nombre from rodar.dlv_negocios order by nombre'),
+    'pendientes_menu', (select count(*) from rodar.dlv_productos where not aprobado or cambio is not null),
+    'pendientes_negocio', (select count(*) from rodar.dlv_negocios where cambio_pendiente is not null)); end $$;
+
+create or replace function public.r_dlv_config_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); k text; limpio jsonb := '{}';
+begin
+  for k in select jsonb_object_keys(rodar.dlv_cfg_def()) loop if p_b ? k then limpio := limpio || jsonb_build_object(k, p_b->k); end if; end loop;
+  perform rodar.cfg_set('delivery', coalesce(rodar.cfg('delivery'), '{}'::jsonb) || limpio);
+  perform rodar.accion(u, 'Delivery', 'Configuración', 'Guardó la configuración de delivery');
+  return jsonb_build_object('ok', true, 'config', rodar.dlv_cfg()); end $$;
+
+create or replace function public.r_dlv_categorias(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.usuario(p_token);
+  return rodar.lista('select c.*, (select count(*) from rodar.dlv_negocios n where n.categoria_id = c.id) negocios from rodar.dlv_categorias c order by orden, nombre'); end $$;
+
+create or replace function public.r_dlv_categoria_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); nid bigint;
+begin
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Ingresá el nombre de la categoría'; end if;
+  if rodar.n(p_b, 'id') is not null then
+    update rodar.dlv_categorias set nombre = rodar.t(p_b, 'nombre'), descripcion = rodar.t(p_b, 'descripcion'),
+      icono = case when p_b ? 'icono' then rodar.t(p_b, 'icono') else icono end, orden = coalesce(rodar.n(p_b, 'orden')::int, orden) where id = rodar.n(p_b, 'id') returning id into nid;
+  else
+    insert into rodar.dlv_categorias(nombre, descripcion, icono, orden) values (rodar.t(p_b, 'nombre'), rodar.t(p_b, 'descripcion'), rodar.t(p_b, 'icono'), coalesce(rodar.n(p_b, 'orden')::int, 0)) returning id into nid;
+  end if;
+  perform rodar.accion(u, 'Delivery', 'Categoría ' || rodar.t(p_b, 'nombre'), 'Guardó la categoría');
+  return jsonb_build_object('ok', true, 'id', nid); end $$;
+
+create or replace function public.r_dlv_categoria_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin'); delete from rodar.dlv_categorias where id = (p_q->>'id')::bigint; return '{"ok":true}'; end $$;
+
+create or replace function public.r_dlv_negocios(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare f text := '%' || coalesce(rodar.t(p_q, 'buscar'), '') || '%'; r jsonb; tot int; sf text := rodar.t(p_q, 'saldo');
+  off int := coalesce(rodar.n(p_q, 'offset'), 0)::int; lim int := coalesce(rodar.n(p_q, 'limite'), 1000)::int;
+begin perform rodar.need(p_token, 'admin', 'gestion', 'operador');
+  select count(*), coalesce(jsonb_agg(j order by orden, nombre) filter (where rn > off and rn <= off + lim), '[]') into tot, r
+  from (select x.*, row_number() over (order by orden, nombre) rn from (
+      select n.orden, n.nombre, rodar.dlv_negocio_json(n) - 'horario' j, rodar.dlv_saldo(n.id) sal from rodar.dlv_negocios n
+      where (rodar.t(p_q, 'estado') is null or n.estado = rodar.t(p_q, 'estado'))
+        and (n.nombre ilike f or coalesce(n.email, '') ilike f or coalesce(n.telefono, '') ilike f)
+        and (rodar.t(p_q, 'categoria') is null or n.categoria_id = rodar.n(p_q, 'categoria'))) x
+    where sf is null or (sf = 'positivo' and sal > 0) or (sf = 'negativo' and sal < 0) or (sf = 'cero' and sal = 0)) y;
+  return jsonb_build_object('filas', r, 'total', tot,
+    'demo', exists (select 1 from rodar.dlv_negocios where demo), 'hay', exists (select 1 from rodar.dlv_negocios)); end $$;
+
+create or replace function public.r_dlv_negocio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare n rodar.dlv_negocios; id_ bigint := (p_q->>'id')::bigint;
+begin perform rodar.need(p_token, 'admin', 'gestion', 'operador');
+  select * into n from rodar.dlv_negocios where id = id_; if not found then raise exception 'Negocio no encontrado'; end if;
+  return rodar.dlv_negocio_json(n) || jsonb_build_object('cambio_pendiente', n.cambio_pendiente,
+    'usuarios', rodar.lista('select id, nombre, email, telefono, rol, habilitado, creado from rodar.dlv_negocio_usuarios where negocio_id = ' || id_ || ' order by id'),
+    'menu', rodar.lista('select * from rodar.dlv_menu_categorias where negocio_id = ' || id_ || ' order by orden, nombre'),
+    'items', rodar.lista('select * from rodar.dlv_productos where negocio_id = ' || id_ || ' order by orden, nombre'),
+    'movimientos', rodar.lista('select * from rodar.dlv_movimientos where negocio_id = ' || id_ || ' order by fecha desc limit 200'),
+    'stats', (select jsonb_build_object('pedidos', count(*), 'entregados', count(*) filter (where estado = 'entregado'),
+       'cancelados', count(*) filter (where estado = 'cancelado'), 'ventas', coalesce(sum(subtotal) filter (where estado = 'entregado'), 0),
+       'comisiones', coalesce(sum(comision_negocio) filter (where estado = 'entregado'), 0)) from rodar.dlv_pedidos where negocio_id = id_)); end $$;
+
+create or replace function public.r_dlv_negocio_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); c jsonb := rodar.dlv_cfg(); nid bigint := rodar.n(p_b, 'id'); x rodar.dlv_negocios;
+begin
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Ingresá el nombre del negocio'; end if;
+  if nid is null then
+    if rodar.t(p_b, 'telefono') is null then raise exception 'Ingresá el teléfono'; end if;
+    if rodar.t(p_b, 'email') is null then raise exception 'Ingresá el email'; end if;
+    insert into rodar.dlv_negocios(nombre, telefono, email, retiro_local, servicios_negocio, servicios_cliente, estado)
+    values (rodar.t(p_b, 'nombre'), rodar.t(p_b, 'telefono'), rodar.t(p_b, 'email'), rodar.b(c, 'retiro_local'), c->'servicios_negocio', c->'servicios_cliente', 'activo') returning id into nid;
+    perform rodar.accion(u, 'Delivery', 'Negocio ' || rodar.t(p_b, 'nombre'), 'Creó el negocio');
+  end if;
+  select * into x from rodar.dlv_negocios where id = nid;
+  update rodar.dlv_negocios set
+    nombre = rodar.t(p_b, 'nombre'), telefono = coalesce(rodar.t(p_b, 'telefono'), telefono), email = coalesce(rodar.t(p_b, 'email'), email),
+    categoria_id = case when p_b ? 'categoria_id' then rodar.n(p_b, 'categoria_id')::bigint else categoria_id end,
+    direccion = case when p_b ? 'direccion' then rodar.t(p_b, 'direccion') else direccion end,
+    localidad = case when p_b ? 'localidad' then rodar.t(p_b, 'localidad') else localidad end,
+    lat = case when p_b ? 'lat' then (p_b->>'lat')::float8 else lat end, lng = case when p_b ? 'lng' then (p_b->>'lng')::float8 else lng end,
+    cuit = case when p_b ? 'cuit' then rodar.t(p_b, 'cuit') else cuit end, banco = case when p_b ? 'banco' then rodar.t(p_b, 'banco') else banco end,
+    cuenta = case when p_b ? 'cuenta' then rodar.t(p_b, 'cuenta') else cuenta end, tipo_cuenta = case when p_b ? 'tipo_cuenta' then rodar.t(p_b, 'tipo_cuenta') else tipo_cuenta end,
+    cedula_rep = case when p_b ? 'cedula_rep' then rodar.t(p_b, 'cedula_rep') else cedula_rep end,
+    descripcion = case when p_b ? 'descripcion' then rodar.t(p_b, 'descripcion') else descripcion end,
+    logo = case when p_b ? 'logo' then rodar.t(p_b, 'logo') else logo end, portada = case when p_b ? 'portada' then rodar.t(p_b, 'portada') else portada end,
+    horario = case when p_b ? 'horario' then nullif(p_b->'horario', 'null'::jsonb) else horario end,
+    radio_km = case when p_b ? 'radio_km' then rodar.n(p_b, 'radio_km') else radio_km end,
+    pedido_minimo = case when p_b ? 'pedido_minimo' then rodar.n(p_b, 'pedido_minimo') else pedido_minimo end,
+    tiempo_prep = case when p_b ? 'tiempo_prep' then coalesce(rodar.n(p_b, 'tiempo_prep')::int, 20) else tiempo_prep end,
+    retiro_local = case when p_b ? 'retiro_local' then rodar.b(p_b, 'retiro_local') else retiro_local end,
+    comision_pct = case when p_b ? 'comision_pct' then rodar.n(p_b, 'comision_pct') else comision_pct end,
+    comision_rep_pct = case when p_b ? 'comision_rep_pct' then rodar.n(p_b, 'comision_rep_pct') else comision_rep_pct end,
+    calendario_pago = case when p_b ? 'calendario_pago' then coalesce(rodar.t(p_b, 'calendario_pago'), 'ninguno') else calendario_pago end,
+    servicios_negocio = case when p_b ? 'servicios_negocio' then p_b->'servicios_negocio' else servicios_negocio end,
+    servicios_cliente = case when p_b ? 'servicios_cliente' then p_b->'servicios_cliente' else servicios_cliente end,
+    destacado = case when p_b ? 'destacado' then rodar.b(p_b, 'destacado') else destacado end,
+    orden = case when p_b ? 'orden' then coalesce(rodar.n(p_b, 'orden')::int, 0) else orden end
+  where id = nid;
+  return jsonb_build_object('ok', true, 'id', nid); end $$;
+
+create or replace function public.r_dlv_negocio_estado(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); n rodar.dlv_negocios;
+begin
+  if rodar.t(p_b, 'estado') not in ('pendiente', 'activo', 'suspendido', 'cerrado') then raise exception 'Estado inválido'; end if;
+  update rodar.dlv_negocios set estado = rodar.t(p_b, 'estado') where id = rodar.n(p_b, 'id') returning * into n;
+  perform rodar.accion(u, 'Delivery', 'Negocio ' || n.nombre, 'Cambió el estado a ' || n.estado);
+  return '{"ok":true}'; end $$;
+
+create or replace function public.r_dlv_negocio_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); n rodar.dlv_negocios;
+begin
+  select * into n from rodar.dlv_negocios where id = (p_q->>'id')::bigint;
+  if exists (select 1 from rodar.dlv_pedidos where negocio_id = n.id and estado not in ('entregado', 'cancelado')) then raise exception 'El negocio tiene pedidos en curso'; end if;
+  delete from rodar.dlv_negocios where id = n.id;
+  perform rodar.accion(u, 'Delivery', 'Negocio ' || n.nombre, 'Eliminó el negocio');
+  return '{"ok":true}'; end $$;
+
+-- aprobar / rechazar cambios de perfil pedidos por el comercio
+create or replace function public.r_dlv_negocio_cambio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); n rodar.dlv_negocios;
+begin
+  select * into n from rodar.dlv_negocios where id = rodar.n(p_b, 'id');
+  if n.cambio_pendiente is null then raise exception 'No hay cambios pendientes'; end if;
+  if rodar.b(p_b, 'aprobar') then perform public.r_dlv_negocio_guardar(p_token, '{}', n.cambio_pendiente || jsonb_build_object('id', n.id, 'nombre', coalesce(n.cambio_pendiente->>'nombre', n.nombre))); end if;
+  update rodar.dlv_negocios set cambio_pendiente = null where id = n.id;
+  return '{"ok":true}'; end $$;
+
+create or replace function public.r_dlv_negocios_importar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); f jsonb; cat bigint; nuevos int := 0; act int := 0; nid bigint;
+begin
+  for f in select * from jsonb_array_elements(coalesce(p_b->'filas', '[]'::jsonb)) loop
+    if rodar.t(f, 'nombre') is null then continue; end if;
+    cat := null;
+    if rodar.t(f, 'categoria') is not null then
+      select id into cat from rodar.dlv_categorias where lower(nombre) = lower(rodar.t(f, 'categoria'));
+      if cat is null then insert into rodar.dlv_categorias(nombre) values (rodar.t(f, 'categoria')) returning id into cat; end if;
+    end if;
+    select id into nid from rodar.dlv_negocios where lower(nombre) = lower(rodar.t(f, 'nombre')) limit 1;
+    if nid is null then
+      insert into rodar.dlv_negocios(nombre, estado) values (rodar.t(f, 'nombre'), coalesce(rodar.t(f, 'estado'), 'activo')) returning id into nid; nuevos := nuevos + 1;
+    else act := act + 1; end if;
+    update rodar.dlv_negocios set telefono = coalesce(rodar.t(f, 'telefono'), telefono), email = coalesce(rodar.t(f, 'email'), email),
+      direccion = coalesce(rodar.t(f, 'direccion'), direccion), localidad = coalesce(rodar.t(f, 'localidad'), localidad),
+      lat = coalesce((nullif(f->>'lat', ''))::float8, lat), lng = coalesce((nullif(f->>'lng', ''))::float8, lng),
+      cuit = coalesce(rodar.t(f, 'cuit'), cuit), categoria_id = coalesce(cat, categoria_id),
+      pedido_minimo = coalesce(rodar.n(f, 'pedido_minimo'), pedido_minimo), comision_pct = coalesce(rodar.n(f, 'comision_pct'), comision_pct)
+    where id = nid;
+  end loop;
+  perform rodar.accion(u, 'Delivery', 'Importación', nuevos || ' negocios nuevos, ' || act || ' actualizados');
+  return jsonb_build_object('nuevos', nuevos, 'actualizados', act); end $$;
+
+create or replace function public.r_dlv_usuario_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); nid bigint := rodar.n(p_b, 'id');
+begin
+  if rodar.t(p_b, 'email') is null then raise exception 'Ingresá el email'; end if;
+  begin
+    if nid is null then
+      if rodar.t(p_b, 'password') is null then raise exception 'Ingresá una contraseña para el portal del comercio'; end if;
+      insert into rodar.dlv_negocio_usuarios(negocio_id, nombre, email, telefono, rol, password_hash, habilitado)
+      values (rodar.n(p_b, 'negocio_id'), rodar.t(p_b, 'nombre'), lower(rodar.t(p_b, 'email')), rodar.t(p_b, 'telefono'), coalesce(rodar.t(p_b, 'rol'), 'propietario'), rodar.hash(rodar.t(p_b, 'password')), true) returning id into nid;
+    else
+      update rodar.dlv_negocio_usuarios set nombre = rodar.t(p_b, 'nombre'), email = lower(rodar.t(p_b, 'email')), telefono = rodar.t(p_b, 'telefono'),
+        rol = coalesce(rodar.t(p_b, 'rol'), rol), habilitado = case when p_b ? 'habilitado' then rodar.b(p_b, 'habilitado') else habilitado end,
+        password_hash = case when rodar.t(p_b, 'password') is not null then rodar.hash(rodar.t(p_b, 'password')) else password_hash end where id = nid;
+    end if;
+  exception when unique_violation then raise exception 'Ya existe un usuario de comercio con ese email'; end;
+  return jsonb_build_object('ok', true, 'id', nid); end $$;
+
+create or replace function public.r_dlv_usuario_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin'); delete from rodar.dlv_negocio_usuarios where id = (p_q->>'id')::bigint; return '{"ok":true}'; end $$;
+
+create or replace function public.r_dlv_menucat_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare nid bigint := rodar.n(p_b, 'id');
+begin perform rodar.need(p_token, 'admin');
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Ingresá el nombre'; end if;
+  if nid is null then insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (rodar.n(p_b, 'negocio_id'), rodar.t(p_b, 'nombre'), coalesce(rodar.n(p_b, 'orden')::int, 0)) returning id into nid;
+  else update rodar.dlv_menu_categorias set nombre = rodar.t(p_b, 'nombre'), orden = coalesce(rodar.n(p_b, 'orden')::int, orden) where id = nid; end if;
+  return jsonb_build_object('ok', true, 'id', nid); end $$;
+
+create or replace function public.r_dlv_menucat_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin'); delete from rodar.dlv_menu_categorias where id = (p_q->>'id')::bigint; return '{"ok":true}'; end $$;
+
+create or replace function rodar.dlv_producto_set(p_b jsonb, p_directo boolean) returns bigint language plpgsql as $$
+#variable_conflict use_variable
+
+declare nid bigint := rodar.n(p_b, 'id'); campos jsonb;
+begin
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Ingresá el nombre del producto'; end if;
+  campos := jsonb_build_object('nombre', rodar.t(p_b, 'nombre'), 'descripcion', rodar.t(p_b, 'descripcion'), 'precio', coalesce(rodar.n(p_b, 'precio'), 0),
+    'precio_promo', rodar.n(p_b, 'precio_promo'), 'menu_cat_id', rodar.n(p_b, 'menu_cat_id'), 'disponible', case when p_b ? 'disponible' then rodar.b(p_b, 'disponible') else true end,
+    'orden', coalesce(rodar.n(p_b, 'orden'), 0)) || case when p_b ? 'imagen' then jsonb_build_object('imagen', rodar.t(p_b, 'imagen')) else '{}' end;
+  if nid is null then
+    insert into rodar.dlv_productos(negocio_id, nombre, precio, aprobado) values (rodar.n(p_b, 'negocio_id'), campos->>'nombre', (campos->>'precio')::numeric, p_directo) returning id into nid;
+    p_directo := true; -- un producto nuevo se carga entero y queda sin aprobar hasta que el admin lo revise
+  elsif not p_directo then
+    update rodar.dlv_productos set cambio = campos where id = nid; return nid;
+  end if;
+  update rodar.dlv_productos set nombre = campos->>'nombre', descripcion = campos->>'descripcion', precio = (campos->>'precio')::numeric,
+    precio_promo = (campos->>'precio_promo')::numeric, menu_cat_id = (campos->>'menu_cat_id')::bigint, disponible = (campos->>'disponible')::boolean,
+    orden = (campos->>'orden')::int, imagen = case when campos ? 'imagen' then campos->>'imagen' else imagen end where id = nid;
+  return nid;
+end $$;
+
+create or replace function public.r_dlv_producto_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin'); return jsonb_build_object('ok', true, 'id', rodar.dlv_producto_set(p_b, true)); end $$;
+
+create or replace function public.r_dlv_producto_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin'); delete from rodar.dlv_productos where id = (p_q->>'id')::bigint; return '{"ok":true}'; end $$;
+
+-- productos importados en bloque (Excel/CSV) para un negocio
+create or replace function public.r_dlv_productos_importar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare f jsonb; neg bigint := rodar.n(p_b, 'negocio_id'); mc bigint; k int := 0;
+begin perform rodar.need(p_token, 'admin');
+  for f in select * from jsonb_array_elements(coalesce(p_b->'filas', '[]'::jsonb)) loop
+    if rodar.t(f, 'nombre') is null then continue; end if;
+    mc := null;
+    if rodar.t(f, 'categoria') is not null then
+      select id into mc from rodar.dlv_menu_categorias where negocio_id = neg and lower(nombre) = lower(rodar.t(f, 'categoria'));
+      if mc is null then insert into rodar.dlv_menu_categorias(negocio_id, nombre) values (neg, rodar.t(f, 'categoria')) returning id into mc; end if;
+    end if;
+    insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, descripcion, precio, precio_promo)
+    values (neg, mc, rodar.t(f, 'nombre'), rodar.t(f, 'descripcion'), coalesce(rodar.n(f, 'precio'), 0), rodar.n(f, 'precio_promo'));
+    k := k + 1;
+  end loop;
+  return jsonb_build_object('importados', k); end $$;
+
+create or replace function public.r_dlv_cambios(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin');
+  return jsonb_build_object(
+    'productos', rodar.lista('select p.id, p.negocio_id, n.nombre negocio, p.nombre, p.precio, p.descripcion, p.imagen, p.aprobado, p.cambio, p.creado from rodar.dlv_productos p join rodar.dlv_negocios n on n.id = p.negocio_id where not p.aprobado or p.cambio is not null order by p.creado'),
+    'negocios', rodar.lista('select id, nombre, cambio_pendiente from rodar.dlv_negocios where cambio_pendiente is not null order by nombre')); end $$;
+
+create or replace function public.r_dlv_cambio_resolver(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); p rodar.dlv_productos; ok boolean := rodar.b(p_b, 'aprobar');
+begin
+  select * into p from rodar.dlv_productos where id = rodar.n(p_b, 'id');
+  if p.cambio is not null and p.cambio ? 'borrar' then
+    if ok then delete from rodar.dlv_productos where id = p.id; else update rodar.dlv_productos set cambio = null where id = p.id; end if;
+  elsif p.cambio is not null then
+    if ok then perform rodar.dlv_producto_set(p.cambio || jsonb_build_object('id', p.id), true); end if;
+    update rodar.dlv_productos set cambio = null where id = p.id;
+  elsif not p.aprobado then
+    if ok then update rodar.dlv_productos set aprobado = true where id = p.id; else delete from rodar.dlv_productos where id = p.id; end if;
+  end if;
+  perform rodar.accion(u, 'Delivery', 'Producto ' || p.nombre, case when ok then 'Aprobó' else 'Rechazó' end || ' un cambio de menú');
+  return '{"ok":true}'; end $$;
+
+create or replace function public.r_dlv_movimiento(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin', 'gestion'); m numeric := rodar.n(p_b, 'monto'); tipo text := coalesce(rodar.t(p_b, 'tipo'), 'ajuste');
+begin
+  if m is null or m = 0 then raise exception 'Ingresá un monto'; end if;
+  if tipo = 'pago' then m := -abs(m); end if; -- pago al comercio: baja lo que se le debe
+  insert into rodar.dlv_movimientos(negocio_id, fecha, tipo, monto, detalle, usuario) values (rodar.n(p_b, 'negocio_id'), rodar.ahora(), tipo, m, rodar.t(p_b, 'detalle'), rodar.nombre(u));
+  perform rodar.accion(u, 'Delivery', 'Negocio #' || rodar.n(p_b, 'negocio_id'), initcap(tipo) || ' de saldo $' || m);
+  return jsonb_build_object('ok', true, 'saldo', rodar.dlv_saldo(rodar.n(p_b, 'negocio_id')::bigint)); end $$;
+
+create or replace function public.r_dlv_pagos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin', 'gestion');
+  return rodar.lista('select n.id, n.nombre, n.calendario_pago, n.banco, n.cuenta, n.tipo_cuenta, n.cuit, rodar.dlv_saldo(n.id) saldo,
+    (select max(fecha) from rodar.dlv_movimientos m where m.negocio_id = n.id and m.tipo = ''pago'') ultimo_pago
+    from rodar.dlv_negocios n order by rodar.dlv_saldo(n.id) desc, n.nombre'); end $$;
+
+create or replace function public.r_dlv_pedidos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare r jsonb; tot int; b text := '%' || coalesce(rodar.t(p_q, 'buscar'), '') || '%';
+begin perform rodar.need(p_token, 'admin', 'gestion', 'operador');
+  perform rodar.dlv_ciclo();
+  select count(*), coalesce(jsonb_agg(rodar.dlv_pedido_json(x.p) - 'historial' order by (x.p).creado desc) filter (where rn > coalesce(rodar.n(p_q, 'offset'), 0) and rn <= coalesce(rodar.n(p_q, 'offset'), 0) + coalesce(rodar.n(p_q, 'limite'), 25)), '[]')
+  into tot, r from (select p, row_number() over (order by p.creado desc) rn from rodar.dlv_pedidos p
+    where (rodar.t(p_q, 'estado') is null or p.estado = rodar.t(p_q, 'estado'))
+      and (rodar.t(p_q, 'negocio') is null or p.negocio_id = rodar.n(p_q, 'negocio'))
+      and (rodar.t(p_q, 'medio') is null or p.medio_pago = rodar.t(p_q, 'medio'))
+      and (rodar.t(p_q, 'tipo') is null or p.tipo = rodar.t(p_q, 'tipo'))
+      and (rodar.t(p_q, 'desde') is null or p.creado::date >= (p_q->>'desde')::date)
+      and (rodar.t(p_q, 'hasta') is null or p.creado::date <= (p_q->>'hasta')::date)
+      and (p.codigo ilike b or coalesce(p.cliente_nombre, '') ilike b or coalesce(p.cliente_tel, '') ilike b)) x;
+  return jsonb_build_object('filas', r, 'total', tot,
+    'activos', (select count(*) from rodar.dlv_pedidos where estado not in ('entregado', 'cancelado')),
+    'hoy', (select jsonb_build_object('pedidos', count(*), 'entregados', count(*) filter (where estado = 'entregado'), 'ventas', coalesce(sum(total) filter (where estado = 'entregado'), 0))
+            from rodar.dlv_pedidos where creado::date = rodar.hoy())); end $$;
+
+create or replace function public.r_dlv_pedido(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos;
+begin perform rodar.need(p_token, 'admin', 'gestion', 'operador');
+  select * into p from rodar.dlv_pedidos where id = (p_q->>'id')::bigint; if not found then raise exception 'Pedido no encontrado'; end if;
+  return rodar.dlv_pedido_json(p); end $$;
+
+create or replace function public.r_dlv_cotizar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin perform rodar.need(p_token, 'admin', 'operador'); return rodar.dlv_cotizar(p_b); end $$;
+
+create or replace function public.r_dlv_pedido_crear(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin', 'operador'); p rodar.dlv_pedidos;
+begin
+  p := rodar.dlv_crear(p_b || jsonb_build_object('tipo', coalesce(rodar.t(p_b, 'tipo'), 'express')), 'panel · ' || rodar.nombre(u));
+  perform rodar.accion(u, 'Delivery', 'Pedido #' || p.codigo, 'Creó un pedido ' || p.tipo);
+  return rodar.dlv_pedido_json(p); end $$;
+
+-- acciones del panel sobre un pedido
+create or replace function public.r_dlv_pedido_accion(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin', 'operador'); p rodar.dlv_pedidos; a text := rodar.t(p_b, 'accion'); quien text := 'panel · ' || rodar.nombre(u);
+begin
+  select * into p from rodar.dlv_pedidos where id = rodar.n(p_b, 'id'); if not found then raise exception 'Pedido no encontrado'; end if;
+  if a in ('confirmado', 'preparando', 'listo', 'recogido', 'en_camino', 'entregado', 'cancelado') then
+    perform rodar.dlv_estado(p.id, a, quien, rodar.t(p_b, 'motivo'));
+    if a = 'listo' and p.tipo_entrega = 'entrega' and p.viaje_id is null and rodar.b(p_b, 'con_repartidor') then perform rodar.dlv_pedir_repartidor(p.id); end if;
+  elsif a = 'repartidor' then perform rodar.dlv_pedir_repartidor(p.id);
+  elsif a = 'quitar_repartidor' then
+    update rodar.viajes set estado = 'anulado', anulado_at = rodar.ahora(), motivo_anulacion = 'Repartidor quitado desde delivery' where id = p.viaje_id and estado not in ('finalizado', 'anulado');
+  elsif a = 'efectivo' then
+    update rodar.dlv_pedidos set efectivo_recibido = not efectivo_recibido where id = p.id;
+    perform rodar.dlv_hist(p.id, case when p.efectivo_recibido then 'Efectivo recibido revertido' else 'Efectivo recibido' end || ' · ' || quien);
+  elsif a = 'pagado' then
+    update rodar.dlv_pedidos set pagado = not pagado where id = p.id; perform rodar.dlv_hist(p.id, 'Pago ' || case when p.pagado then 'desmarcado' else 'aprobado' end || ' · ' || quien);
+  elsif a = 'devuelto' then
+    update rodar.dlv_pedidos set devolucion_pendiente = false where id = p.id; perform rodar.dlv_hist(p.id, 'Mercadería devuelta · ' || quien);
+  else raise exception 'Acción desconocida'; end if;
+  select * into p from rodar.dlv_pedidos where id = p.id;
+  return rodar.dlv_pedido_json(p); end $$;
+
+-- contenido de demo
+create or replace function public.r_dlv_demo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); e jsonb := rodar.cfg('empresa'); la float8 := coalesce((e->>'lat')::float8, -30.9465); ln float8 := coalesce((e->>'lng')::float8, -58.7834);
+  c1 bigint; c2 bigint; c3 bigint; n1 bigint; n2 bigint; n3 bigint; m bigint;
+begin
+  if rodar.t(p_b, 'accion') = 'borrar' then
+    delete from rodar.dlv_pedidos where demo or negocio_id in (select id from rodar.dlv_negocios where demo);
+    delete from rodar.dlv_negocios where demo; delete from rodar.dlv_categorias where demo;
+    return '{"ok":true}';
+  end if;
+  if exists (select 1 from rodar.dlv_negocios where demo) then raise exception 'El contenido de demo ya está cargado'; end if;
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo) values ('Restaurantes', 'Comida casera, minutas y parrilla', 1, true) returning id into c1;
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo) values ('Pizzerías', 'Pizzas, empanadas y calzones', 2, true) returning id into c2;
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo) values ('Farmacias y kioscos', 'Lo que necesitás, rápido', 3, true) returning id into c3;
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, pedido_minimo, demo)
+    values ('La Esquina (demo)', '3454000001', 'esquina@demo.com', c1, 'San Martín 100', la + .002, ln + .001, 'activo', 'Minutas, milanesas y platos del día', 25, 3000, true) returning id into n1;
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, demo)
+    values ('Pizzería Don Toto (demo)', '3454000002', 'toto@demo.com', c2, 'Urquiza 250', la - .003, ln + .002, 'activo', 'Pizzas a la piedra y empanadas', 30, true) returning id into n2;
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, demo)
+    values ('Kiosco 24 (demo)', '3454000003', 'kiosco@demo.com', c3, 'Belgrano 80', la + .001, ln - .003, 'activo', 'Bebidas, golosinas y almacén', 10, true) returning id into n3;
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n1, 'Platos', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, descripcion, precio, orden) values
+    (n1, m, 'Milanesa con papas fritas', 'Milanesa de carne con guarnición', 7500, 1), (n1, m, 'Suprema napolitana', 'Con jamón, queso y salsa', 8200, 2), (n1, m, 'Hamburguesa completa', 'Con lechuga, tomate, huevo y papas', 6900, 3);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n1, 'Bebidas', 2) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n1, m, 'Gaseosa 1,5 L', 2500), (n1, m, 'Agua saborizada', 1800);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n2, 'Pizzas', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, descripcion, precio, precio_promo) values
+    (n2, m, 'Muzzarella', 'Grande, 8 porciones', 7000, null), (n2, m, 'Especial', 'Jamón, morrones y huevo', 8500, 7900), (n2, m, 'Fugazzeta', 'Cebolla y mucho queso', 8000, null);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n2, 'Empanadas', 2) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n2, m, 'Docena de empanadas', 9600), (n2, m, 'Media docena', 5000);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n3, 'Almacén', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n3, m, 'Cerveza 1 L', 2800), (n3, m, 'Alfajor triple', 900), (n3, m, 'Hielo 2 kg', 1500), (n3, m, 'Papas fritas 150 g', 1900);
+  perform rodar.accion(u, 'Delivery', 'Demo', 'Cargó contenido de demo');
+  return '{"ok":true}'; end $$;
+
+-- =================== API pública (pedido web del cliente) ===================
+create or replace function rodar.dlv_cliente_opc(p_token text) returns rodar.clientes language plpgsql as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes;
+begin
+  if p_token is null then return null; end if;
+  begin c := rodar.cliente_sesion(p_token); exception when others then return null; end;
+  return c;
+end $$;
+
+create or replace function public.r_dlv_pub_inicio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); cli rodar.clientes := rodar.dlv_cliente_opc(p_token);
+begin
+  return jsonb_build_object(
+    'config', jsonb_build_object('modo_catalogo', c->'modo_catalogo', 'negocio_marca_id', c->'negocio_marca_id', 'directo_activo', c->'directo_activo',
+      'directo_texto', c->'directo_texto', 'directo_por_distancia', c->'directo_por_distancia', 'propina_tipo', c->'propina_tipo', 'propina_opciones', c->'propina_opciones',
+      'imagenes_completas', c->'imagenes_completas', 'pagar_con_saldo', c->'pagar_con_saldo', 'codigo_cliente', c->'codigo_cliente',
+      'cancel_cliente_antes', c->'cancel_cliente_antes', 'cancel_cliente_despues', c->'cancel_cliente_despues', 'cancel_motivo', c->'cancel_motivo'),
+    'empresa', rodar.cfg('empresa'),
+    'cliente', case when cli.id is not null then jsonb_build_object('id', cli.id, 'nombre', cli.alias, 'telefono', cli.telefono,
+       'saldo', coalesce((select saldo from rodar.dlv_billetera where cliente_id = cli.id), 0)) end,
+    'categorias', rodar.lista('select c.id, c.nombre, c.descripcion, c.icono from rodar.dlv_categorias c where exists (select 1 from rodar.dlv_negocios n where n.categoria_id = c.id and n.estado = ''activo'') order by orden, nombre'),
+    'negocios', (select coalesce(jsonb_agg(jsonb_build_object('id', n.id, 'nombre', n.nombre, 'descripcion', n.descripcion, 'logo', n.logo, 'portada', n.portada,
+        'categoria_id', n.categoria_id, 'direccion', n.direccion, 'lat', n.lat, 'lng', n.lng, 'tiempo_prep', n.tiempo_prep, 'pedido_minimo', n.pedido_minimo,
+        'retiro_local', n.retiro_local, 'abierto', rodar.dlv_abierto(n.horario), 'destacado', n.destacado) order by rodar.dlv_abierto(n.horario) desc, n.destacado desc, n.orden, n.nombre), '[]')
+      from rodar.dlv_negocios n where n.estado = 'activo')); end $$;
+
+create or replace function public.r_dlv_pub_negocio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare n rodar.dlv_negocios; id_ bigint := (p_q->>'id')::bigint;
+begin
+  select * into n from rodar.dlv_negocios where id = id_ and estado = 'activo'; if not found then raise exception 'Negocio no disponible'; end if;
+  return jsonb_build_object('id', n.id, 'nombre', n.nombre, 'descripcion', n.descripcion, 'logo', n.logo, 'portada', n.portada, 'direccion', n.direccion,
+    'telefono', n.telefono, 'lat', n.lat, 'lng', n.lng, 'tiempo_prep', n.tiempo_prep, 'pedido_minimo', n.pedido_minimo, 'retiro_local', n.retiro_local,
+    'abierto', rodar.dlv_abierto(n.horario), 'horario', n.horario,
+    'menu', rodar.lista('select id, nombre from rodar.dlv_menu_categorias where negocio_id = ' || id_ || ' order by orden, nombre'),
+    'productos', rodar.lista('select id, menu_cat_id, nombre, descripcion, precio, precio_promo, imagen from rodar.dlv_productos where negocio_id = ' || id_ || ' and disponible and aprobado order by orden, nombre')); end $$;
+
+create or replace function public.r_dlv_pub_cotizar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg();
+begin
+  if rodar.t(p_b, 'tipo') = 'directo' and not rodar.b(c, 'directo_activo') then raise exception 'Los envíos directos no están habilitados'; end if;
+  return rodar.dlv_cotizar(p_b || jsonb_build_object('tipo', coalesce(rodar.t(p_b, 'tipo'), 'app'))); end $$;
+
+create or replace function public.r_dlv_pub_pedido(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); cli rodar.clientes := rodar.dlv_cliente_opc(p_token); p rodar.dlv_pedidos; tipo text := coalesce(rodar.t(p_b, 'tipo'), 'app'); d jsonb;
+begin
+  if tipo not in ('app', 'directo') then raise exception 'Tipo de pedido inválido'; end if;
+  if tipo = 'directo' and not rodar.b(c, 'directo_activo') then raise exception 'Los envíos directos no están habilitados'; end if;
+  if rodar.t(p_b, 'cliente_nombre') is null or rodar.t(p_b, 'cliente_tel') is null then raise exception 'Ingresá tu nombre y teléfono'; end if;
+  if rodar.t(p_b, 'medio_pago') not in ('efectivo', 'transferencia') then raise exception 'Elegí efectivo o transferencia'; end if;
+  d := (p_b - 'envio_manual' - 'cliente_id' - 'cobro') || jsonb_build_object('tipo', tipo, 'cliente_id', cli.id);
+  if tipo = 'directo' and rodar.t(p_b, 'recogida_dir') is null then raise exception 'Ingresá dónde retirar el paquete'; end if;
+  p := rodar.dlv_crear(d, 'cliente');
+  return jsonb_build_object('id', p.id, 'k', rodar.firma(p.id), 'codigo', p.codigo); end $$;
+
+create or replace function public.r_dlv_pub_seguir(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); p rodar.dlv_pedidos; j jsonb;
+begin
+  select * into p from rodar.dlv_pedidos where id = (p_q->>'id')::bigint;
+  if not found or rodar.firma(p.id) <> coalesce(p_q->>'k', '') then raise exception 'Pedido no encontrado'; end if;
+  j := rodar.dlv_pedido_json(p);
+  return jsonb_build_object('id', p.id, 'codigo', p.codigo, 'estado', p.estado, 'tipo', p.tipo, 'tipo_entrega', p.tipo_entrega, 'negocio', j->'negocio', 'negocio_tel', j->'negocio_tel',
+    'items', p.items, 'subtotal', p.subtotal, 'envio', p.envio, 'service_fee', p.service_fee, 'propina', p.propina, 'saldo_usado', p.saldo_usado, 'total', p.total,
+    'medio_pago', p.medio_pago, 'entrega_dir', p.entrega_dir, 'recogida_dir', p.recogida_dir, 'creado', p.creado, 'historial', p.historial,
+    'codigo_entrega', p.codigo_entrega, 'motivo_cancelacion', p.motivo_cancelacion,
+    'entrega_lat', p.entrega_lat, 'entrega_lng', p.entrega_lng, 'recogida_lat', p.recogida_lat, 'recogida_lng', p.recogida_lng,
+    'repartidor', case when p.movil_id is not null and p.estado not in ('entregado', 'cancelado') then jsonb_build_object('movil', j->'movil_numero', 'nombre', j->'conductor', 'lat', j->'movil_lat', 'lng', j->'movil_lng') end,
+    'puede_cancelar', p.estado not in ('entregado', 'cancelado', 'cancelacion_solicitada', 'recogido', 'en_camino') and
+       ((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or p.estado <> 'pendiente'),
+    'cancela_directo', coalesce((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or (p.estado <> 'pendiente' and rodar.b(c, 'cancel_cliente_despues'))
+      or (rodar.n(c, 'cancelar_sin_repartidor') > 0 and p.buscando_desde < rodar.ahora() - make_interval(mins => rodar.n(c, 'cancelar_sin_repartidor')::int) and p.movil_id is null), false)); end $$;
+
+create or replace function public.r_dlv_pub_cancelar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare s jsonb := public.r_dlv_pub_seguir(p_token, p_q, p_b); id_ bigint := (p_q->>'id')::bigint;
+begin
+  if not (s->>'puede_cancelar')::boolean then raise exception 'Este pedido ya no se puede cancelar'; end if;
+  if (s->>'cancela_directo')::boolean then perform rodar.dlv_estado(id_, 'cancelado', 'cliente', coalesce(rodar.t(p_b, 'motivo'), 'Cancelado por el cliente'));
+  else perform rodar.dlv_estado(id_, 'cancelacion_solicitada', 'cliente', coalesce(rodar.t(p_b, 'motivo'), 'El cliente pidió cancelar')); end if;
+  return '{"ok":true}'; end $$;
+
+-- =================== API portal de comercios ===================
+create or replace function rodar.dlv_comercio(p_token text) returns rodar.dlv_negocio_usuarios language plpgsql as $$
+#variable_conflict use_variable
+
+declare s rodar.dlv_sesiones; u rodar.dlv_negocio_usuarios;
+begin
+  select * into s from rodar.dlv_sesiones where token = p_token and activa; if not found then raise exception 'SESION_VENCIDA'; end if;
+  select * into u from rodar.dlv_negocio_usuarios where id = s.usuario_id and habilitado; if not found then raise exception 'SESION_VENCIDA'; end if;
+  update rodar.dlv_sesiones set ultimo = rodar.ahora() where token = p_token;
+  return u;
+end $$;
+
+create or replace function public.r_dlv_com_login(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios; tk text;
+begin
+  if not rodar.b(rodar.dlv_cfg(), 'comercio_login') then raise exception 'El ingreso de comercios está deshabilitado'; end if;
+  select * into u from rodar.dlv_negocio_usuarios where lower(email) = lower(rodar.t(p_b, 'email')) and habilitado;
+  if not found or u.password_hash is null or not rodar.verificar(coalesce(rodar.t(p_b, 'password'), ''), u.password_hash) then raise exception 'El email o la contraseña no coinciden'; end if;
+  tk := rodar.token(); insert into rodar.dlv_sesiones(token, usuario_id, ultimo) values (tk, u.id, rodar.ahora());
+  return jsonb_build_object('token', tk); end $$;
+
+create or replace function public.r_dlv_com_logout(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin update rodar.dlv_sesiones set activa = false where token = p_token; return '{"ok":true}'; end $$;
+
+create or replace function public.r_dlv_com_inicio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); n rodar.dlv_negocios; c jsonb := rodar.dlv_cfg();
+begin
+  select * into n from rodar.dlv_negocios where id = u.negocio_id;
+  return jsonb_build_object('usuario', jsonb_build_object('nombre', u.nombre, 'email', u.email, 'rol', u.rol),
+    'negocio', rodar.dlv_negocio_json(n), 'cambio_pendiente', n.cambio_pendiente,
+    'config', jsonb_build_object('solicitar_repartidor', c->'solicitar_repartidor', 'comercio_efectivo', c->'comercio_efectivo', 'comercio_seguimiento', c->'comercio_seguimiento',
+       'cancel_comercio', c->'cancel_comercio', 'cancel_motivo', c->'cancel_motivo', 'aprob_menu', c->'aprob_menu', 'aprob_negocio', c->'aprob_negocio',
+       'codigo_recoleccion', c->'codigo_recoleccion', 'comanda_desglose', c->'comanda_desglose', 'devolucion_codigo', c->'devolucion_codigo', 'carga_masiva', c->'carga_masiva'),
+    'empresa', rodar.cfg('empresa'),
+    'pedidos', (select coalesce(jsonb_agg(rodar.dlv_pedido_json(p) - 'historial' order by p.creado desc), '[]') from (select * from rodar.dlv_pedidos
+       where negocio_id = n.id and (estado not in ('entregado', 'cancelado') or creado > rodar.ahora() - interval '2 days') order by creado desc limit 100) p),
+    'menu', rodar.lista('select * from rodar.dlv_menu_categorias where negocio_id = ' || n.id || ' order by orden, nombre'),
+    'productos', rodar.lista('select * from rodar.dlv_productos where negocio_id = ' || n.id || ' order by orden, nombre'),
+    'movimientos', rodar.lista('select fecha, tipo, monto, detalle from rodar.dlv_movimientos where negocio_id = ' || n.id || ' order by fecha desc limit 50')); end $$;
+
+create or replace function public.r_dlv_com_accion(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); c jsonb := rodar.dlv_cfg(); p rodar.dlv_pedidos; a text := rodar.t(p_b, 'accion'); quien text := 'comercio · ' || coalesce(u.nombre, u.email);
+begin
+  select * into p from rodar.dlv_pedidos where id = rodar.n(p_b, 'id') and negocio_id = u.negocio_id; if not found then raise exception 'Pedido no encontrado'; end if;
+  if a = 'aceptar' then perform rodar.dlv_estado(p.id, 'confirmado', quien);
+  elsif a = 'rechazar' then perform rodar.dlv_estado(p.id, 'cancelado', quien, coalesce(rodar.t(p_b, 'motivo'), 'Rechazado por el comercio'));
+  elsif a in ('preparando', 'listo') then
+    if a = 'listo' and rodar.b(c, 'aprobar_transferencias') and p.medio_pago = 'transferencia' and not p.pagado then raise exception 'Falta aprobar el comprobante de la transferencia'; end if;
+    perform rodar.dlv_estado(p.id, a, quien);
+    if a = 'listo' and p.tipo_entrega = 'entrega' and p.viaje_id is null then perform rodar.dlv_pedir_repartidor(p.id); end if;
+  elsif a = 'entregado' and p.tipo_entrega = 'retiro' then perform rodar.dlv_estado(p.id, 'entregado', quien);
+  elsif a = 'cancelar' then
+    if rodar.b(c, 'cancel_comercio') or p.estado in ('pendiente', 'confirmado') then perform rodar.dlv_estado(p.id, 'cancelado', quien, rodar.t(p_b, 'motivo'));
+    else perform rodar.dlv_estado(p.id, 'cancelacion_solicitada', quien, rodar.t(p_b, 'motivo')); end if;
+  elsif a = 'efectivo' then
+    if not rodar.b(c, 'comercio_efectivo') then raise exception 'No habilitado'; end if;
+    if p.efectivo_recibido then raise exception 'Ya figura como recibido'; end if;
+    update rodar.dlv_pedidos set efectivo_recibido = true where id = p.id; perform rodar.dlv_hist(p.id, 'Efectivo recibido · ' || quien);
+  elsif a = 'pagado' then
+    update rodar.dlv_pedidos set pagado = true where id = p.id; perform rodar.dlv_hist(p.id, 'Transferencia aprobada · ' || quien);
+  elsif a = 'devuelto' then
+    if p.codigo_devolucion is not null and p.codigo_devolucion <> coalesce(rodar.t(p_b, 'codigo'), '') then raise exception 'El código de devolución no coincide'; end if;
+    update rodar.dlv_pedidos set devolucion_pendiente = false where id = p.id; perform rodar.dlv_hist(p.id, 'Mercadería devuelta · ' || quien);
+  else raise exception 'Acción desconocida'; end if;
+  select * into p from rodar.dlv_pedidos where id = p.id;
+  return rodar.dlv_pedido_json(p); end $$;
+
+create or replace function public.r_dlv_com_express(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); p rodar.dlv_pedidos;
+begin
+  if not rodar.b(rodar.dlv_cfg(), 'solicitar_repartidor') then raise exception 'Solicitar repartidor no está habilitado'; end if;
+  if rodar.t(p_q, 'cotizar') is not null then return rodar.dlv_cotizar(p_b || jsonb_build_object('tipo', 'express', 'negocio_id', u.negocio_id)); end if;
+  p := rodar.dlv_crear((p_b - 'envio_manual') || jsonb_build_object('tipo', 'express', 'negocio_id', u.negocio_id), 'comercio · ' || coalesce(u.nombre, u.email));
+  return rodar.dlv_pedido_json(p); end $$;
+
+create or replace function public.r_dlv_com_producto(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); aprob boolean := rodar.b(rodar.dlv_cfg(), 'aprob_menu'); pid bigint := rodar.n(p_b, 'id');
+begin
+  if pid is not null and not exists (select 1 from rodar.dlv_productos where id = pid and negocio_id = u.negocio_id) then raise exception 'Producto no encontrado'; end if;
+  if rodar.t(p_b, 'accion') = 'disponible' then -- la disponibilidad no requiere aprobación
+    update rodar.dlv_productos set disponible = not disponible where id = pid; return '{"ok":true}';
+  elsif rodar.t(p_b, 'accion') = 'borrar' then
+    if aprob then update rodar.dlv_productos set cambio = '{"borrar":true}' where id = pid; else delete from rodar.dlv_productos where id = pid; end if;
+    return jsonb_build_object('ok', true, 'pendiente', aprob);
+  elsif rodar.t(p_b, 'accion') = 'categoria' then
+    if rodar.n(p_b, 'cat_id') is null then insert into rodar.dlv_menu_categorias(negocio_id, nombre) values (u.negocio_id, rodar.t(p_b, 'nombre'));
+    else update rodar.dlv_menu_categorias set nombre = rodar.t(p_b, 'nombre') where id = rodar.n(p_b, 'cat_id') and negocio_id = u.negocio_id; end if;
+    return '{"ok":true}';
+  end if;
+  perform rodar.dlv_producto_set(p_b || jsonb_build_object('negocio_id', u.negocio_id), not aprob);
+  return jsonb_build_object('ok', true, 'pendiente', aprob); end $$;
+
+create or replace function public.r_dlv_com_perfil(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); n rodar.dlv_negocios; d jsonb;
+begin
+  if rodar.t(p_b, 'password') is not null then
+    if not rodar.verificar(coalesce(rodar.t(p_b, 'actual'), ''), u.password_hash) then raise exception 'La contraseña actual no coincide'; end if;
+    update rodar.dlv_negocio_usuarios set password_hash = rodar.hash(rodar.t(p_b, 'password')) where id = u.id; return '{"ok":true}';
+  end if;
+  select * into n from rodar.dlv_negocios where id = u.negocio_id;
+  d := jsonb_strip_nulls(jsonb_build_object('nombre', rodar.t(p_b, 'nombre'), 'telefono', rodar.t(p_b, 'telefono'), 'descripcion', rodar.t(p_b, 'descripcion'),
+       'direccion', rodar.t(p_b, 'direccion'), 'tiempo_prep', rodar.n(p_b, 'tiempo_prep'), 'pedido_minimo', rodar.n(p_b, 'pedido_minimo'), 'logo', rodar.t(p_b, 'logo'),
+       'horario', case when p_b ? 'horario' then p_b->'horario' end, 'retiro_local', case when p_b ? 'retiro_local' then p_b->'retiro_local' end));
+  if rodar.b(rodar.dlv_cfg(), 'aprob_negocio') then update rodar.dlv_negocios set cambio_pendiente = d where id = n.id; return jsonb_build_object('ok', true, 'pendiente', true); end if;
+  perform public.r_dlv_negocio_guardar_int(d || jsonb_build_object('id', n.id, 'nombre', coalesce(d->>'nombre', n.nombre)));
+  return jsonb_build_object('ok', true, 'pendiente', false); end $$;
+
+-- guardado interno (sin sesión de admin) usado por el portal del comercio
+create or replace function public.r_dlv_negocio_guardar_int(p_b jsonb) returns void
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  update rodar.dlv_negocios set nombre = coalesce(rodar.t(p_b, 'nombre'), nombre), telefono = coalesce(rodar.t(p_b, 'telefono'), telefono),
+    descripcion = coalesce(rodar.t(p_b, 'descripcion'), descripcion), direccion = coalesce(rodar.t(p_b, 'direccion'), direccion),
+    tiempo_prep = coalesce(rodar.n(p_b, 'tiempo_prep')::int, tiempo_prep), pedido_minimo = coalesce(rodar.n(p_b, 'pedido_minimo'), pedido_minimo),
+    logo = coalesce(rodar.t(p_b, 'logo'), logo), horario = case when p_b ? 'horario' then nullif(p_b->'horario', 'null'::jsonb) else horario end,
+    retiro_local = case when p_b ? 'retiro_local' then rodar.b(p_b, 'retiro_local') else retiro_local end
+  where id = rodar.n(p_b, 'id');
+end $$;
+revoke execute on function public.r_dlv_negocio_guardar_int(jsonb) from public, anon, authenticated;
+-- los cambios aprobados por el admin también usan los campos del comercio
+
+
+-- ======== 31_pagos_proveedores.sql ========
+-- ===================== Pagar base con varias billeteras (Mercado Pago, Ualá, Naranja X, Personal Pay, transferencia) =====================
+-- Mercado Pago y Ualá se acreditan solos (función de Supabase "pagos"). Naranja X, Personal Pay y "otra billetera / transferencia"
+-- se cobran por transferencia al alias/CVU de la central y se confirman a mano en Finanzas → Pagos de base.
+
+alter table rodar.mp_pagos add column if not exists proveedor text default 'mercadopago';
+
+-- Catálogo fijo de proveedores. api = true si existe un adaptador que acredita solo (ver supabase/functions/_shared/adaptadores.ts)
+create or replace function rodar.pagos_catalogo() returns jsonb language sql immutable as $$
+  select '[
+    {"codigo":"mercadopago","nombre":"Mercado Pago","api":true},
+    {"codigo":"uala","nombre":"Ualá","api":true},
+    {"codigo":"naranjax","nombre":"Naranja X","api":false},
+    {"codigo":"personalpay","nombre":"Personal Pay","api":false},
+    {"codigo":"transferencia","nombre":"Otra billetera / transferencia","api":false}
+  ]'::jsonb $$;
+
+-- Configuración de un proveedor: {habilitado, alias, link}. Mercado Pago y transferencia heredan el alias/link de "Medios de pago" si no tienen uno propio.
+create or replace function rodar.pagos_conf(prov text) returns jsonb language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.cfg('pagos', '{}') -> 'proveedores' -> prov; mp jsonb := rodar.cfg('mp', '{}'); h boolean;
+begin
+  h := coalesce((c ->> 'habilitado')::boolean, prov in ('mercadopago', 'transferencia'));
+  return jsonb_build_object('habilitado', h,
+    'alias', coalesce(nullif(c ->> 'alias', ''), case when prov in ('mercadopago', 'transferencia') then nullif(mp ->> 'alias_cobro', '') end),
+    'link',  coalesce(nullif(c ->> 'link', ''),  case when prov in ('mercadopago', 'transferencia') then nullif(mp ->> 'link_pago', '') end));
+end $$;
+
+-- Lista para la app del conductor / panel: solo los proveedores habilitados
+create or replace function public.r_pagos_proveedores(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token);
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('codigo', x ->> 'codigo', 'nombre', x ->> 'nombre', 'api', (x ->> 'api')::boolean))
+    from jsonb_array_elements(rodar.pagos_catalogo()) x where (rodar.pagos_conf(x ->> 'codigo') ->> 'habilitado')::boolean), '[]'::jsonb);
+end $$;
+
+-- Pantalla de administración (Medios de pago)
+create or replace function public.r_pagos_config(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'admin');
+  return jsonb_build_object('proveedores', (select jsonb_agg(x || rodar.pagos_conf(x ->> 'codigo') order by ord) from jsonb_array_elements(rodar.pagos_catalogo()) with ordinality t(x, ord)));
+end $$;
+
+create or replace function public.r_pagos_config_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); x jsonb; n jsonb := '{}';
+begin
+  for x in select jsonb_array_elements(coalesce(p_b -> 'proveedores', '[]')) loop
+    if not exists (select 1 from jsonb_array_elements(rodar.pagos_catalogo()) c where c ->> 'codigo' = x ->> 'codigo') then raise exception 'Proveedor desconocido: %', x ->> 'codigo'; end if;
+    n := n || jsonb_build_object(x ->> 'codigo', jsonb_build_object('habilitado', rodar.b(x, 'habilitado'), 'alias', btrim(coalesce(x ->> 'alias', '')), 'link', btrim(coalesce(x ->> 'link', ''))));
+  end loop;
+  perform rodar.cfg_set('pagos', jsonb_build_object('proveedores', n));
+  perform rodar.accion(u, 'pagos_proveedores_guardados', null, 'Se actualizaron las billeteras para cargas de saldo');
+  return '{"ok":true}';
+end $$;
+
+-- Pedido de carga de saldo (reemplaza la versión de 29_mp_repetidos.sql): ahora recuerda con qué billetera se paga.
+-- Si ya hay un pedido pendiente del mismo móvil, monto y proveedor en las últimas 24 h, se reutiliza.
+create or replace function public.r_cargar_saldo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); s rodar.sesiones := rodar.sesion(p_token); m rodar.moviles; mto numeric := rodar.n(p_b, 'monto'); nid bigint;
+  prov text := coalesce(nullif(p_b ->> 'proveedor', ''), 'mercadopago'); cat jsonb; conf jsonb; alias_c text;
+begin
+  select x into cat from jsonb_array_elements(rodar.pagos_catalogo()) x where x ->> 'codigo' = prov;
+  if cat is null then raise exception 'Medio de pago desconocido'; end if;
+  conf := rodar.pagos_conf(prov);
+  if not (conf ->> 'habilitado')::boolean then raise exception '% no está habilitado para cargas de saldo', cat ->> 'nombre'; end if;
+  select * into m from rodar.moviles where id = coalesce(s.movil_id, rodar.n(p_b, 'movil_id')::bigint);
+  if not found then raise exception 'Elegí un móvil'; end if;
+  if not (m.titular_id = u.id or exists(select 1 from rodar.movil_conductores where movil_id = m.id and usuario_id = u.id) or rodar.tiene(u, 'admin')) then raise exception 'Sin permiso sobre ese móvil'; end if;
+  if coalesce(mto, 0) <= 0 then raise exception 'Monto inválido'; end if;
+  select id into nid from rodar.mp_pagos where tipo = 'recarga' and movil_id = m.id and mp_pagos.monto = mto and estado = 'pendiente' and not coalesce(acreditado, false)
+    and coalesce(mp_pagos.proveedor, 'mercadopago') = prov and fecha > rodar.ahora() - interval '24 hours' order by id desc limit 1;
+  if nid is not null then update rodar.mp_pagos set fecha = rodar.ahora() where id = nid;
+  else insert into rodar.mp_pagos(tipo, movil_id, monto, estado, fecha, proveedor) values ('recarga', m.id, mto, 'pendiente', rodar.ahora(), prov) returning id into nid; end if;
+  alias_c := conf ->> 'alias';
+  return jsonb_build_object('id', nid, 'proveedor', prov, 'nombre', cat ->> 'nombre', 'link', conf ->> 'link', 'alias', alias_c,
+    'mensaje', 'La carga #' || nid || ' quedó pendiente. ' || case when coalesce(alias_c, '') <> '' then 'Transferí desde ' || (cat ->> 'nombre') || ' a ' || alias_c || ' indicando la carga #' || nid || '. ' else '' end ||
+      'Cuando la central confirme el pago se acredita en tu cuenta.');
+end $$;
+
+-- Acreditación automática, para cualquier proveedor. La llama la función "pagos" cuando el proveedor confirma un pago.
+-- Acredita una sola vez, solo si el pedido es de ese proveedor y el monto coincide.
+create or replace function public.webhook_pago(token text, pago_id bigint, prov text, ref_prov text, monto_pagado numeric, estado_prov text default 'approved', medio_prov text default null) returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare p rodar.mp_pagos; m rodar.moviles; nom text;
+begin
+  if token is distinct from rodar.cfg('webhook_token') #>> '{}' then raise exception 'token inválido'; end if;
+  select * into p from rodar.mp_pagos where id = pago_id and tipo = 'recarga' for update;
+  if not found then raise exception 'El pago % no existe', pago_id; end if;
+  if coalesce(p.proveedor, 'mercadopago') <> prov then raise exception 'El pago % no corresponde a %', pago_id, prov; end if;
+  if p.acreditado then return jsonb_build_object('ok', true, 'ya_acreditado', true); end if;
+  select x ->> 'nombre' into nom from jsonb_array_elements(rodar.pagos_catalogo()) x where x ->> 'codigo' = prov;
+  if estado_prov <> 'approved' then
+    update rodar.mp_pagos set estado = case when estado_prov in ('rejected', 'cancelled') then 'cancelado' else 'pendiente' end, mp_id = coalesce(mp_pagos.mp_id, ref_prov) where mp_pagos.id = p.id;
+    return jsonb_build_object('ok', true, 'estado', estado_prov);
+  end if;
+  if abs(coalesce(monto_pagado, 0) - p.monto) > 0.01 then raise exception 'El monto pagado (%) no coincide con el pedido (%)', monto_pagado, p.monto; end if;
+  update rodar.mp_pagos set estado = 'pagado', medio = coalesce(medio_prov, prov), mp_id = ref_prov, liberacion = rodar.hoy(), acreditado = true where mp_pagos.id = p.id;
+  perform rodar.registrar_pago(p.movil_id, p.monto, 'Pago de base ' || coalesce(nom, prov) || ' #' || ref_prov, null, 'carga_mp');
+  select * into m from rodar.moviles where id = p.movil_id;
+  perform rodar.emitir_movil(p.movil_id);
+  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Móvil ' || m.numero || ' pagó la base (' || coalesce(nom, prov) || '): $' || p.monto));
+  perform rodar.emit('movil-' || p.movil_id, 'pago_base', jsonb_build_object('monto', p.monto));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Compatibilidad con la función vieja "mercadopago" que todavía llame a webhook_mp
+create or replace function public.webhook_mp(token text, pago_id bigint, pago_mp_id text, monto_pagado numeric, estado_mp text default 'approved', medio_mp text default null) returns jsonb
+language sql security definer set search_path = rodar, public, extensions as $$
+  select public.webhook_pago(token, pago_id, 'mercadopago', pago_mp_id, monto_pagado, estado_mp, medio_mp) $$;
+
+grant execute on function public.r_pagos_proveedores(text, jsonb, jsonb), public.r_pagos_config(text, jsonb, jsonb), public.r_pagos_config_guardar(text, jsonb, jsonb),
+  public.r_cargar_saldo(text, jsonb, jsonb), public.webhook_pago(text, bigint, text, text, numeric, text, text), public.webhook_mp(text, bigint, text, numeric, text, text) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 32_delivery_integrado.sql ========
+-- ===================== Delivery integrado: cliente → negocio → repartidor y cliente =====================
+-- Sobre el módulo de 30_delivery.sql y los pagos de 31_pagos_proveedores.sql:
+--  1) El cliente puede PAGAR ONLINE (medio_pago 'online') con las billeteras habilitadas. El negocio no ve el pedido hasta que está pagado.
+--  2) Cada paso del pedido AVISA al cliente (push + tiempo real): pagado, aceptado, preparando, listo, repartidor asignado, en camino, entregado, cancelado.
+--  3) El pedido pagado online le llega al repartidor como "YA PAGADO" y su envío queda "a rendir" (misma cuenta de Saldos de viajes cobrados por la central).
+--  4) Si un pedido pagado online se cancela, queda "reembolso pendiente" para que la central lo devuelva y lo marque.
+-- Redefine (create or replace) funciones de 30_delivery.sql: este archivo tiene que correr después de 30 y 31.
+
+-- ---------- columnas y tablas ----------
+alter table rodar.mp_pagos add column if not exists pedido_id bigint;
+create index if not exists ix_mp_pagos_pedido on rodar.mp_pagos(pedido_id) where pedido_id is not null;
+alter table rodar.dlv_pedidos add column if not exists pago_vence timestamp;      -- hasta cuándo puede pagar online
+alter table rodar.dlv_pedidos add column if not exists reembolso numeric default 0; -- monto pagado online que hay que devolver
+
+-- suscripciones push de un pedido (el cliente no necesita cuenta)
+create table if not exists rodar.dlv_push (
+  id bigint generated by default as identity primary key, pedido_id bigint not null references rodar.dlv_pedidos(id) on delete cascade,
+  endpoint text not null, p256dh text not null, auth text not null, creado timestamp default now(), unique (pedido_id, endpoint));
+revoke all on rodar.dlv_push from anon, authenticated;
+
+-- vencimiento del pago online (config 'online_vence_min', por defecto 20) y pedidos de $0 (todo con saldo) ya pagados
+create or replace function rodar.dlv_trg_pago_vence() returns trigger language plpgsql as $$
+#variable_conflict use_variable
+
+begin
+  if new.medio_pago = 'online' then
+    if new.pago_vence is null then new.pago_vence := rodar.ahora() + make_interval(mins => coalesce(rodar.n(rodar.dlv_cfg(), 'online_vence_min')::int, 20)); end if;
+    if coalesce(new.total, 0) <= 0 then new.pagado := true; end if;
+  end if;
+  return new;
+end $$;
+create or replace trigger dlv_pago_vence before insert on rodar.dlv_pedidos for each row execute function rodar.dlv_trg_pago_vence();
+
+-- ---------- avisos al cliente ----------
+-- tiempo real: el cliente escucha el canal privado "dlv-<id>-<firma>" (la firma sale del enlace de seguimiento, no revela el secreto del sistema)
+create or replace function rodar.dlv_ping(p_id bigint, p_evento text) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+begin
+  perform realtime.send(jsonb_build_object('id', p_id, 'evento', p_evento), 'estado', 'dlv-' || p_id || '-' || rodar.firma(p_id), false);
+exception when others then null;
+end $$;
+
+-- celulares a avisar: los del pedido (sin cuenta) y los del cliente con sesión abierta
+create or replace function rodar.dlv_subs(p_id bigint) returns jsonb language sql stable as $$
+  select coalesce(jsonb_agg(x), '[]'::jsonb) from (
+    select jsonb_build_object('endpoint', d.endpoint, 'p256dh', d.p256dh, 'auth', d.auth) x from rodar.dlv_push d where d.pedido_id = p_id
+    union
+    select s from jsonb_array_elements(coalesce((select rodar.push_subs_cliente(p.cliente_id) from rodar.dlv_pedidos p where p.id = p_id and p.cliente_id is not null), '[]'::jsonb)) s
+  ) t $$;
+
+create or replace function rodar.dlv_avisar(p_id bigint, p_ev text) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; n rodar.dlv_negocios; titulo text; cuerpo text; subs jsonb; nom text; mv text;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id; if not found then return; end if;
+  perform rodar.dlv_ping(p_id, p_ev);
+  select * into n from rodar.dlv_negocios where id = p.negocio_id; nom := coalesce(n.nombre, 'El comercio');
+  if p_ev = 'pagado' then titulo := '💳 Recibimos tu pago'; cuerpo := 'Pedido #' || p.codigo || ' por $' || round(p.total) || '. Ahora lo confirma ' || nom || '.';
+  elsif p_ev = 'confirmado' then titulo := '✅ Tu pedido fue aceptado'; cuerpo := nom || ' recibió tu pedido #' || p.codigo || '.';
+  elsif p_ev = 'preparando' then titulo := '👨‍🍳 Están preparando tu pedido'; cuerpo := nom || ' ya lo está armando.';
+  elsif p_ev = 'listo' then titulo := '📦 Tu pedido está listo';
+    cuerpo := case when p.tipo_entrega = 'retiro' then 'Pasá a retirarlo por ' || nom || '.' else 'Estamos buscando un repartidor.' end;
+  elsif p_ev = 'asignado' then
+    select 'Móvil ' || m.numero || coalesce(' · ' || nullif(trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')), ''), '') into mv
+      from rodar.moviles m left join rodar.usuarios u on u.id = p.conductor_id where m.id = p.movil_id;
+    titulo := '🛵 Ya tenés repartidor'; cuerpo := coalesce(mv, 'Un repartidor') || ' lleva tu pedido.';
+  elsif p_ev in ('en_camino', 'recogido') then titulo := '🛵 Tu pedido va en camino';
+    cuerpo := 'Tocá para seguirlo en el mapa.' || coalesce(E'\nCódigo para el repartidor: ' || p.codigo_entrega, '');
+  elsif p_ev = 'entregado' then titulo := '🎉 ¡Pedido entregado!'; cuerpo := 'Gracias por pedir en ' || nom || '.';
+  elsif p_ev = 'cancelado' then titulo := 'Pedido cancelado'; cuerpo := coalesce(p.motivo_cancelacion, 'Tu pedido #' || p.codigo || ' fue cancelado.') || case when coalesce(p.reembolso, 0) > 0 then ' Te devolvemos $' || round(p.reembolso) || '.' else '' end;
+  else return; end if;
+  subs := rodar.dlv_subs(p_id);
+  perform rodar.push_enviar(subs, jsonb_build_object('titulo', titulo, 'cuerpo', cuerpo, 'tipo', 'pasajero', 'ttl', 3600, 'tag', 'dlv-' || p.id,
+    'url', 'delivery.html#/seguir/' || p.id || '/' || rodar.firma(p.id)), 'dlv-' || p.id || '-' || p_ev);
+exception when others then null; -- un aviso que falla nunca frena el pedido
+end $$;
+
+-- cuando se asigna el repartidor
+create or replace function rodar.dlv_trg_aviso() returns trigger language plpgsql as $$
+#variable_conflict use_variable
+
+begin
+  if new.movil_id is not null and new.movil_id is distinct from old.movil_id then perform rodar.dlv_avisar(new.id, 'asignado'); end if;
+  return new;
+end $$;
+create or replace trigger dlv_aviso after update of movil_id on rodar.dlv_pedidos for each row execute function rodar.dlv_trg_aviso();
+
+-- ---------- cambio de estado (reemplaza el de 30_delivery.sql): exige pago online, deja el reembolso y avisa al cliente ----------
+create or replace function rodar.dlv_estado(p_id bigint, p_estado text, p_quien text, p_motivo text default null) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; c jsonb := rodar.dlv_cfg(); reem numeric := 0;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id for update;
+  if not found then raise exception 'Pedido no encontrado'; end if;
+  if p.estado in ('entregado', 'cancelado') and p_estado <> p.estado then raise exception 'El pedido ya está %', p.estado; end if;
+  if p_estado in ('confirmado', 'preparando', 'listo') and p.medio_pago = 'online' and not p.pagado then raise exception 'El cliente todavía no pagó este pedido online'; end if;
+  if p_estado = 'cancelado' then
+    if rodar.b(c, 'cancel_motivo') and p_motivo is null and p_quien <> 'sistema' then raise exception 'Indicá el motivo de la cancelación'; end if;
+    if p.saldo_usado > 0 and p.cliente_id is not null then
+      update rodar.dlv_billetera set saldo = saldo + p.saldo_usado where cliente_id = p.cliente_id;
+    end if;
+    if p.medio_pago = 'online' and p.pagado then reem := p.total; end if;
+    update rodar.dlv_pedidos set estado = 'cancelado', cancelado_at = rodar.ahora(), motivo_cancelacion = p_motivo, cancelado_por = p_quien, reembolso = reem,
+      devolucion_pendiente = (p.recogido_at is not null and rodar.b(c, 'devolucion_codigo')),
+      codigo_devolucion = case when p.recogido_at is not null and rodar.b(c, 'devolucion_codigo') then rodar.dlv_pin() end
+    where id = p_id;
+    update rodar.mp_pagos set estado = 'cancelado' where tipo = 'delivery' and pedido_id = p_id and estado = 'pendiente'; -- link de pago que quedó sin usar
+    if p.viaje_id is not null then -- después de marcar cancelado, para que el disparador del viaje no lo toque
+      update rodar.viajes set estado = 'anulado', anulado_at = rodar.ahora(), motivo_anulacion = 'Pedido de delivery cancelado'
+      where id = p.viaje_id and estado in ('pendiente', 'ofrecido', 'confirmado', 'reserva');
+    end if;
+    if reem > 0 then perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Pedido #' || p.codigo || ' cancelado: hay que reembolsar $' || round(reem) || ' (pagó online)')); end if;
+  else
+    update rodar.dlv_pedidos set estado = p_estado,
+      confirmado_at = case when p_estado = 'confirmado' then coalesce(confirmado_at, rodar.ahora()) else confirmado_at end,
+      listo_at = case when p_estado = 'listo' then rodar.ahora() else listo_at end,
+      recogido_at = case when p_estado in ('recogido', 'en_camino') then coalesce(recogido_at, rodar.ahora()) else recogido_at end,
+      entregado_at = case when p_estado = 'entregado' then rodar.ahora() else entregado_at end,
+      motivo_cancelacion = case when p_estado = 'cancelacion_solicitada' then p_motivo else motivo_cancelacion end
+    where id = p_id;
+    if p_estado = 'entregado' then perform rodar.dlv_liquidar(p_id); end if;
+  end if;
+  perform rodar.dlv_hist(p_id, initcap(replace(p_estado, '_', ' ')) || ' · ' || p_quien || coalesce(' · ' || p_motivo, ''));
+  perform rodar.emit('panel', 'dlv_pedido', jsonb_build_object('id', p_id, 'estado', p_estado));
+  perform rodar.emit('dlv-' || p_id, 'estado', jsonb_build_object('id', p_id, 'estado', p_estado));
+  perform rodar.dlv_avisar(p_id, p_estado);
+end $$;
+
+-- ---------- repartidor: si el pedido está pagado online, el envío lo cobró la central ----------
+create or replace function rodar.dlv_pedir_repartidor(p_id bigint) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; n rodar.dlv_negocios; ids bigint[]; nulo rodar.usuarios; cobrar numeric; txt text; prepago boolean;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id for update;
+  if p.tipo_entrega = 'retiro' then raise exception 'El pedido es para retirar en el local'; end if;
+  if p.viaje_id is not null and exists (select 1 from rodar.viajes where id = p.viaje_id and estado not in ('anulado', 'finalizado')) then return; end if;
+  select * into n from rodar.dlv_negocios where id = p.negocio_id;
+  prepago := p.medio_pago = 'online' and p.pagado;
+  cobrar := case when p.tipo = 'express' and p.cobro = 'solo_entrega' then 0
+                 when p.pagado or p.medio_pago in ('tarjeta', 'billetera', 'transferencia', 'b2b', 'vale', 'online') then 0 else p.total end;
+  txt := 'DELIVERY #' || p.codigo || coalesce(' · ' || n.nombre, '') ||
+         case when cobrar > 0 then ' · COBRAR $' || round(cobrar) else ' · YA PAGADO' end ||
+         coalesce(' · Paga con $' || round(p.paga_con), '') ||
+         coalesce(' · Cód. retiro ' || p.codigo_recoleccion, '') ||
+         coalesce(' · Entregar a ' || p.cliente_nombre, '') || coalesce(' (' || p.cliente_tel || ')', '') || coalesce(' · ' || p.entrega_ref, '') || coalesce(' · ' || p.notas, '');
+  ids := rodar.crear_viaje(jsonb_build_object(
+    'canal', 'web', 'origen_tipo', 'delivery', 'telefono', null, 'alias', coalesce(n.nombre, 'Envío directo'),
+    'origen_dir', p.recogida_dir, 'origen_lat', p.recogida_lat, 'origen_lng', p.recogida_lng,
+    'destino_dir', p.entrega_dir, 'destino_lat', p.entrega_lat, 'destino_lng', p.entrega_lng, 'destino_ref', p.entrega_ref,
+    'datos_movil', txt, 'monto_fijo', p.envio,
+    'medio_pago', case when prepago then 'mercadopago' else 'efectivo' end, -- 'mercadopago' = cobrado por la central: el envío queda "a rendir" al móvil
+    'pin_requerido', false), nulo);
+  update rodar.dlv_pedidos set viaje_id = ids[1], buscando_desde = rodar.ahora(), avisado = false where id = p_id;
+  perform rodar.dlv_hist(p_id, 'Buscando repartidor (viaje #' || ids[1] || ')');
+  begin perform rodar.procesar(); exception when others then null; end;
+end $$;
+
+-- ---------- ciclo: además de lo de 30_delivery.sql, cancela los pedidos online que no se pagaron a tiempo ----------
+create or replace function rodar.dlv_ciclo() returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); r record; av numeric := rodar.n(c, 'aviso_sin_tomar'); ca numeric := rodar.n(c, 'cancelar_sin_repartidor');
+begin
+  for r in select p.* from rodar.dlv_pedidos p left join rodar.viajes v on v.id = p.viaje_id
+    where p.estado not in ('entregado', 'cancelado') and p.buscando_desde is not null and (v.id is null or v.estado in ('pendiente', 'ofrecido')) loop
+    if ca > 0 and r.buscando_desde < rodar.ahora() - make_interval(mins => ca::int) and not r.pagado and r.medio_pago = 'efectivo' then
+      perform rodar.dlv_estado(r.id, 'cancelado', 'sistema', 'Ningún repartidor tomó el pedido');
+    elsif av > 0 and not r.avisado and r.buscando_desde < rodar.ahora() - make_interval(mins => av::int) then
+      update rodar.dlv_pedidos set avisado = true where id = r.id;
+      perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Pedido #' || r.codigo || ': ningún repartidor lo tomó todavía'));
+    end if;
+  end loop;
+  for r in select id from rodar.dlv_pedidos where medio_pago = 'online' and not pagado and estado = 'pendiente' and pago_vence < rodar.ahora() loop
+    perform rodar.dlv_estado(r.id, 'cancelado', 'sistema', 'No se recibió el pago online a tiempo');
+  end loop;
+end $$;
+
+-- ---------- pedido del cliente: ahora acepta medio_pago 'online' (solo pedidos a comercios) ----------
+create or replace function public.r_dlv_pub_pedido(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); cli rodar.clientes := rodar.dlv_cliente_opc(p_token); p rodar.dlv_pedidos; tipo text := coalesce(rodar.t(p_b, 'tipo'), 'app'); d jsonb;
+begin
+  if tipo not in ('app', 'directo') then raise exception 'Tipo de pedido inválido'; end if;
+  if tipo = 'directo' and not rodar.b(c, 'directo_activo') then raise exception 'Los envíos directos no están habilitados'; end if;
+  if rodar.t(p_b, 'cliente_nombre') is null or rodar.t(p_b, 'cliente_tel') is null then raise exception 'Ingresá tu nombre y teléfono'; end if;
+  if rodar.t(p_b, 'medio_pago') not in ('efectivo', 'transferencia', 'online') then raise exception 'Elegí cómo pagás'; end if;
+  if rodar.t(p_b, 'medio_pago') = 'online' then
+    if tipo <> 'app' then raise exception 'El pago online está disponible para pedidos a comercios'; end if;
+    if not exists (select 1 from jsonb_array_elements(rodar.pagos_catalogo()) x where (x ->> 'api')::boolean and (rodar.pagos_conf(x ->> 'codigo') ->> 'habilitado')::boolean) then raise exception 'El pago online no está disponible por ahora'; end if;
+  end if;
+  d := (p_b - 'envio_manual' - 'cliente_id' - 'cobro') || jsonb_build_object('tipo', tipo, 'cliente_id', cli.id);
+  if tipo = 'directo' and rodar.t(p_b, 'recogida_dir') is null then raise exception 'Ingresá dónde retirar el paquete'; end if;
+  p := rodar.dlv_crear(d, 'cliente');
+  return jsonb_build_object('id', p.id, 'k', rodar.firma(p.id), 'codigo', p.codigo, 'online', p.medio_pago = 'online', 'pagado', p.pagado, 'total', p.total); end $$;
+
+-- billeteras disponibles para pagar online (las que la central habilitó y tienen cobro automático)
+create or replace function public.r_dlv_pub_pagos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  return jsonb_build_object('vence_min', coalesce(rodar.n(rodar.dlv_cfg(), 'online_vence_min')::int, 20), 'proveedores', coalesce((select jsonb_agg(jsonb_build_object('codigo', x ->> 'codigo', 'nombre', x ->> 'nombre'))
+    from jsonb_array_elements(rodar.pagos_catalogo()) x where (x ->> 'api')::boolean and (rodar.pagos_conf(x ->> 'codigo') ->> 'habilitado')::boolean), '[]'::jsonb));
+end $$;
+
+-- el cliente elige la billetera: se registra el cobro y la función "pagos" lo crea en el proveedor
+create or replace function public.r_dlv_pub_pagar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; prov text := coalesce(nullif(rodar.t(p_b, 'proveedor'), ''), 'mercadopago'); nid bigint;
+begin
+  select * into p from rodar.dlv_pedidos where id = (p_q ->> 'id')::bigint;
+  if not found or rodar.firma(p.id) <> coalesce(p_q ->> 'k', '') then raise exception 'Pedido no encontrado'; end if;
+  if p.medio_pago <> 'online' then raise exception 'Este pedido no es de pago online'; end if;
+  if p.pagado then raise exception 'Este pedido ya está pagado'; end if;
+  if p.estado <> 'pendiente' or p.pago_vence < rodar.ahora() then raise exception 'El tiempo para pagar este pedido venció'; end if;
+  if not exists (select 1 from jsonb_array_elements(rodar.pagos_catalogo()) x where x ->> 'codigo' = prov and (x ->> 'api')::boolean and (rodar.pagos_conf(prov) ->> 'habilitado')::boolean) then raise exception 'Ese medio de pago no está disponible'; end if;
+  select id into nid from rodar.mp_pagos where tipo = 'delivery' and pedido_id = p.id and proveedor = prov and estado = 'pendiente' and mp_pagos.monto = p.total order by id desc limit 1;
+  if nid is null then insert into rodar.mp_pagos(tipo, pedido_id, monto, estado, fecha, proveedor) values ('delivery', p.id, p.total, 'pendiente', rodar.ahora(), prov) returning id into nid; end if;
+  return jsonb_build_object('pago_id', nid, 'monto', p.total, 'proveedor', prov,
+    'descripcion', 'Pedido #' || p.codigo || coalesce(' · ' || (select nombre from rodar.dlv_negocios where id = p.negocio_id), ''),
+    'volver', 'delivery.html#/seguir/' || p.id || '/' || rodar.firma(p.id)); end $$;
+
+-- avisos push del pedido (el cliente toca "Avisarme" en la pantalla de seguimiento)
+create or replace function public.r_dlv_pub_push(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; s jsonb := p_b -> 'sub';
+begin
+  select * into p from rodar.dlv_pedidos where id = (p_q ->> 'id')::bigint;
+  if not found or rodar.firma(p.id) <> coalesce(p_q ->> 'k', '') then raise exception 'Pedido no encontrado'; end if;
+  if s is null then return jsonb_build_object('publica', rodar.cfg('push', '{}') ->> 'publica'); end if;
+  if coalesce(s ->> 'endpoint', '') !~ '^https://' or coalesce(s #>> '{keys,p256dh}', '') = '' or coalesce(s #>> '{keys,auth}', '') = '' then raise exception 'Suscripción inválida'; end if;
+  insert into rodar.dlv_push(pedido_id, endpoint, p256dh, auth) values (p.id, s ->> 'endpoint', s #>> '{keys,p256dh}', s #>> '{keys,auth}')
+  on conflict (pedido_id, endpoint) do update set p256dh = excluded.p256dh, auth = excluded.auth;
+  return '{"ok":true}'; end $$;
+
+-- ---------- seguimiento del cliente (reemplaza el de 30_delivery.sql): suma el estado del pago y el canal de tiempo real ----------
+create or replace function public.r_dlv_pub_seguir(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); p rodar.dlv_pedidos; j jsonb;
+begin
+  select * into p from rodar.dlv_pedidos where id = (p_q->>'id')::bigint;
+  if not found or rodar.firma(p.id) <> coalesce(p_q->>'k', '') then raise exception 'Pedido no encontrado'; end if;
+  j := rodar.dlv_pedido_json(p);
+  return jsonb_build_object('id', p.id, 'codigo', p.codigo, 'estado', p.estado, 'tipo', p.tipo, 'tipo_entrega', p.tipo_entrega, 'negocio', j->'negocio', 'negocio_tel', j->'negocio_tel',
+    'items', p.items, 'subtotal', p.subtotal, 'envio', p.envio, 'service_fee', p.service_fee, 'propina', p.propina, 'saldo_usado', p.saldo_usado, 'total', p.total,
+    'medio_pago', p.medio_pago, 'entrega_dir', p.entrega_dir, 'recogida_dir', p.recogida_dir, 'creado', p.creado, 'historial', p.historial,
+    'codigo_entrega', p.codigo_entrega, 'motivo_cancelacion', p.motivo_cancelacion,
+    'entrega_lat', p.entrega_lat, 'entrega_lng', p.entrega_lng, 'recogida_lat', p.recogida_lat, 'recogida_lng', p.recogida_lng,
+    'pago', jsonb_build_object('online', p.medio_pago = 'online', 'pagado', p.pagado, 'vence', p.pago_vence, 'reembolso', coalesce(p.reembolso, 0),
+       'pendiente', p.medio_pago = 'online' and not p.pagado and p.estado = 'pendiente' and p.pago_vence >= rodar.ahora()),
+    'canal', 'dlv-' || p.id || '-' || rodar.firma(p.id),
+    'repartidor', case when p.movil_id is not null and p.estado not in ('entregado', 'cancelado') then jsonb_build_object('movil', j->'movil_numero', 'nombre', j->'conductor', 'lat', j->'movil_lat', 'lng', j->'movil_lng') end,
+    'puede_cancelar', p.estado not in ('entregado', 'cancelado', 'cancelacion_solicitada', 'recogido', 'en_camino') and
+       ((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or p.estado <> 'pendiente'),
+    'cancela_directo', coalesce((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or (p.estado <> 'pendiente' and rodar.b(c, 'cancel_cliente_despues'))
+      or (rodar.n(c, 'cancelar_sin_repartidor') > 0 and p.buscando_desde < rodar.ahora() - make_interval(mins => rodar.n(c, 'cancelar_sin_repartidor')::int) and p.movil_id is null), false)); end $$;
+
+-- ---------- portal del comercio (reemplaza el de 30_delivery.sql): no muestra pedidos online que todavía no se pagaron ----------
+create or replace function public.r_dlv_com_inicio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); n rodar.dlv_negocios; c jsonb := rodar.dlv_cfg();
+begin
+  select * into n from rodar.dlv_negocios where id = u.negocio_id;
+  return jsonb_build_object('usuario', jsonb_build_object('nombre', u.nombre, 'email', u.email, 'rol', u.rol),
+    'negocio', rodar.dlv_negocio_json(n), 'cambio_pendiente', n.cambio_pendiente,
+    'config', jsonb_build_object('solicitar_repartidor', c->'solicitar_repartidor', 'comercio_efectivo', c->'comercio_efectivo', 'comercio_seguimiento', c->'comercio_seguimiento',
+       'cancel_comercio', c->'cancel_comercio', 'cancel_motivo', c->'cancel_motivo', 'aprob_menu', c->'aprob_menu', 'aprob_negocio', c->'aprob_negocio',
+       'codigo_recoleccion', c->'codigo_recoleccion', 'comanda_desglose', c->'comanda_desglose', 'devolucion_codigo', c->'devolucion_codigo', 'carga_masiva', c->'carga_masiva'),
+    'empresa', rodar.cfg('empresa'),
+    'pedidos', (select coalesce(jsonb_agg(rodar.dlv_pedido_json(p) - 'historial' order by p.creado desc), '[]') from (select * from rodar.dlv_pedidos
+       where negocio_id = n.id and (estado not in ('entregado', 'cancelado') or creado > rodar.ahora() - interval '2 days')
+         and not (medio_pago = 'online' and not pagado and estado = 'pendiente') order by creado desc limit 100) p),
+    'menu', rodar.lista('select * from rodar.dlv_menu_categorias where negocio_id = ' || n.id || ' order by orden, nombre'),
+    'productos', rodar.lista('select * from rodar.dlv_productos where negocio_id = ' || n.id || ' order by orden, nombre'),
+    'movimientos', rodar.lista('select fecha, tipo, monto, detalle from rodar.dlv_movimientos where negocio_id = ' || n.id || ' order by fecha desc limit 50')); end $$;
+
+-- ---------- panel: acción "reembolsado" para cerrar el reembolso pendiente ----------
+create or replace function public.r_dlv_pedido_accion(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin', 'operador'); p rodar.dlv_pedidos; a text := rodar.t(p_b, 'accion'); quien text := 'panel · ' || rodar.nombre(u);
+begin
+  select * into p from rodar.dlv_pedidos where id = rodar.n(p_b, 'id'); if not found then raise exception 'Pedido no encontrado'; end if;
+  if a in ('confirmado', 'preparando', 'listo', 'recogido', 'en_camino', 'entregado', 'cancelado') then
+    perform rodar.dlv_estado(p.id, a, quien, rodar.t(p_b, 'motivo'));
+    if a = 'listo' and p.tipo_entrega = 'entrega' and p.viaje_id is null and rodar.b(p_b, 'con_repartidor') then perform rodar.dlv_pedir_repartidor(p.id); end if;
+  elsif a = 'repartidor' then perform rodar.dlv_pedir_repartidor(p.id);
+  elsif a = 'quitar_repartidor' then
+    update rodar.viajes set estado = 'anulado', anulado_at = rodar.ahora(), motivo_anulacion = 'Repartidor quitado desde delivery' where id = p.viaje_id and estado not in ('finalizado', 'anulado');
+  elsif a = 'efectivo' then
+    update rodar.dlv_pedidos set efectivo_recibido = not efectivo_recibido where id = p.id;
+    perform rodar.dlv_hist(p.id, case when p.efectivo_recibido then 'Efectivo recibido revertido' else 'Efectivo recibido' end || ' · ' || quien);
+  elsif a = 'pagado' then
+    update rodar.dlv_pedidos set pagado = not pagado where id = p.id; perform rodar.dlv_hist(p.id, 'Pago ' || case when p.pagado then 'desmarcado' else 'aprobado' end || ' · ' || quien);
+  elsif a = 'reembolsado' then
+    if coalesce(p.reembolso, 0) <= 0 then raise exception 'Este pedido no tiene reembolsos pendientes'; end if;
+    update rodar.dlv_pedidos set reembolso = 0 where id = p.id; perform rodar.dlv_hist(p.id, 'Reembolso de $' || round(p.reembolso) || ' realizado · ' || quien);
+    update rodar.mp_pagos set estado = 'reembolsado' where tipo = 'delivery' and pedido_id = p.id and estado = 'pagado';
+  elsif a = 'devuelto' then
+    update rodar.dlv_pedidos set devolucion_pendiente = false where id = p.id; perform rodar.dlv_hist(p.id, 'Mercadería devuelta · ' || quien);
+  else raise exception 'Acción desconocida'; end if;
+  select * into p from rodar.dlv_pedidos where id = p.id;
+  return rodar.dlv_pedido_json(p); end $$;
+
+-- ---------- acreditación automática (reemplaza la de 31_pagos_proveedores.sql): ahora también paga pedidos de delivery ----------
+create or replace function public.webhook_pago(token text, pago_id bigint, prov text, ref_prov text, monto_pagado numeric, estado_prov text default 'approved', medio_prov text default null) returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare p rodar.mp_pagos; m rodar.moviles; d rodar.dlv_pedidos; nom text;
+begin
+  if token is distinct from rodar.cfg('webhook_token') #>> '{}' then raise exception 'token inválido'; end if;
+  select * into p from rodar.mp_pagos where id = pago_id and tipo in ('recarga', 'delivery') for update;
+  if not found then raise exception 'El pago % no existe', pago_id; end if;
+  if coalesce(p.proveedor, 'mercadopago') <> prov then raise exception 'El pago % no corresponde a %', pago_id, prov; end if;
+  if p.acreditado then return jsonb_build_object('ok', true, 'ya_acreditado', true); end if;
+  select x ->> 'nombre' into nom from jsonb_array_elements(rodar.pagos_catalogo()) x where x ->> 'codigo' = prov;
+  if estado_prov <> 'approved' then
+    update rodar.mp_pagos set estado = case when estado_prov in ('rejected', 'cancelled') then 'cancelado' else 'pendiente' end, mp_id = coalesce(mp_pagos.mp_id, ref_prov) where mp_pagos.id = p.id;
+    return jsonb_build_object('ok', true, 'estado', estado_prov);
+  end if;
+  if abs(coalesce(monto_pagado, 0) - p.monto) > 0.01 then raise exception 'El monto pagado (%) no coincide con el pedido (%)', monto_pagado, p.monto; end if;
+  update rodar.mp_pagos set estado = 'pagado', medio = coalesce(medio_prov, prov), mp_id = ref_prov, liberacion = rodar.hoy(), acreditado = true where mp_pagos.id = p.id;
+  if p.tipo = 'delivery' then
+    select * into d from rodar.dlv_pedidos where id = p.pedido_id for update;
+    update rodar.dlv_pedidos set pagado = true, reembolso = case when d.estado = 'cancelado' then p.monto else reembolso end where id = d.id;
+    perform rodar.dlv_hist(d.id, 'Pago online recibido · ' || coalesce(nom, prov) || ' #' || ref_prov);
+    if d.estado = 'cancelado' then -- pagó cuando el pedido ya estaba cancelado (venció): hay que devolverle el dinero
+      perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Pedido #' || d.codigo || ' ya estaba cancelado y el cliente pagó $' || round(p.monto) || ': hay que reembolsarlo'));
+    else
+      perform rodar.emit('panel', 'dlv_pedido', jsonb_build_object('id', d.id, 'estado', d.estado));
+      perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Pedido #' || d.codigo || ' pagado online (' || coalesce(nom, prov) || '): $' || round(p.monto)));
+      perform rodar.dlv_avisar(d.id, 'pagado');
+    end if;
+    return jsonb_build_object('ok', true, 'pedido', d.id);
+  end if;
+  perform rodar.registrar_pago(p.movil_id, p.monto, 'Pago de base ' || coalesce(nom, prov) || ' #' || ref_prov, null, 'carga_mp');
+  select * into m from rodar.moviles where id = p.movil_id;
+  perform rodar.emitir_movil(p.movil_id);
+  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Móvil ' || m.numero || ' pagó la base (' || coalesce(nom, prov) || '): $' || p.monto));
+  perform rodar.emit('movil-' || p.movil_id, 'pago_base', jsonb_build_object('monto', p.monto));
+  return jsonb_build_object('ok', true);
+end $$;
+
+grant execute on function public.r_dlv_pub_pedido(text, jsonb, jsonb), public.r_dlv_pub_pagos(text, jsonb, jsonb), public.r_dlv_pub_pagar(text, jsonb, jsonb),
+  public.r_dlv_pub_push(text, jsonb, jsonb), public.r_dlv_pub_seguir(text, jsonb, jsonb), public.r_dlv_com_inicio(text, jsonb, jsonb),
+  public.r_dlv_pedido_accion(text, jsonb, jsonb), public.webhook_pago(text, bigint, text, text, numeric, text, text) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 33_rubros_vehiculo.sql ========
+-- ===================== Rubros (no solo comida) y vehículo requerido (moto / auto) =====================
+-- 1) RUBROS: cada categoría de delivery tiene un TIPO: 'comida' (se "prepara") o 'productos' (farmacia, kiosco, ferretería, mercado,
+--    mascotas, regalos...: se "arma"). El tipo cambia el vocabulario de los avisos y de las pantallas del cliente y del comercio.
+--    Las categorías ya eran configurables (Delivery → Categorías): ahora también se elige el tipo y el vehículo por defecto.
+-- 2) VEHÍCULO: el negocio indica si el repartidor tiene que ir en moto, en auto o en cualquiera. Orden de prioridad:
+--    lo que elige el negocio para ese pedido  >  el vehículo por defecto del negocio  >  el de su rubro  >  cualquiera.
+--    Cada móvil tiene un tipo de vehículo (auto por defecto) y solo se le ofrecen los pedidos que le corresponden (ver rodar.elegible).
+-- Este archivo redefine (create or replace) funciones de 03_core, 30_delivery y 32_delivery_integrado: tiene que correr después de ellos.
+-- Se puede volver a correr: no borra datos.
+
+-- ---------- columnas ----------
+alter table rodar.dlv_categorias add column if not exists tipo text default 'comida';        -- comida | productos
+alter table rodar.dlv_categorias add column if not exists vehiculo_defecto text;             -- null (cualquiera) | moto | auto | cualquiera
+alter table rodar.dlv_negocios   add column if not exists vehiculo_defecto text;             -- null = el de su rubro
+alter table rodar.dlv_pedidos    add column if not exists vehiculo text;                     -- moto | auto | cualquiera (null = cualquiera)
+alter table rodar.moviles        add column if not exists tipo_vehiculo text default 'auto'; -- auto | moto
+alter table rodar.viajes         add column if not exists vehiculo_req text;                 -- null = cualquier móvil
+
+-- ---------- vocabulario por tipo de rubro ----------
+create or replace function rodar.dlv_vocab(p_tipo text) returns jsonb language sql immutable as $$
+  select case when p_tipo = 'productos' then
+    '{"tipo":"productos","prep":"Armando","prep_largo":"Armando tu pedido","prep_boton":"📦 Armando","prep_tiempo":"Tiempo de armado (min)","catalogo":"Catálogo","verbo":"armando"}'::jsonb
+  else
+    '{"tipo":"comida","prep":"Preparando","prep_largo":"En preparación","prep_boton":"🍳 Preparando","prep_tiempo":"Tiempo de preparación (min)","catalogo":"Menú","verbo":"preparando"}'::jsonb
+  end $$;
+
+create or replace function rodar.dlv_rubro_tipo(p_negocio bigint) returns text language sql stable as $$
+  select coalesce((select c.tipo from rodar.dlv_negocios n join rodar.dlv_categorias c on c.id = n.categoria_id where n.id = p_negocio), 'comida') $$;
+
+-- vehículo por defecto de un negocio: el suyo, si no el de su rubro, si no cualquiera
+create or replace function rodar.dlv_vehiculo_neg(p_negocio bigint) returns text language sql stable as $$
+  select coalesce((select coalesce(nullif(n.vehiculo_defecto, ''), nullif(c.vehiculo_defecto, ''))
+                   from rodar.dlv_negocios n left join rodar.dlv_categorias c on c.id = n.categoria_id where n.id = p_negocio), 'cualquiera') $$;
+
+-- cada pedido nuevo nace con el vehículo por defecto de su negocio (el negocio lo puede cambiar después)
+create or replace function rodar.dlv_trg_vehiculo() returns trigger language plpgsql as $$
+#variable_conflict use_variable
+
+begin
+  if new.vehiculo is null then new.vehiculo := rodar.dlv_vehiculo_neg(new.negocio_id); end if;
+  return new;
+end $$;
+create or replace trigger dlv_vehiculo before insert on rodar.dlv_pedidos for each row execute function rodar.dlv_trg_vehiculo();
+
+
+-- ---------- despacho: solo se le ofrece el viaje a móviles del vehículo pedido (copia de 03_core.sql + 1 línea) ----------
+
+create or replace function rodar.elegible(m rodar.moviles, v rodar.viajes) returns boolean language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare ec jsonb;
+begin
+  if not m.habilitado or m.estado not in ('disponible', 'en_parada') or m.conductor_id is null then return false; end if;
+  -- delivery: el negocio puede exigir moto o auto (NULL = cualquiera)
+  if v.vehiculo_req is not null and v.vehiculo_req <> coalesce(m.tipo_vehiculo, 'auto') then return false; end if;
+  if m.id = any(coalesce(v.rechazos, '{}')) then return false; end if;
+  if v.cliente_id is not null and exists(select 1 from rodar.negativos where cliente_id = v.cliente_id and movil_id = m.id) then return false; end if;
+  if exists(select 1 from rodar.viajes where movil_id = m.id and estado in ('ofrecido', 'confirmado', 'en_curso')) then return false; end if;
+  if exists(select 1 from rodar.penalizaciones where movil_id = m.id and hasta > rodar.ahora()) then return false; end if;
+  ec := rodar.estado_cuenta(m);
+  return not (ec ->> 'bloqueado')::boolean and not (ec ->> 'sin_saldo')::boolean;
+end $$;
+
+
+-- ---------- JSON de negocio y de pedido: ahora incluyen rubro y vehículo ----------
+
+create or replace function rodar.dlv_negocio_json(n rodar.dlv_negocios) returns jsonb language sql stable as $$
+  select to_jsonb(n) - 'cambio_pendiente' || jsonb_build_object(
+    'categoria', (select nombre from rodar.dlv_categorias where id = n.categoria_id),
+    'saldo', rodar.dlv_saldo(n.id), 'abierto', rodar.dlv_abierto(n.horario),
+    'pedidos', (select count(*) from rodar.dlv_pedidos where negocio_id = n.id),
+    'productos', (select count(*) from rodar.dlv_productos where negocio_id = n.id),
+    'tiene_cambio', n.cambio_pendiente is not null,
+    'rubro_tipo', rodar.dlv_rubro_tipo(n.id), 'vocab', rodar.dlv_vocab(rodar.dlv_rubro_tipo(n.id)), 'vehiculo_efectivo', rodar.dlv_vehiculo_neg(n.id)) $$;
+
+create or replace function rodar.dlv_pedido_json(p rodar.dlv_pedidos) returns jsonb language sql stable as $$
+  select to_jsonb(p) || jsonb_build_object(
+    'negocio', (select nombre from rodar.dlv_negocios where id = p.negocio_id),
+    'negocio_tel', (select telefono from rodar.dlv_negocios where id = p.negocio_id),
+    'movil_numero', (select numero from rodar.moviles where id = p.movil_id),
+    'movil_lat', (select lat from rodar.moviles where id = p.movil_id), 'movil_lng', (select lng from rodar.moviles where id = p.movil_id),
+    'conductor', (select trim(nombre || ' ' || coalesce(apellido, '')) from rodar.usuarios where id = p.conductor_id),
+    'viaje_estado', (select estado from rodar.viajes where id = p.viaje_id), 'k', rodar.firma(p.id),
+    'rubro_tipo', rodar.dlv_rubro_tipo(p.negocio_id)) $$;
+
+
+-- ---------- pedir repartidor (copia de 32_delivery_integrado.sql): el viaje hereda el vehículo del pedido ----------
+
+create or replace function rodar.dlv_pedir_repartidor(p_id bigint) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; n rodar.dlv_negocios; ids bigint[]; nulo rodar.usuarios; cobrar numeric; txt text; prepago boolean;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id for update;
+  if p.tipo_entrega = 'retiro' then raise exception 'El pedido es para retirar en el local'; end if;
+  if p.viaje_id is not null and exists (select 1 from rodar.viajes where id = p.viaje_id and estado not in ('anulado', 'finalizado')) then return; end if;
+  select * into n from rodar.dlv_negocios where id = p.negocio_id;
+  prepago := p.medio_pago = 'online' and p.pagado;
+  cobrar := case when p.tipo = 'express' and p.cobro = 'solo_entrega' then 0
+                 when p.pagado or p.medio_pago in ('tarjeta', 'billetera', 'transferencia', 'b2b', 'vale', 'online') then 0 else p.total end;
+  txt := 'DELIVERY #' || p.codigo || coalesce(' · ' || n.nombre, '') ||
+         case when cobrar > 0 then ' · COBRAR $' || round(cobrar) else ' · YA PAGADO' end ||
+         coalesce(' · Paga con $' || round(p.paga_con), '') ||
+         coalesce(' · Cód. retiro ' || p.codigo_recoleccion, '') ||
+         coalesce(' · Entregar a ' || p.cliente_nombre, '') || coalesce(' (' || p.cliente_tel || ')', '') || coalesce(' · ' || p.entrega_ref, '') || coalesce(' · ' || p.notas, '');
+  ids := rodar.crear_viaje(jsonb_build_object(
+    'canal', 'web', 'origen_tipo', 'delivery', 'telefono', null, 'alias', coalesce(n.nombre, 'Envío directo'),
+    'origen_dir', p.recogida_dir, 'origen_lat', p.recogida_lat, 'origen_lng', p.recogida_lng,
+    'destino_dir', p.entrega_dir, 'destino_lat', p.entrega_lat, 'destino_lng', p.entrega_lng, 'destino_ref', p.entrega_ref,
+    'datos_movil', txt, 'monto_fijo', p.envio,
+    'medio_pago', case when prepago then 'mercadopago' else 'efectivo' end, -- 'mercadopago' = cobrado por la central: el envío queda "a rendir" al móvil
+    'pin_requerido', false), nulo);
+  -- el viaje hereda el vehículo que pidió el negocio: solo se le ofrece a móviles de ese tipo (ver rodar.elegible)
+  update rodar.viajes set vehiculo_req = case when p.vehiculo in ('moto', 'auto') then p.vehiculo end where id = ids[1];
+  update rodar.dlv_pedidos set viaje_id = ids[1], buscando_desde = rodar.ahora(), avisado = false where id = p_id;
+  perform rodar.dlv_hist(p_id, 'Buscando repartidor (viaje #' || ids[1] || ')');
+  begin perform rodar.procesar(); exception when others then null; end;
+end $$;
+
+
+-- ---------- aviso "preparando" según el rubro (copia de 32_delivery_integrado.sql) ----------
+
+create or replace function rodar.dlv_avisar(p_id bigint, p_ev text) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; n rodar.dlv_negocios; titulo text; cuerpo text; subs jsonb; nom text; mv text;
+begin
+  select * into p from rodar.dlv_pedidos where id = p_id; if not found then return; end if;
+  perform rodar.dlv_ping(p_id, p_ev);
+  select * into n from rodar.dlv_negocios where id = p.negocio_id; nom := coalesce(n.nombre, 'El comercio');
+  if p_ev = 'pagado' then titulo := '💳 Recibimos tu pago'; cuerpo := 'Pedido #' || p.codigo || ' por $' || round(p.total) || '. Ahora lo confirma ' || nom || '.';
+  elsif p_ev = 'confirmado' then titulo := '✅ Tu pedido fue aceptado'; cuerpo := nom || ' recibió tu pedido #' || p.codigo || '.';
+  elsif p_ev = 'preparando' then
+    if rodar.dlv_rubro_tipo(p.negocio_id) = 'productos' then titulo := '📦 Están armando tu pedido'; cuerpo := nom || ' está reuniendo tus productos.';
+    else titulo := '👨‍🍳 Están preparando tu pedido'; cuerpo := nom || ' ya lo está armando.'; end if;
+  elsif p_ev = 'listo' then titulo := '📦 Tu pedido está listo';
+    cuerpo := case when p.tipo_entrega = 'retiro' then 'Pasá a retirarlo por ' || nom || '.' else 'Estamos buscando un repartidor.' end;
+  elsif p_ev = 'asignado' then
+    select 'Móvil ' || m.numero || coalesce(' · ' || nullif(trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')), ''), '') into mv
+      from rodar.moviles m left join rodar.usuarios u on u.id = p.conductor_id where m.id = p.movil_id;
+    titulo := '🛵 Ya tenés repartidor'; cuerpo := coalesce(mv, 'Un repartidor') || ' lleva tu pedido.';
+  elsif p_ev in ('en_camino', 'recogido') then titulo := '🛵 Tu pedido va en camino';
+    cuerpo := 'Tocá para seguirlo en el mapa.' || coalesce(E'\nCódigo para el repartidor: ' || p.codigo_entrega, '');
+  elsif p_ev = 'entregado' then titulo := '🎉 ¡Pedido entregado!'; cuerpo := 'Gracias por pedir en ' || nom || '.';
+  elsif p_ev = 'cancelado' then titulo := 'Pedido cancelado'; cuerpo := coalesce(p.motivo_cancelacion, 'Tu pedido #' || p.codigo || ' fue cancelado.') || case when coalesce(p.reembolso, 0) > 0 then ' Te devolvemos $' || round(p.reembolso) || '.' else '' end;
+  else return; end if;
+  subs := rodar.dlv_subs(p_id);
+  perform rodar.push_enviar(subs, jsonb_build_object('titulo', titulo, 'cuerpo', cuerpo, 'tipo', 'pasajero', 'ttl', 3600, 'tag', 'dlv-' || p.id,
+    'url', 'delivery.html#/seguir/' || p.id || '/' || rodar.firma(p.id)), 'dlv-' || p.id || '-' || p_ev);
+exception when others then null; -- un aviso que falla nunca frena el pedido
+end $$;
+
+
+-- ---------- seguimiento del cliente: rubro, vocabulario y vehículo (copia de 32_delivery_integrado.sql) ----------
+
+create or replace function public.r_dlv_pub_seguir(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.dlv_cfg(); p rodar.dlv_pedidos; j jsonb;
+begin
+  select * into p from rodar.dlv_pedidos where id = (p_q->>'id')::bigint;
+  if not found or rodar.firma(p.id) <> coalesce(p_q->>'k', '') then raise exception 'Pedido no encontrado'; end if;
+  j := rodar.dlv_pedido_json(p);
+  return jsonb_build_object('id', p.id, 'codigo', p.codigo, 'estado', p.estado, 'tipo', p.tipo, 'tipo_entrega', p.tipo_entrega, 'negocio', j->'negocio', 'negocio_tel', j->'negocio_tel',
+    'items', p.items, 'subtotal', p.subtotal, 'envio', p.envio, 'service_fee', p.service_fee, 'propina', p.propina, 'saldo_usado', p.saldo_usado, 'total', p.total,
+    'medio_pago', p.medio_pago, 'entrega_dir', p.entrega_dir, 'recogida_dir', p.recogida_dir, 'creado', p.creado, 'historial', p.historial,
+    'codigo_entrega', p.codigo_entrega, 'motivo_cancelacion', p.motivo_cancelacion,
+    'rubro_tipo', rodar.dlv_rubro_tipo(p.negocio_id), 'vocab', rodar.dlv_vocab(rodar.dlv_rubro_tipo(p.negocio_id)), 'vehiculo', coalesce(p.vehiculo, 'cualquiera'),
+    'entrega_lat', p.entrega_lat, 'entrega_lng', p.entrega_lng, 'recogida_lat', p.recogida_lat, 'recogida_lng', p.recogida_lng,
+    'pago', jsonb_build_object('online', p.medio_pago = 'online', 'pagado', p.pagado, 'vence', p.pago_vence, 'reembolso', coalesce(p.reembolso, 0),
+       'pendiente', p.medio_pago = 'online' and not p.pagado and p.estado = 'pendiente' and p.pago_vence >= rodar.ahora()),
+    'canal', 'dlv-' || p.id || '-' || rodar.firma(p.id),
+    'repartidor', case when p.movil_id is not null and p.estado not in ('entregado', 'cancelado') then jsonb_build_object('movil', j->'movil_numero', 'nombre', j->'conductor', 'lat', j->'movil_lat', 'lng', j->'movil_lng') end,
+    'puede_cancelar', p.estado not in ('entregado', 'cancelado', 'cancelacion_solicitada', 'recogido', 'en_camino') and
+       ((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or p.estado <> 'pendiente'),
+    'cancela_directo', coalesce((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or (p.estado <> 'pendiente' and rodar.b(c, 'cancel_cliente_despues'))
+      or (rodar.n(c, 'cancelar_sin_repartidor') > 0 and p.buscando_desde < rodar.ahora() - make_interval(mins => rodar.n(c, 'cancelar_sin_repartidor')::int) and p.movil_id is null), false)); end $$;
+
+
+-- ---------- categorías: tipo de rubro y vehículo por defecto (copia de 30_delivery.sql) ----------
+
+create or replace function public.r_dlv_categoria_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); nid bigint;
+  v_tipo text := coalesce(nullif(rodar.t(p_b, 'tipo'), ''), 'comida'); v_veh text := nullif(rodar.t(p_b, 'vehiculo_defecto'), '');
+begin
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Ingresá el nombre de la categoría'; end if;
+  if v_tipo not in ('comida', 'productos') then raise exception 'Tipo de rubro inválido'; end if;
+  if v_veh is not null and v_veh not in ('moto', 'auto', 'cualquiera') then raise exception 'Vehículo inválido'; end if;
+  if rodar.n(p_b, 'id') is not null then
+    update rodar.dlv_categorias set nombre = rodar.t(p_b, 'nombre'), descripcion = rodar.t(p_b, 'descripcion'),
+      icono = case when p_b ? 'icono' then rodar.t(p_b, 'icono') else icono end, orden = coalesce(rodar.n(p_b, 'orden')::int, orden),
+      tipo = case when p_b ? 'tipo' then v_tipo else tipo end, vehiculo_defecto = case when p_b ? 'vehiculo_defecto' then v_veh else vehiculo_defecto end where id = rodar.n(p_b, 'id') returning id into nid;
+  else
+    insert into rodar.dlv_categorias(nombre, descripcion, icono, orden, tipo, vehiculo_defecto) values (rodar.t(p_b, 'nombre'), rodar.t(p_b, 'descripcion'), rodar.t(p_b, 'icono'), coalesce(rodar.n(p_b, 'orden')::int, 0), v_tipo, v_veh) returning id into nid;
+  end if;
+  perform rodar.accion(u, 'Delivery', 'Categoría ' || rodar.t(p_b, 'nombre'), 'Guardó la categoría');
+  return jsonb_build_object('ok', true, 'id', nid); end $$;
+
+
+-- ---------- demo: suma rubros que no son comida (copia de 30_delivery.sql) ----------
+
+create or replace function public.r_dlv_demo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); e jsonb := rodar.cfg('empresa'); la float8 := coalesce((e->>'lat')::float8, -30.9465); ln float8 := coalesce((e->>'lng')::float8, -58.7834);
+  c1 bigint; c2 bigint; c3 bigint; c4 bigint; n1 bigint; n2 bigint; n3 bigint; n4 bigint; m bigint;
+begin
+  if rodar.t(p_b, 'accion') = 'borrar' then
+    delete from rodar.dlv_pedidos where demo or negocio_id in (select id from rodar.dlv_negocios where demo);
+    delete from rodar.dlv_negocios where demo; delete from rodar.dlv_categorias where demo;
+    return '{"ok":true}';
+  end if;
+  if exists (select 1 from rodar.dlv_negocios where demo) then raise exception 'El contenido de demo ya está cargado'; end if;
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo) values ('Restaurantes', 'Comida casera, minutas y parrilla', 1, true) returning id into c1;
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo) values ('Pizzerías', 'Pizzas, empanadas y calzones', 2, true) returning id into c2;
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo) values ('Farmacias y kioscos', 'Lo que necesitás, rápido', 3, true) returning id into c3;
+  update rodar.dlv_categorias set tipo = 'productos' where id = c3; -- no es comida: "armando" en vez de "preparando"
+  insert into rodar.dlv_categorias(nombre, descripcion, orden, demo, tipo, vehiculo_defecto) values ('Ferretería y hogar', 'Herramientas, pinturas y artículos para la casa (se entregan en auto)', 4, true, 'productos', 'auto') returning id into c4;
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, pedido_minimo, demo)
+    values ('La Esquina (demo)', '3454000001', 'esquina@demo.com', c1, 'San Martín 100', la + .002, ln + .001, 'activo', 'Minutas, milanesas y platos del día', 25, 3000, true) returning id into n1;
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, demo)
+    values ('Pizzería Don Toto (demo)', '3454000002', 'toto@demo.com', c2, 'Urquiza 250', la - .003, ln + .002, 'activo', 'Pizzas a la piedra y empanadas', 30, true) returning id into n2;
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, demo)
+    values ('Kiosco 24 (demo)', '3454000003', 'kiosco@demo.com', c3, 'Belgrano 80', la + .001, ln - .003, 'activo', 'Bebidas, golosinas y almacén', 10, true) returning id into n3;
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n1, 'Platos', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, descripcion, precio, orden) values
+    (n1, m, 'Milanesa con papas fritas', 'Milanesa de carne con guarnición', 7500, 1), (n1, m, 'Suprema napolitana', 'Con jamón, queso y salsa', 8200, 2), (n1, m, 'Hamburguesa completa', 'Con lechuga, tomate, huevo y papas', 6900, 3);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n1, 'Bebidas', 2) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n1, m, 'Gaseosa 1,5 L', 2500), (n1, m, 'Agua saborizada', 1800);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n2, 'Pizzas', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, descripcion, precio, precio_promo) values
+    (n2, m, 'Muzzarella', 'Grande, 8 porciones', 7000, null), (n2, m, 'Especial', 'Jamón, morrones y huevo', 8500, 7900), (n2, m, 'Fugazzeta', 'Cebolla y mucho queso', 8000, null);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n2, 'Empanadas', 2) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n2, m, 'Docena de empanadas', 9600), (n2, m, 'Media docena', 5000);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n3, 'Almacén', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n3, m, 'Cerveza 1 L', 2800), (n3, m, 'Alfajor triple', 900), (n3, m, 'Hielo 2 kg', 1500), (n3, m, 'Papas fritas 150 g', 1900);
+  insert into rodar.dlv_negocios(nombre, telefono, email, categoria_id, direccion, lat, lng, estado, descripcion, tiempo_prep, demo)
+    values ('Ferretería El Tornillo (demo)', '3454000004', 'tornillo@demo.com', c4, 'Mitre 410', la - .002, ln - .002, 'activo', 'Herramientas, pinturas y todo para el hogar', 15, true) returning id into n4;
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n4, 'Herramientas', 1) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, descripcion, precio, orden) values
+    (n4, m, 'Taladro percutor 650 W', 'Con maletín y 6 mechas', 58000, 1), (n4, m, 'Juego de destornilladores x10', 'Punta imantada', 12500, 2), (n4, m, 'Escalera de aluminio 5 escalones', 'Plegable', 46000, 3);
+  insert into rodar.dlv_menu_categorias(negocio_id, nombre, orden) values (n4, 'Pinturas', 2) returning id into m;
+  insert into rodar.dlv_productos(negocio_id, menu_cat_id, nombre, precio) values (n4, m, 'Látex interior blanco 20 L', 64000), (n4, m, 'Rodillo + bandeja', 7800);
+  perform rodar.accion(u, 'Delivery', 'Demo', 'Cargó contenido de demo');
+  return '{"ok":true}'; end $$;
+
+
+-- ---------- cambiar el vehículo de un pedido ----------
+-- Se puede mientras el pedido no tenga repartidor: antes de pedirlo, o con el viaje todavía sin ofrecer.
+create or replace function rodar.dlv_set_vehiculo(p_id bigint, p_veh text, p_quien text) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+declare p rodar.dlv_pedidos; vs text;
+begin
+  if p_veh not in ('moto', 'auto', 'cualquiera') then raise exception 'Elegí moto, auto o cualquiera'; end if;
+  select * into p from rodar.dlv_pedidos where id = p_id for update;
+  if not found then raise exception 'Pedido no encontrado'; end if;
+  if p.tipo_entrega = 'retiro' then raise exception 'El pedido es para retirar en el local'; end if;
+  if p.estado in ('entregado', 'cancelado', 'cancelacion_solicitada', 'recogido', 'en_camino') then raise exception 'El pedido ya no admite cambios de vehículo'; end if;
+  if p.viaje_id is not null then
+    select estado into vs from rodar.viajes where id = p.viaje_id;
+    if vs = 'ofrecido' then raise exception 'Ya se le ofreció el pedido a un repartidor: esperá su respuesta'; end if;
+    if vs in ('confirmado', 'en_curso') then raise exception 'El pedido ya tiene repartidor asignado'; end if;
+  end if;
+  if coalesce(p.vehiculo, 'cualquiera') = p_veh then return; end if;
+  update rodar.dlv_pedidos set vehiculo = p_veh where id = p.id;
+  perform rodar.dlv_hist(p.id, 'Vehículo requerido: ' || p_veh || ' · ' || p_quien);
+  if vs in ('pendiente', 'reserva') then
+    update rodar.viajes set vehiculo_req = case when p_veh in ('moto', 'auto') then p_veh end where id = p.viaje_id;
+    begin perform rodar.procesar(); exception when others then null; end; -- vuelve a buscar con el vehículo nuevo
+  end if;
+end $$;
+
+-- panel (admin / operador)
+create or replace function public.r_dlv_pedido_vehiculo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin', 'operador'); p rodar.dlv_pedidos;
+begin
+  perform rodar.dlv_set_vehiculo(rodar.n(p_b, 'id')::bigint, coalesce(rodar.t(p_b, 'vehiculo'), ''), 'panel · ' || rodar.nombre(u));
+  select * into p from rodar.dlv_pedidos where id = rodar.n(p_b, 'id');
+  return rodar.dlv_pedido_json(p); end $$;
+
+-- portal del comercio: vehículo de un pedido (p_b.id + p_b.vehiculo) y/o vehículo por defecto del negocio (p_b.defecto: moto | auto | cualquiera | '' = el de mi rubro)
+create or replace function public.r_dlv_com_vehiculo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.dlv_negocio_usuarios := rodar.dlv_comercio(p_token); p rodar.dlv_pedidos; d text;
+begin
+  if p_b ? 'defecto' then
+    d := nullif(rodar.t(p_b, 'defecto'), '');
+    if d is not null and d not in ('moto', 'auto', 'cualquiera') then raise exception 'Elegí moto, auto o cualquiera'; end if;
+    update rodar.dlv_negocios set vehiculo_defecto = d where id = u.negocio_id;
+  end if;
+  if p_b ? 'id' then
+    select * into p from rodar.dlv_pedidos where id = rodar.n(p_b, 'id') and negocio_id = u.negocio_id;
+    if not found then raise exception 'Pedido no encontrado'; end if;
+    perform rodar.dlv_set_vehiculo(p.id, coalesce(rodar.t(p_b, 'vehiculo'), ''), 'comercio · ' || coalesce(u.nombre, u.email));
+    select * into p from rodar.dlv_pedidos where id = p.id;
+    return rodar.dlv_pedido_json(p);
+  end if;
+  return jsonb_build_object('ok', true, 'vehiculo_efectivo', rodar.dlv_vehiculo_neg(u.negocio_id)); end $$;
+
+-- panel: vehículo por defecto de un negocio ('' = el de su rubro)
+create or replace function public.r_dlv_negocio_vehiculo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); d text := nullif(rodar.t(p_b, 'vehiculo'), '');
+begin
+  if d is not null and d not in ('moto', 'auto', 'cualquiera') then raise exception 'Elegí moto, auto o cualquiera'; end if;
+  update rodar.dlv_negocios set vehiculo_defecto = d where id = rodar.n(p_b, 'id');
+  if not found then raise exception 'Negocio no encontrado'; end if;
+  perform rodar.accion(u, 'Delivery', 'Negocio #' || rodar.n(p_b, 'id'), 'Vehículo por defecto: ' || coalesce(d, 'el de su rubro'));
+  return jsonb_build_object('ok', true, 'vehiculo_efectivo', rodar.dlv_vehiculo_neg(rodar.n(p_b, 'id')::bigint)); end $$;
+
+-- panel: tipo de vehículo de un móvil (auto | moto)
+create or replace function public.r_movil_tipo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); t text := coalesce(rodar.t(p_b, 'tipo'), ''); vid bigint := coalesce((p_q ->> 'id')::bigint, rodar.n(p_b, 'id')::bigint);
+begin
+  if t not in ('auto', 'moto') then raise exception 'El vehículo tiene que ser auto o moto'; end if;
+  update rodar.moviles set tipo_vehiculo = t where id = vid;
+  if not found then raise exception 'Móvil no encontrado'; end if;
+  perform rodar.historial_movil(vid, 'vehiculo', rodar.nombre(u), 'Tipo de vehículo: ' || t);
+  perform rodar.emitir_movil(vid);
+  return jsonb_build_object('ok', true); end $$;
+
+grant execute on function public.r_dlv_pedido_vehiculo(text, jsonb, jsonb), public.r_dlv_com_vehiculo(text, jsonb, jsonb),
+  public.r_dlv_negocio_vehiculo(text, jsonb, jsonb), public.r_movil_tipo(text, jsonb, jsonb), public.r_dlv_categoria_guardar(text, jsonb, jsonb),
+  public.r_dlv_pub_seguir(text, jsonb, jsonb), public.r_dlv_demo(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
