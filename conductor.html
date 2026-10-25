@@ -1088,7 +1088,9 @@ function pintarMenu() {
       <div class="mest"><span class="pill" style="background:${ec}">${et}</span><span class="ms">Saldo <b style="color:${e.saldo < 0 ? '#ffb3b3' : '#c9f29b'}">${pesos(e.saldo)}</b></span></div></div>
     <button class="mfs ${fuera ? 'lib' : ''}" data-k="fuera">${fuera ? '▶️ Ponerme libre' : '⏸️ Fuera de servicio'}</button>
     <div class="mg">Trabajo</div>
-    ${it('modo', '🛵', 'Pasar a repartidor', 'Repartí con tu moto o auto, o volvé a conductor', '#fff1e0')}${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
+    ${it('modo', '🛵', 'Modo de trabajo', 'Conductor o repartidor (moto / auto)', '#fff1e0')}${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}
+    <div class="mg">Mi plata</div>
+    ${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
     <div class="mg">Ayuda</div>
     ${it('soporte', '💬', 'Soporte con la central', 'Escribile a la central', '#e6f6f4')}${it('manual', '📘', 'Manual de uso', 'Cómo usar la app', '#eef0fb')}
     <div class="mg">Mi cuenta</div>

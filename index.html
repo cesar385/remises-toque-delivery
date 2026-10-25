@@ -33,6 +33,9 @@ header.top nav a:hover,header.top nav button:hover{background:var(--fondo)}
 .dd.abierto .menu{display:block}
 .dd .menu a{display:block;padding:10px 12px;border-radius:8px;font-weight:600}.dd .menu a:hover{background:var(--fondo)}
 .dd.izq .menu{left:0;right:auto}
+.dd .menu small.t{display:block;padding:8px 12px 2px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--suave)}
+.accesos .grupo{margin-top:26px}.accesos h3{margin:0 0 -8px;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--suave)}
+footer .enl{justify-content:center}
 .burger{display:none;background:none;border:0;font-size:26px;cursor:pointer}
 /* hero */
 .hero{background:linear-gradient(135deg,#183c62,#215181 62%,#3f7d2a);color:#fff;overflow:hidden}
@@ -97,7 +100,7 @@ footer small{color:#c8d9ea;font-size:14px}
 @media (max-width:860px){
   .sup .w>a:not(.tel){display:none}
   header.top nav{display:none}header.top.abierto nav{display:flex;flex-direction:column;position:absolute;left:0;right:0;top:68px;background:#fff;padding:10px 20px 16px;border-bottom:1px solid var(--borde);margin:0}
-  header.top .w{gap:10px}header.top img{height:40px}header.top .btn.reg{display:none}
+  header.top .w{gap:10px}header.top img{height:40px}header.top .reg{display:none}
   .hero .w{grid-template-columns:1fr;padding-top:44px;padding-bottom:44px;text-align:center}.hero p{margin-left:auto;margin-right:auto}.hero .acc{justify-content:center}.hero img.logo{width:220px;order:-1}
   section{padding:48px 0}.dos{grid-template-columns:1fr;gap:28px}.dos.inv>:first-child{order:0}
   .seg{grid-template-columns:1fr;text-align:center;padding:34px 22px}
@@ -108,12 +111,29 @@ footer small{color:#c8d9ea;font-size:14px}
 <header class="top" id="top"><div class="w">
   <a href="index.html"><img src="img/logo.png" alt="Remises TOQUE!"></a>
   <span class="esp"></span>
-  <a class="btn chico sec reg" href="conductor.html#alta">Registrate como conductor</a>
+  <div class="dd reg" id="dd2"><button class="btn chico sec" aria-haspopup="true">Sumate ▾</button>
+    <div class="menu"><a href="conductor.html#alta">🚕 Quiero ser conductor</a><a href="repartidor.html#registro">🛵 Quiero repartir (moto o auto)</a></div></div>
   <div class="dd" id="dd"><button class="btn chico" id="ddb" aria-haspopup="true">Ingresar ▾</button>
-    <div class="menu"><a href="pasajero.html#/ingresar">Soy pasajero</a><a href="pasajero.html#/empresas">Soy empresa</a><a href="conductor.html">Soy conductor</a><a href="panel.html#/login">Soy operador</a></div></div>
+    <div class="menu"><small class="t">Quiero pedir</small><a href="pasajero.html#/ingresar">🙂 Pasajero</a><a href="delivery.html">🛍 Delivery</a><a href="pasajero.html#/empresas">🏢 Empresa</a>
+    <small class="t">Trabajo con ustedes</small><a href="conductor.html">🚕 Conductor</a><a href="repartidor.html">🛵 Repartidor</a><a href="comercio.html">🏪 Comercio</a>
+    <small class="t">Central</small><a href="panel.html#/login">🖥 Operador / administración</a></div></div>
 </div></header>
 
 <main id="secciones"></main>
+
+<section class="gris accesos" id="accesos"><div class="w">
+  <h2>¿Cómo querés ingresar?</h2><p class="lead">Elegí tu acceso: cada uno tiene su propia app.</p>
+  <div class="grupo"><h3>Quiero pedir</h3><div class="cards">
+    <a class="card" href="pasajero.html#/ingresar"><span class="ico">🙂</span><b>Pasajero</b><span class="d">Pedí un remis y seguilo en el mapa.</span><span class="mas">Pedir un viaje →</span></a>
+    <a class="card" href="delivery.html"><span class="ico">🛍</span><b>Delivery</b><span class="d">Comida, farmacia, kiosco y más, a tu casa.</span><span class="mas">Hacer un pedido →</span></a>
+    <a class="card" href="pasajero.html#/empresas"><span class="ico">🏢</span><b>Empresas</b><span class="d">Viajes corporativos con cuenta corriente.</span><span class="mas">Ingresar →</span></a></div></div>
+  <div class="grupo"><h3>Trabajo con ustedes</h3><div class="cards">
+    <a class="card" href="conductor.html"><span class="ico">🚕</span><b>Conductor</b><span class="d">Recibí viajes con tu auto.</span><span class="mas">Ingresar →</span></a>
+    <a class="card" href="repartidor.html"><span class="ico">🛵</span><b>Repartidor</b><span class="d">Repartí en moto o auto y cobrá por entrega.</span><span class="mas">Ingresar o anotarme →</span></a>
+    <a class="card" href="comercio.html"><span class="ico">🏪</span><b>Comercio</b><span class="d">Recibí y gestioná los pedidos de tu negocio.</span><span class="mas">Ingresar →</span></a></div></div>
+  <div class="grupo"><h3>Central</h3><div class="cards">
+    <a class="card" href="panel.html#/login"><span class="ico">🖥</span><b>Operador / administración</b><span class="d">Despacho, flota, delivery y finanzas.</span><span class="mas">Ingresar →</span></a></div></div>
+</div></section>
 
 <a class="wa" id="wa" href="#" target="_blank" rel="noopener" hidden aria-label="Escribinos por WhatsApp"><svg viewBox="0 0 32 32" width="28" height="28" fill="#fff" aria-hidden="true"><path d="M16 3C9 3 3.3 8.6 3.3 15.5c0 2.4.7 4.7 1.9 6.6L3 29l7.1-2.1c1.8 1 3.8 1.5 5.9 1.5 7 0 12.7-5.6 12.7-12.5S23 3 16 3zm0 22.8c-1.9 0-3.7-.5-5.300-1.500l-.4-.2-4.200 1.200 1.300-4-.3-.4c-1.100-1.700-1.700-3.600-1.700-5.600C5.400 9.700 10.200 5.200 16 5.200s10.600 4.500 10.600 10.300S21.800 25.800 16 25.800zm5.800-7.700c-.3-.2-1.900-.9-2.200-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.200-.2.200-.4.200-.7.100-.3-.2-1.400-.5-2.600-1.600-1-.9-1.600-1.900-1.800-2.200-.2-.3 0-.5.1-.7l.5-.5c.1-.2.2-.3.3-.5.100-.2.100-.4 0-.5-.1-.2-.7-1.700-1-2.300-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.400-.3.300-1 1-1 2.400s1.100 2.800 1.200 3c.2.200 2.100 3.200 5.100 4.400 3 1.200 3 .8 3.600.8.600-.1 1.900-.8 2.200-1.500.3-.7.3-1.400.2-1.500-.1-.1-.3-.2-.6-.4z"/></svg></a>
 
@@ -136,8 +156,8 @@ function pintar(cfg) {
   document.querySelectorAll('.vid video').forEach(v => { v.muted = true; v.defaultMuted = true; const p = v.play(); if (p && p.catch) p.catch(() => { }); });
   const w = L.waLink(c.whatsapp, c.whatsapp_texto), wa = $('#wa'); if (w) { wa.href = w; wa.hidden = false; } else wa.hidden = true;
 }
-$('#ddb').onclick = e => { e.stopPropagation(); $('#dd').classList.toggle('abierto'); };
-document.addEventListener('click', () => $('#dd').classList.remove('abierto'));
+document.querySelectorAll('.dd > button').forEach(b => b.onclick = e => { e.stopPropagation(); const d = b.parentElement, ab = d.classList.contains('abierto'); document.querySelectorAll('.dd').forEach(x => x.classList.remove('abierto')); if (!ab) d.classList.add('abierto'); });
+document.addEventListener('click', () => document.querySelectorAll('.dd').forEach(x => x.classList.remove('abierto')));
 pintar(null);
 if (window.RODAR && RODAR.listo) Promise.all([RODAR.llamar('/api/pub/config', 'GET', null, null).catch(() => ({})), RODAR.llamar('/api/pub/landing', 'GET', null, null).catch(() => null)]).then(([emp, cfg]) => {
   empresa = emp || {};
