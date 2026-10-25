@@ -145,7 +145,7 @@ if (!RODAR.listo) raiz.innerHTML = '<div class="vacio">Falta configurar la conex
 else if (LS.get(TK)) iniciar();
 else if (LS.get('rodar_cond_token')) { // ya entró en la app de conductores desde este celular: usa esa misma sesión
   LS.set(TK, LS.get('rodar_cond_token')); api('r_rep_inicio').then(iniciar).catch(() => { LS.del(TK); entrada(); });
-} else entrada();
+} else entrada(location.hash === '#registro' ? 'registro' : 'login');
 })();
 </script>
 </body>

@@ -169,6 +169,8 @@ const ICO = {
   operador: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4zm8 0c-.3 0-.7 0-1.1.1 1.2.9 2.1 2.1 2.1 3.9v3h7v-3c0-2.7-5.3-4-8-4z"/></svg>',
   admin: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3h-4l-.4 2.9a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1L11 21h4l.4-2.9a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>',
   informes: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h2v16H3zm4 8h2v8H7zm4-6h2v14h-2zm4 9h2v5h-2zm4-6h2v11h-2z"/></svg>',
+  flota: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11v6a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H8v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1zm3.2-4-.9 3h9.4l-.9-3zM7.5 12.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm9 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z"/></svg>',
+  finanzas: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm.8 13.7V18h-1.6v-1.3c-1.2-.2-2.2-.8-2.6-1.9l1.4-.6c.3.7.9 1.1 1.8 1.1 1 0 1.5-.4 1.5-1 0-.7-.5-.9-1.8-1.3-1.4-.4-2.2-1-2.2-2.2 0-1 .7-1.8 1.9-2.1V7h1.6v1.3c1 .2 1.8.8 2.1 1.7l-1.4.6c-.2-.5-.6-.9-1.5-.9-.8 0-1.3.4-1.3.9 0 .6.5.8 1.7 1.2 1.5.5 2.3 1.1 2.3 2.3 0 1.1-.8 1.9-2 2.1z"/></svg>',
   menu: '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>',
 };
 const LOGO = '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#215181"/><circle cx="20" cy="20" r="11" fill="none" stroke="#fff" stroke-width="3"/><circle cx="20" cy="20" r="3.5" fill="#e8892b"/><path d="M20 9v7M20 24v7M9 20h7M24 20h7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>';
@@ -185,13 +187,22 @@ function construirNav() {
       ]
     },
     {
-      id: 'admin', t: 'Administración', ico: ICO.admin, roles: ['admin', 'gestion'], items: [
-        { tit: '🚕 Flota' }, { t: 'Móviles', r: 'moviles', roles: ['admin'] }, { t: 'Penalizados', r: 'moviles-penalizados' }, { t: 'Solicitudes conductor', r: 'solicitudes-conductor', roles: ['admin'] },
-        { t: 'Zonas & Paradas', r: 'zonas-paradas', roles: ['admin'] }, { t: 'Zonas peligrosas', r: 'zonas-peligrosas', roles: ['admin'] },
-        { tit: '💰 Finanzas' }, { t: 'Cuentas', r: 'cuentas' }, { t: 'Pagos de base', r: 'mp-recargas' }, { t: 'Saldos Mercado Pago', r: 'saldos-mercadopago' }, { t: 'Viajes Mercado Pago', r: 'mp-viajes' },
-        { t: 'Medios de pago', r: 'medios-pago', roles: ['admin'] }, { t: 'Módulos de la plataforma', r: 'modulos', roles: ['admin'] }, { t: 'Planes', r: 'planes' },
-        { tit: '⚙️ Configuración' }, { t: 'Tarifas', r: 'tarifas', roles: ['admin'] }, { t: 'Usuarios', r: 'usuarios', roles: ['admin'] }, { t: 'Clientes corporativos', r: 'corporativos', roles: ['admin'] }, { t: 'Canales de solicitud', r: 'canales-solicitud', roles: ['admin'] },
-        { t: 'Días feriados', r: 'feriados', roles: ['admin'] }, { t: 'Documentación reguladora', r: 'documentacion-reguladora', roles: ['admin'] }, { t: 'Configuración y demo', r: 'configuracion', roles: ['admin'] }, { t: 'Apps y enlaces (QR)', r: 'apps-enlaces', roles: ['admin'] }, { t: 'Página principal', r: 'pagina-principal', roles: ['admin'] },
+      id: 'flota', t: 'Flota', ico: ICO.flota, roles: ['admin', 'gestion'], items: [
+        { tit: '🚕 Móviles y conductores' }, { t: 'Móviles', r: 'moviles', roles: ['admin'] }, { t: 'Solicitudes conductor', r: 'solicitudes-conductor', roles: ['admin'] }, { t: 'Penalizados', r: 'moviles-penalizados' },
+        { tit: '🗺 Zonas' }, { t: 'Zonas & Paradas', r: 'zonas-paradas', roles: ['admin'] }, { t: 'Zonas peligrosas', r: 'zonas-peligrosas', roles: ['admin'] },
+      ]
+    },
+    {
+      id: 'finanzas', t: 'Finanzas', ico: ICO.finanzas, roles: ['admin', 'gestion'], items: [
+        { tit: '📒 Cuentas' }, { t: 'Cuentas', r: 'cuentas' }, { t: 'Planes', r: 'planes' },
+        { tit: '💳 Cobros' }, { t: 'Pagos de base', r: 'mp-recargas' }, { t: 'Saldos Mercado Pago', r: 'saldos-mercadopago' }, { t: 'Viajes Mercado Pago', r: 'mp-viajes' }, { t: 'Medios de pago', r: 'medios-pago', roles: ['admin'] },
+      ]
+    },
+    {
+      id: 'admin', t: 'Configuración', ico: ICO.admin, roles: ['admin'], items: [
+        { tit: '🚖 Servicio' }, { t: 'Tarifas', r: 'tarifas', roles: ['admin'] }, { t: 'Canales de solicitud', r: 'canales-solicitud', roles: ['admin'] }, { t: 'Días feriados', r: 'feriados', roles: ['admin'] }, { t: 'Documentación reguladora', r: 'documentacion-reguladora', roles: ['admin'] },
+        { tit: '👥 Personas' }, { t: 'Usuarios', r: 'usuarios', roles: ['admin'] }, { t: 'Clientes corporativos', r: 'corporativos', roles: ['admin'] },
+        { tit: '🧩 Plataforma' }, { t: 'Módulos de la plataforma', r: 'modulos', roles: ['admin'] }, { t: 'Configuración y demo', r: 'configuracion', roles: ['admin'] }, { t: 'Apps y enlaces (QR)', r: 'apps-enlaces', roles: ['admin'] }, { t: 'Página principal', r: 'pagina-principal', roles: ['admin'] },
       ]
     },
     {

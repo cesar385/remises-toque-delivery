@@ -43,9 +43,10 @@ const navOriginal = construirNav;
 construirNav = function () {
 navOriginal();
 if (!tiene('admin', 'gestion', 'operador')) return;
-const items = [{ tit: '🛍 Delivery' }, { t: 'Negocios', r: 'dlv-negocios' }, { t: 'Categorías', r: 'dlv-categorias' }, { t: 'Pedidos', r: 'dlv-pedidos' }, { t: 'Repartidores', r: 'dlv-repartidores' },
-{ t: 'Cambios de menú', r: 'dlv-cambios', roles: ['admin'], si: 'aprob' }, { t: 'Pagos a comercios', r: 'dlv-pagos', roles: ['admin', 'gestion'], si: 'pagos_comercios' },
-{ tit: '⚙️ Ajustes' }, { t: 'Configuración de Delivery', r: 'dlv-configuracion', roles: ['admin'] }, { sep: 1 }, { t: 'Portal de comercios', a: () => window.open('comercio.html') }, { t: 'Portal de repartidores', a: () => window.open('repartidor.html') }, { t: 'Pedido web de delivery', a: () => window.open('delivery.html') }];
+const items = [{ tit: '📦 Operación' }, { t: 'Pedidos', r: 'dlv-pedidos' }, { t: 'Negocios', r: 'dlv-negocios' }, { t: 'Categorías', r: 'dlv-categorias' }, { t: 'Repartidores', r: 'dlv-repartidores' },
+{ tit: '💰 Aprobaciones y pagos' }, { t: 'Cambios de menú', r: 'dlv-cambios', roles: ['admin'], si: 'aprob' }, { t: 'Pagos a comercios', r: 'dlv-pagos', roles: ['admin', 'gestion'], si: 'pagos_comercios' },
+{ tit: '⚙️ Ajustes' }, { t: 'Configuración de Delivery', r: 'dlv-configuracion', roles: ['admin'] },
+{ tit: '🔗 Portales' }, { t: 'Portal de comercios', a: () => window.open('comercio.html') }, { t: 'Portal de repartidores', a: () => window.open('repartidor.html') }, { t: 'Pedido web de delivery', a: () => window.open('delivery.html') }];
 const it = h(`<div class="item" data-g="delivery"><button>${ICO_DLV}<span>Delivery</span></button><div class="dropdown"><div class="dd-cols"></div></div></div>`);
 const cols = $('.dd-cols', it);
 const pintar = () => {
