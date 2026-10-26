@@ -43,9 +43,8 @@ const navOriginal = construirNav;
 construirNav = function () {
 navOriginal();
 if (!tiene('admin', 'gestion', 'operador')) return;
-const items = [{ tit: '📦 Operación' }, { t: 'Pedidos', r: 'dlv-pedidos' }, { t: 'Negocios', r: 'dlv-negocios' }, { t: 'Categorías', r: 'dlv-categorias' }, { t: 'Repartidores', r: 'dlv-repartidores' },
+const items = [{ tit: '📦 Operación' }, { t: 'Tablero de pedidos', r: 'dlv-tablero' }, { t: 'Pedidos', r: 'dlv-pedidos' }, { t: 'Negocios', r: 'dlv-negocios' }, { t: 'Categorías', r: 'dlv-categorias' },
 { tit: '💰 Aprobaciones y pagos' }, { t: 'Cambios de menú', r: 'dlv-cambios', roles: ['admin'], si: 'aprob' }, { t: 'Pagos a comercios', r: 'dlv-pagos', roles: ['admin', 'gestion'], si: 'pagos_comercios' },
-{ tit: '⚙️ Ajustes' }, { t: 'Configuración de Delivery', r: 'dlv-configuracion', roles: ['admin'] },
 { tit: '🔗 Portales' }, { t: 'Portal de comercios', a: () => window.open('comercio.html') }, { t: 'Portal de repartidores', a: () => window.open('repartidor.html') }, { t: 'Pedido web de delivery', a: () => window.open('delivery.html') }];
 const it = h(`<div class="item" data-g="delivery"><button>${ICO_DLV}<span>Delivery</span></button><div class="dropdown"><div class="dd-cols"></div></div></div>`);
 const cols = $('.dd-cols', it);
@@ -312,6 +311,46 @@ cargar().catch(fallo);
 }
 });
 
+// ================= TABLERO DE PEDIDOS (operador) =================
+ruta('dlv-tablero', {
+titulo: 'Tablero de pedidos', roles: ['admin', 'gestion', 'operador'], async render(main) {
+const COLS = [['nuevo', '🆕 Nuevos', 'Esperando que el comercio acepte'], ['prep', '👨‍🍳 En preparación', 'Aceptados'], ['listo', '📦 Listos · repartidor', 'Listos para retirar'], ['camino', '🛵 En camino', 'Ya salieron']];
+const colDe = x => x.estado === 'pendiente' || x.estado === 'cancelacion_solicitada' ? 'nuevo' : ['confirmado', 'preparando'].includes(x.estado) ? 'prep' : x.estado === 'listo' ? 'listo' : 'camino';
+main.innerHTML = cabecera('Tablero de pedidos', 'Todos los pedidos activos por etapa. Se actualiza solo.', '<button class="btn sec" id="rf">↻ Actualizar</button><button class="btn" id="lista">Ver lista completa</button>') +
+`<style>.tb-grid{display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:12px;overflow-x:auto;align-items:start}.tb-col{background:#eef2f4;border-radius:14px;padding:10px;min-height:120px}.tb-col h4{margin:0 0 2px;display:flex;justify-content:space-between}.tb-col small.s{color:var(--suave);display:block;margin-bottom:8px}
+.tb-c{background:#fff;border:1px solid #dfe6e8;border-left:5px solid #cfd8dc;border-radius:10px;padding:10px;margin-bottom:8px;font-size:13px;display:flex;flex-direction:column;gap:4px}.tb-c.al{border-left-color:#e8892b;background:#fff8ee}.tb-c.rojo{border-left-color:#d64545;background:#fff3f3}.tb-c .f{display:flex;justify-content:space-between;gap:8px}
+.tb-c select{width:100%;padding:6px;border-radius:8px;border:1px solid #cfd8dc;background:#fff}.tb-tag{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;background:#e8eef2}.tb-tag.ro{background:#fdecec;color:#9b1c1c}.tb-tag.na{background:#fff1dc;color:#8a4b00}</style>
+<div class="dlv-kpis" id="kp"></div><div class="tb-grid" id="tg"></div>`;
+$('#lista').onclick = () => ir('dlv-pedidos');
+let T = null;
+const edadTxt = m => m == null ? '' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
+async function cargar() {
+T = await dapi('r_dlv_tablero');
+const h = T.hoy, rp = T.repartidores, al = T.alertas;
+$('#kp').innerHTML = [['Activos', T.pedidos.length], ['Hoy', h.pedidos], ['Entregados', h.entregados], ['Cancelados', h.cancelados], ['Facturado hoy', pesos(h.facturado)], ['Repartidores', `${rp.libres} libres / ${rp.conectados} conectados`]].map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
+const por = { nuevo: [], prep: [], listo: [], camino: [] }; T.pedidos.forEach(x => por[colDe(x)].push(x));
+$('#tg').innerHTML = COLS.map(([k, t, s]) => `<div class="tb-col"><h4><span>${t}</span><span>${por[k].length}</span></h4><small class="s">${s}</small>${por[k].map(x => {
+  let nivel = '', av = [];
+  if (x.estado === 'pendiente' && x.edad_min >= al.sin_aceptar) { nivel = 'rojo'; av.push('Sin aceptar hace ' + edadTxt(x.edad_min)); }
+  if (x.estado === 'cancelacion_solicitada') { nivel = 'rojo'; av.push('Pide cancelar'); }
+  if (['confirmado', 'preparando'].includes(x.estado) && x.tiempo_prep && x.en_estado_min > +x.tiempo_prep + al.demora_extra) { nivel = 'al'; av.push('Demorado: ' + edadTxt(x.en_estado_min)); }
+  if (x.tipo_entrega === 'entrega' && !x.movil_numero && x.busca_min != null) { av.push('Buscando repartidor ' + edadTxt(x.busca_min)); if (x.busca_min >= al.sin_repartidor) nivel = 'rojo'; else if (!nivel) nivel = 'al'; }
+  const veh = x.vehiculo === 'moto' ? '🏍 moto' : x.vehiculo === 'auto' ? '🚗 auto' : '';
+  const accs = accionesPedido(x, () => cargar().catch(fallo)).filter(a => a && !/imprimir|copiar/i.test(a.t));
+  return `<div class="tb-c ${nivel}" data-id="${x.id}"><div class="f"><b>#${esc(x.codigo)}</b><span>${pesos(x.total)}</span></div><div>${esc(x.negocio || 'Envío directo')}${x.rubro_tipo === 'productos' ? ' <span class="tb-tag">productos</span>' : ''}</div>
+<small>${esc(x.cliente_nombre || '')} · ${x.tipo_entrega === 'retiro' ? 'retira en local' : esc(x.entrega_dir || '')}</small>
+<div class="f"><small>⏱ ${edadTxt(x.edad_min)}${x.eta_min ? ' · llega ~' + x.eta_min + ' min' : ''}</small><small>${veh}</small></div>
+${x.movil_numero ? `<small>${x.vehiculo_movil === 'auto' ? '🚗' : '🛵'} Móvil <b>${x.movil_numero}</b> ${esc(x.conductor || '')}</small>` : ''}${av.map(a => `<span class="tb-tag ${nivel === 'rojo' ? 'ro' : 'na'}">⚠ ${esc(a)}</span>`).join('')}
+<select data-s="${x.id}"><option value="">Acciones…</option>${accs.map((a, i) => `<option value="${i}">${esc(a.ico || '')} ${esc(a.t)}</option>`).join('')}</select></div>`; }).join('') || '<small style="color:var(--suave)">Sin pedidos</small>'}</div>`).join('');
+$$('[data-s]', main).forEach(s => s.onchange = () => { const x = T.pedidos.find(p => p.id === +s.dataset.s); const accs = accionesPedido(x, () => cargar().catch(fallo)).filter(a => a && !/imprimir|copiar/i.test(a.t)); const a = accs[+s.value]; s.value = ''; if (a) Promise.resolve(a.a()).catch(fallo); });
+}
+$('#rf').onclick = () => cargar().catch(fallo);
+await cargar().catch(fallo);
+const tm = setInterval(() => { if (rutaActual() !== 'dlv-tablero' || !document.body.contains(main)) return clearInterval(tm); if (document.visibilityState !== 'hidden') cargar().catch(() => { }); }, 20000);
+oir(() => { if (rutaActual() === 'dlv-tablero') cargar().catch(() => { }); });
+}
+});
+
 // ================= REPARTIDORES =================
 ruta('dlv-repartidores', {
 titulo: 'Repartidores', roles: ['admin', 'gestion', 'operador'], render(main) {
@@ -328,10 +367,11 @@ $('#lr').innerHTML = rs.length ? tablaSimple(rs, [
 { t: 'Vehículo', f: r => `${r.vehiculo === 'moto' ? '🏍 Moto' : '🚗 Auto'}<br><small>${esc(r.patente || '')} ${esc(r.marca || '')} ${esc(r.modelo || '')}</small>` },
 { t: 'Móvil', f: r => (r.movil ? '#' + r.movil : '—') + ((r.otros_moviles || []).length ? `<br><small>🔗 También conductor: móvil ${r.otros_moviles.join(', ')}</small>` : '') },
 { t: 'Documentos', f: r => (r.docs || []).length ? (r.docs || []).map((d, i) => d.archivo ? `<a href="${esc(d.archivo)}" target="_blank" rel="noopener">${esc(d.tipo || 'Archivo ' + (i + 1))}</a>` : '').join('<br>') : '<small>Sin archivos</small>' },
-{ t: 'Entregas', c: 'r', f: r => `${r.resumen.total.entregas}<br><small>${pesos(r.resumen.total.ganado)}</small>` },
+{ t: 'Entregas', c: 'r', f: r => `${r.resumen.total.entregas}<br><small>${pesos(r.resumen.total.ganado)}</small><br><a href="#" data-g="${r.id}">Ver ganancias</a>` },
 { t: 'Estado', f: r => { const e = ET[r.estado] || [r.estado, '#888']; return `<span class="pill" style="background:${e[1]}22;color:${e[1]}">${e[0]}</span>${r.motivo ? '<br><small>' + esc(r.motivo) + '</small>' : ''}`; } },
 { t: '', f: r => !adm ? '' : r.estado === 'pendiente' ? `<button class="btn chico verde" data-a="aprobar" data-id="${r.id}">Aprobar</button> <button class="btn chico sec" data-a="rechazar" data-id="${r.id}">Rechazar</button>` : r.estado === 'aprobado' ? `<button class="btn chico sec" data-a="suspender" data-id="${r.id}">Suspender</button>` : `<button class="btn chico verde" data-a="reactivar" data-id="${r.id}">${r.estado === 'rechazado' ? 'Aprobar' : 'Reactivar'}</button>` }
 ]) : vacio('🛵', 'Sin repartidores', 'No hay repartidores en este estado.');
+$$('[data-g]', main).forEach(a => a.onclick = e => { e.preventDefault(); gananciasRepartidor(rs.find(r => r.id === +a.dataset.g)); });
 $$('[data-a]', main).forEach(b => b.onclick = async () => {
 const a = b.dataset.a, body = { id: +b.dataset.id, accion: a };
 if (a === 'rechazar' || a === 'suspender') { const r = await pedir(a === 'rechazar' ? 'Rechazar solicitud' : 'Suspender repartidor', [{ k: 'motivo', l: 'Motivo (lo ve el repartidor)', w: 'full' }]); if (!r || !r.motivo) return; body.motivo = r.motivo; }
@@ -340,6 +380,23 @@ try { await dapi('r_rep_resolver', {}, body); toast('Listo', 'ok'); cargar(); } 
 cargar().catch(fallo);
 }
 });
+
+function gananciasRepartidor(r) {
+const hoy = new Date().toISOString().slice(0, 10), hace = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+const cuerpo = h(`<div><div class="fila" style="margin-bottom:10px"><label>Desde <input type="date" id="gd" value="${hace}" style="width:auto"></label> <label>Hasta <input type="date" id="gh" value="${hoy}" style="width:auto"></label><button class="btn sec chico" id="gc">⬇ CSV</button></div><div id="gb"></div></div>`);
+let datos = null;
+async function cargar() {
+datos = await dapi('r_rep_ganancias', { id: r.id, desde: $('#gd', cuerpo).value, hasta: $('#gh', cuerpo).value });
+const p = datos.periodo, rs = datos.resumen;
+$('#gb', cuerpo).innerHTML = `<div class="dlv-kpis"><div class="kpi"><div class="l">Entregas</div><div class="v">${p.entregas}</div></div><div class="kpi"><div class="l">Envíos</div><div class="v">${pesos(p.envios)}</div></div><div class="kpi"><div class="l">Propinas</div><div class="v">${pesos(p.propinas)}</div></div><div class="kpi"><div class="l">Retenido central</div><div class="v">${pesos(p.comision)}</div></div><div class="kpi"><div class="l">Ganó</div><div class="v">${pesos(p.ganado)}</div></div></div>
+<p style="color:var(--suave);margin:6px 0">Hoy ${pesos(rs.hoy.ganado)} (${rs.hoy.entregas}) · Semana ${pesos(rs.semana.ganado)} (${rs.semana.entregas}) · Mes ${pesos(rs.mes.ganado)} (${rs.mes.entregas}) · Total ${pesos(rs.total.ganado)} (${rs.total.entregas})</p>
+${datos.entregas.length ? tablaSimple(datos.entregas, [{ t: 'Pedido', f: e => '#' + esc(e.codigo) }, { t: 'Fecha', f: e => esc(String(e.fecha || '').slice(0, 16).replace('T', ' ')) }, { t: 'Negocio', f: e => esc(e.negocio) }, { t: 'Entrega', f: e => esc(e.entrega_dir || '') }, { t: 'Envío', c: 'r', f: e => pesos(e.envio) }, { t: 'Propina', c: 'r', f: e => pesos(e.propina) }, { t: 'Retenido', c: 'r', f: e => pesos(e.comision) }, { t: 'Ganó', c: 'r', f: e => `<b>${pesos(e.ganancia)}</b>` }]) : '<p style="color:var(--suave)">Sin entregas en este período.</p>'}`;
+}
+$('#gd', cuerpo).onchange = $('#gh', cuerpo).onchange = () => cargar().catch(fallo);
+$('#gc', cuerpo).onclick = () => datos && RODAR.csv(datos.entregas.map(e => ({ pedido: e.codigo, fecha: e.fecha, negocio: e.negocio, cliente: e.cliente, direccion: e.entrega_dir, envio: e.envio, propina: e.propina, retenido: e.comision, ganancia: e.ganancia, pago: e.medio_pago })), 'ganancias-' + r.documento);
+modal({ titulo: 'Ganancias · ' + r.nombre + ' ' + r.apellido, ancho: true, cuerpo, botones: [{ texto: 'Cerrar', clase: 'sec' }] });
+cargar().catch(fallo);
+}
 
 // ================= PEDIDOS =================
 function colsPedidos(conNegocio = true) {

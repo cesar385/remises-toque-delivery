@@ -187,8 +187,9 @@ function construirNav() {
       ]
     },
     {
-      id: 'flota', t: 'Flota', ico: ICO.flota, roles: ['admin', 'gestion'], items: [
-        { tit: '🚕 Móviles y conductores' }, { t: 'Móviles', r: 'moviles', roles: ['admin'] }, { t: 'Solicitudes conductor', r: 'solicitudes-conductor', roles: ['admin'] }, { t: 'Penalizados', r: 'moviles-penalizados' },
+      id: 'flota', t: 'Flota', ico: ICO.flota, roles: ['admin', 'gestion', 'operador'], items: [
+        { tit: '🚕 Móviles y conductores' }, { t: 'Móviles', r: 'moviles', roles: ['admin'] }, { t: 'Solicitudes conductor', r: 'solicitudes-conductor', roles: ['admin'] }, { t: 'Penalizados', r: 'moviles-penalizados', roles: ['admin', 'gestion'] },
+        { tit: '🛵 Repartidores' }, { t: 'Repartidores', r: 'dlv-repartidores', roles: ['admin', 'gestion', 'operador'] },
         { tit: '🗺 Zonas' }, { t: 'Zonas & Paradas', r: 'zonas-paradas', roles: ['admin'] }, { t: 'Zonas peligrosas', r: 'zonas-peligrosas', roles: ['admin'] },
       ]
     },
@@ -203,6 +204,7 @@ function construirNav() {
         { tit: '🚖 Servicio' }, { t: 'Tarifas', r: 'tarifas', roles: ['admin'] }, { t: 'Canales de solicitud', r: 'canales-solicitud', roles: ['admin'] }, { t: 'Días feriados', r: 'feriados', roles: ['admin'] }, { t: 'Documentación reguladora', r: 'documentacion-reguladora', roles: ['admin'] },
         { tit: '👥 Personas' }, { t: 'Usuarios', r: 'usuarios', roles: ['admin'] }, { t: 'Clientes corporativos', r: 'corporativos', roles: ['admin'] },
         { tit: '🧩 Plataforma' }, { t: 'Módulos de la plataforma', r: 'modulos', roles: ['admin'] }, { t: 'Configuración y demo', r: 'configuracion', roles: ['admin'] }, { t: 'Apps y enlaces (QR)', r: 'apps-enlaces', roles: ['admin'] }, { t: 'Página principal', r: 'pagina-principal', roles: ['admin'] },
+        { tit: '🛍 Delivery' }, { t: 'Configuración de Delivery', r: 'dlv-configuracion', roles: ['admin'] },
       ]
     },
     {
