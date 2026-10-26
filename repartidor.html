@@ -114,10 +114,12 @@ ${ok && cu && (cu.bloqueado || cu.sin_saldo) ? `<div class="aviso ro">💲 Tu cu
 <h3>Pedidos en curso</h3>${d.en_curso.length ? d.en_curso.map(p => `<div class="card"><div class="f"><b>#${esc(p.codigo)} · ${esc(p.negocio || 'Envío directo')}</b><span class="pill" style="background:#7a4fd622;color:#7a4fd6">${esc(ESTADOS_PEDIDO[p.estado] || p.estado)}</span></div>
 <div style="margin-top:6px">🏪 ${esc(p.recogida_dir || '—')}<br>🏠 ${esc(p.cliente || '')} · ${esc(p.entrega_dir || '')}</div><div class="f" style="margin-top:6px"><span>Tu ganancia: <b>${pesos(p.ganancia)}</b></span>${+p.cobrar ? `<span>💵 Cobrar <b>${pesos(p.cobrar)}</b></span>` : '<span>Ya pagado</span>'}</div></div>`).join('') : '<div class="vacio">No tenés pedidos en curso.</div>'}`;
 }
+const porDia = es => { const g = {}; es.forEach(e => (g[String(e.fecha || '').slice(0, 10)] = g[String(e.fecha || '').slice(0, 10)] || []).push(e)); return Object.entries(g); };
+const diaTxt = d => { const hoy = new Date().toISOString().slice(0, 10), ayer = new Date(Date.now() - 864e5).toISOString().slice(0, 10); return d === hoy ? 'Hoy' : d === ayer ? 'Ayer' : d ? d.split('-').reverse().join('/') : 'Sin fecha'; };
 function entregas(m) {
   const d = S.d, t = d.resumen.total;
   m.innerHTML = `<div class="card"><div class="f"><span>Entregas realizadas</span><b>${t.entregas}</b></div><div class="f"><span>Total ganado</span><b>${pesos(t.ganado)}</b></div><small style="color:var(--su)">Ganancia = envío + propina − lo que retiene la central.</small></div>
-${d.entregas.length ? `<div class="card"><table>${d.entregas.map(e => `<tr><td><b>#${esc(e.codigo)}</b><br><small>${fecha(e.fecha)} · ${esc(e.negocio)}</small><br><small>${esc(e.entrega_dir || '')}</small></td><td style="text-align:right"><b>${pesos(e.ganancia)}</b>${+e.propina ? `<br><small>incl. propina ${pesos(e.propina)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<div class="vacio">Todavía no hiciste entregas.</div>'}`;
+${d.entregas.length ? porDia(d.entregas).map(([dia, es]) => `<div class="card"><div class="f" style="margin-bottom:6px"><b>${diaTxt(dia)}</b><b>${pesos(es.reduce((s, e) => s + +e.ganancia, 0))} · ${es.length} entrega${es.length === 1 ? '' : 's'}</b></div><table>${es.map(e => `<tr><td><b>#${esc(e.codigo)}</b> · ${esc(e.negocio)}<br><small>${String(e.fecha || '').slice(11, 16)} · ${esc(e.entrega_dir || '')}</small></td><td style="text-align:right"><b>${pesos(e.ganancia)}</b>${+e.propina ? `<br><small>incl. propina ${pesos(e.propina)}</small>` : ''}</td></tr>`).join('')}</table></div>`).join('') : '<div class="vacio">Todavía no hiciste entregas.</div>'}`;
 }
 function vehiculo(m) {
   const mv = S.d.movil || {}, r = S.d.repartidor; S.docs = [...(r.docs || [])]; let veh = mv.tipo_vehiculo || 'moto';

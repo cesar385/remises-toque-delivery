@@ -236,3 +236,11 @@ Aplicar `sql/34_repartidores.sql` (ya incluido en `supabase/rodar.sql`; se puede
 - **Portada (`index.html`):** menú *Ingresar* agrupado (Quiero pedir / Trabajo con ustedes / Central), botón *Sumate* (conductor o repartidor) y una sección *¿Cómo querés ingresar?* con tarjetas a cada app: pasajero, delivery, empresas, conductor, repartidor, comercio y operador.
 - **Panel:** lo que era *Administración* se separó en **Flota**, **Finanzas** y **Configuración** (esta última con secciones Servicio / Personas / Plataforma). *Delivery* quedó en secciones: Operación, Aprobaciones y pagos, Ajustes y Portales. Los permisos por rol no cambiaron.
 - **App de conductores:** el menú se agrupó en Trabajo (modo de trabajo y viajes), Mi plata, Ayuda y Mi cuenta.
+
+## Mejoras de delivery
+Aplicar `sql/35_delivery_mejoras.sql` (ya incluido en `supabase/rodar.sql`; se puede correr más de una vez).
+- **Seguimiento del cliente:** tiempo estimado de llegada ("Llega en aprox. N min", calculado con la preparación que falta y la distancia del repartidor), aviso "Buscando un repartidor", ícono moto/auto y el mapa encuadra repartidor y destino.
+- **Pedido del cliente:** buscador de negocios, **Pedir de nuevo** en un pedido entregado o cancelado, y *Mis pedidos* con el estado en vivo.
+- **Panel → Delivery → Tablero de pedidos:** pedidos activos en 4 columnas (nuevos, en preparación, listos / repartidor, en camino) con alertas por demora (sin aceptar, preparación pasada de tiempo, sin repartidor), contadores del día y repartidores libres; se actualiza solo y cada tarjeta tiene su menú de acciones.
+- **Ganancias de repartidores:** en *Flota → Repartidores* → "Ver ganancias": detalle por período (envíos, propinas, retenido, ganó) con exportación a CSV. En el portal del repartidor, las entregas se agrupan por día con el total de cada día.
+- **Menús:** *Configuración de Delivery* ahora está en *Configuración* y *Repartidores* en *Flota*.

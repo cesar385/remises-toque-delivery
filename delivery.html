@@ -20,6 +20,7 @@ h1{font-size:22px;margin:4px 0 12px}h2{font-size:18px;margin:18px 0 8px}
 .neg{display:flex;gap:12px;background:#fff;border:1px solid var(--bo);border-radius:14px;padding:12px;margin-bottom:10px;cursor:pointer;align-items:center}.neg.cerrado{opacity:.55}.neg .lg{width:64px;height:64px;border-radius:12px;object-fit:cover;background:#e8eef3;display:grid;place-items:center;font-size:28px;flex:0 0 auto}
 .neg .t{flex:1;min-width:0}.neg b{display:block;font-size:16px}.neg small{color:var(--su);display:block;margin-top:2px}.tag{display:inline-block;font-size:12px;border-radius:10px;padding:2px 8px;background:#eef3f8;color:var(--az);margin-top:4px}.tag.ro{background:#fdecec;color:var(--ro)}
 .port{height:150px;border-radius:14px;background:linear-gradient(135deg,var(--az),#3b7bbf) center/cover;margin-bottom:-36px}.cab{display:flex;gap:12px;align-items:flex-end;padding:0 12px}.cab .lg{width:76px;height:76px;border-radius:16px;border:3px solid #fff;object-fit:cover;background:#e8eef3;display:grid;place-items:center;font-size:32px}
+.eta{background:#eef7e8;color:#2d6a14;border-radius:10px;padding:8px 12px;margin:6px 0 10px;font-size:15px}.neg small.vivo{color:var(--az);font-weight:700}
 .prod{display:flex;gap:12px;background:#fff;border-bottom:1px solid var(--bo);padding:12px;align-items:center}.prod:first-of-type{border-radius:12px 12px 0 0}.prod .t{flex:1}.prod small{color:var(--su);display:block}.prod img{width:72px;height:72px;border-radius:10px;object-fit:cover}.prod.completa img{object-fit:contain;background:#fff}
 .qty{display:flex;align-items:center;gap:8px}.qty button{width:32px;height:32px;border-radius:50%;border:1px solid var(--az);background:#fff;color:var(--az);font-size:18px;line-height:1}.qty button.mas{background:var(--az);color:#fff}
 .barra{position:fixed;left:0;right:0;bottom:0;padding:12px 14px;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--fo) 30%);z-index:400}.barra button{width:100%;max-width:732px;display:flex;margin:0 auto;justify-content:space-between;align-items:center;background:var(--ve);color:#fff;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.18)}
@@ -96,6 +97,10 @@ ${lista.length ? lista.map(n => `<div class="neg ${n.abierto ? '' : 'cerrado'}" 
 <span class="tag">⏱ ${n.tiempo_prep || 20}-${(n.tiempo_prep || 20) + 15} min</span> ${+n.pedido_minimo ? `<span class="tag">Mín. ${pesos(n.pedido_minimo)}</span>` : ''} ${n.abierto ? '' : '<span class="tag ro">Cerrado</span>'}</div></div>`).join('') : '<div class="vacio"><div>🏪</div>Todavía no hay negocios disponibles.</div>'}
 ${barraCarrito()}`;
 $$('[data-n]').forEach(d => d.onclick = () => location.hash = '#/n/' + d.dataset.n);
+const prim = $('.neg');
+if (prim && lista.length >= 4) { const bq = document.createElement('input'); bq.type = 'search'; bq.placeholder = '🔍 Buscar negocio…'; bq.setAttribute('aria-label', 'Buscar negocio'); bq.style.margin = '4px 0 12px';
+prim.parentNode.insertBefore(bq, prim); const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+bq.oninput = () => { const t = norm(bq.value.trim()); $$('.neg').forEach(d => d.style.display = !t || norm(d.textContent).includes(t) ? '' : 'none'); }; }
 }
 
 async function negocio(id) {
@@ -241,10 +246,13 @@ primero = false;
 }
 const V = p.vocab || {}, prod = V.tipo === 'productos'; // rubros que no son comida: "Armando" en vez de "Preparando"
 const ETIQ = e => e === 'preparando' && prod ? V.prep_largo : EST[e] || e;
-$('#est').innerHTML = `<h2 style="margin-top:0">${esc(ETIQ(p.estado))}</h2>${p.estado === 'cancelado' ? `<div class="aviso error">${esc(p.motivo_cancelacion || 'El pedido fue cancelado')}</div>` : `<div class="pasos">${PASOS.filter(x => p.tipo_entrega === 'entrega' || x[0] !== 'en_camino').map(([e, l]) => `<div class="paso ${ORDEN[e] <= o ? 'on' : ''}">${e === 'preparando' && prod ? esc(V.prep) : l}</div>`).join('')}</div>`}
-${p.repartidor ? `<div>🛵 Tu repartidor: móvil <b>${esc(p.repartidor.movil)}</b> ${esc(p.repartidor.nombre || '')}</div>` : ''}${p.codigo_entrega && !fin ? `<div style="margin-top:8px">Código para el repartidor: <span class="codigo">${esc(p.codigo_entrega)}</span></div>` : ''}`;
-if (p.repartidor && p.repartidor.lat) { if (!mkR) mkR = L.marker([p.repartidor.lat, p.repartidor.lng], { icon: L.divIcon({ className: '', html: '<div style="font-size:26px">🛵</div>', iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(m); else mkR.setLatLng([p.repartidor.lat, p.repartidor.lng]); }
-$('#acc').innerHTML = p.puede_cancelar ? `<button class="btn sec full" id="canc">${p.cancela_directo ? 'Cancelar pedido' : 'Pedir cancelación'}</button>` : '';
+const eta = !fin && p.eta_min && p.estado !== 'cancelacion_solicitada' ? `<div class="eta">🕒 Llega en aprox. <b>${p.eta_min} min</b></div>` : '';
+$('#est').innerHTML = `<h2 style="margin-top:0">${esc(ETIQ(p.estado))}</h2>${eta}${p.estado === 'cancelado' ? `<div class="aviso error">${esc(p.motivo_cancelacion || 'El pedido fue cancelado')}</div>` : `<div class="pasos">${PASOS.filter(x => p.tipo_entrega === 'entrega' || x[0] !== 'en_camino').map(([e, l]) => `<div class="paso ${ORDEN[e] <= o ? 'on' : ''}">${e === 'preparando' && prod ? esc(V.prep) : l}</div>`).join('')}</div>`}
+${p.repartidor ? `<div>${p.repartidor.vehiculo === 'auto' ? '🚗' : '🛵'} Tu repartidor: móvil <b>${esc(p.repartidor.movil)}</b> ${esc(p.repartidor.nombre || '')}</div>` : p.buscando_repartidor ? '<div>🔎 Buscando un repartidor cerca…</div>' : ''}${p.codigo_entrega && !fin ? `<div style="margin-top:8px">Código para el repartidor: <span class="codigo">${esc(p.codigo_entrega)}</span></div>` : ''}`;
+if (p.repartidor && p.repartidor.lat) { if (!mkR) { mkR = L.marker([p.repartidor.lat, p.repartidor.lng], { icon: L.divIcon({ className: '', html: `<div style="font-size:26px">${p.repartidor.vehiculo === 'auto' ? '🚗' : '🛵'}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(m); if (p.entrega_lat) m.fitBounds([[p.repartidor.lat, p.repartidor.lng], [p.entrega_lat, p.entrega_lng]], { padding: [40, 40], maxZoom: 16 }); } else mkR.setLatLng([p.repartidor.lat, p.repartidor.lng]); }
+const repetible = p.negocio_id && ['entregado', 'cancelado'].includes(p.estado) && (p.items || []).some(i => i.producto_id);
+$('#acc').innerHTML = (p.puede_cancelar ? `<button class="btn sec full" id="canc">${p.cancela_directo ? 'Cancelar pedido' : 'Pedir cancelación'}</button>` : '') + (repetible ? '<button class="btn full" id="rep">🔁 Pedir de nuevo</button>' : '');
+const rb = $('#rep'); if (rb) rb.onclick = () => { S.carrito = { negocio_id: p.negocio_id, negocio: p.negocio, items: p.items.filter(i => i.producto_id).map(i => ({ producto_id: i.producto_id, nombre: i.nombre, precio: +i.precio, cantidad: i.cantidad, notas: i.notas || '' })) }; guardarCarrito(); location.hash = '#/carrito'; };
 const cb = $('#canc'); if (cb) cb.onclick = async () => { const mot = S.ini.config.cancel_motivo ? prompt('¿Por qué querés cancelar?') : 'Cancelado por el cliente'; if (mot === null) return; try { await api('r_dlv_pub_cancelar', { id, k }, { motivo: mot || 'Cancelado por el cliente' }); toast('Listo'); pintar(); } catch (e) { toast(e.message); } };
 if (fin) clearInterval(S.timer);
 };
@@ -254,7 +262,8 @@ S.timer = setInterval(pintar, 6000);
 
 function misPedidos() {
 const mis = J('dlv_pedidos', []);
-app.innerHTML = `<h1>Mis pedidos</h1>${mis.length ? mis.map(p => `<a class="neg" style="text-decoration:none;color:inherit" href="#/seguir/${p.id}/${p.k}"><div class="lg">🧾</div><div class="t"><b>#${esc(p.codigo)} · ${esc(p.negocio || '')}</b><small>${new Date(p.fecha).toLocaleString('es-AR')}</small></div><span>›</span></a>`).join('') : '<div class="vacio"><div>🧾</div>Todavía no hiciste pedidos desde este teléfono.</div>'}<p><a href="#/">← Volver a negocios</a></p>`;
+app.innerHTML = `<h1>Mis pedidos</h1>${mis.length ? mis.map(p => `<a class="neg" style="text-decoration:none;color:inherit" href="#/seguir/${p.id}/${p.k}" data-p="${p.id}"><div class="lg">🧾</div><div class="t"><b>#${esc(p.codigo)} · ${esc(p.negocio || '')}</b><small>${new Date(p.fecha).toLocaleString('es-AR')}</small><small class="vivo"></small></div><span>›</span></a>`).join('') : '<div class="vacio"><div>🧾</div>Todavía no hiciste pedidos desde este teléfono.</div>'}<p><a href="#/">← Volver a negocios</a></p>`;
+mis.slice(0, 8).forEach(p => api('r_dlv_pub_seguir', { id: p.id, k: p.k }).then(r => { const el = $(`[data-p="${p.id}"] .vivo`); if (!el) return; const V = r.vocab || {}; el.textContent = (r.estado === 'preparando' && V.tipo === 'productos' ? V.prep_largo : EST[r.estado] || r.estado) + (r.eta_min ? ' · llega en ~' + r.eta_min + ' min' : ''); }).catch(() => { }));
 }
 
 if (!RODAR.listo) app.innerHTML = '<div class="vacio"><div>⚙️</div>Falta configurar la conexión (config.js).</div>'; else ruta();
