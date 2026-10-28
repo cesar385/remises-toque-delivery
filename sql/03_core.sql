@@ -131,7 +131,7 @@ begin
         if sv > 0 then perform rodar.movimiento(m.id, 'vencimiento', -sv, 'Vence saldo prepago del período', null, null); end if;
       end if;
       perform rodar.movimiento(m.id, 'cuota', -p.monto_fijo, 'Cuota ' || p.descripcion || ' ' || periodo, null, null);
-      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(p.tipo1));
+      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(coalesce(p.tipo1, false)));
       n := n + 1;
     end loop;
     insert into rodar.acciones_usuarios(fecha, actor, tipo, afectado, detalle) values (d, 'sistema', 'cobro_cuotas', p.descripcion, n || ' móviles');

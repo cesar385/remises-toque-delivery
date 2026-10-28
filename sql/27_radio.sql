@@ -21,7 +21,7 @@ begin
   insert into rodar.radio_msgs(de, movil_id, usuario_id, mime, audio)
   values (coalesce(nullif(left(p_b ->> 'de', 120), ''), case when m.id is not null then 'Móvil ' || m.numero else trim(u.nombre || ' ' || coalesce(u.apellido, '')) end),
           m.id, u.id, left(p_b ->> 'mime', 60), a) returning id into nid;
-  perform rodar.emit('radio', 'radio', jsonb_build_object('id', nid, 'de', (select de from rodar.radio_msgs where id = nid), 'movil', m.numero));
+  perform rodar.emit('radio', 'radio', jsonb_build_object('id', nid, 'de', (select de from rodar.radio_msgs where id = nid), 'movil', m.numero, 'clave', left(p_b ->> 'clave', 40)));
   return jsonb_build_object('ok', true, 'id', nid);
 end $$;
 

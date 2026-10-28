@@ -2,8 +2,13 @@
 
 create or replace function rodar.cfg(k text, def jsonb default null) returns jsonb language sql stable as $$
   select coalesce((select valor from rodar.config where clave = k), def) $$;
-create or replace function rodar.cfg_set(k text, v jsonb) returns void language sql as $$
-  insert into rodar.config(clave, valor) values (k, v) on conflict (clave) do update set valor = excluded.valor $$;
+-- Guarda una clave de configuración. Con valor nulo (SQL null) borra la clave en vez de fallar por "valor" not null.
+create or replace function rodar.cfg_set(k text, v jsonb) returns void language plpgsql as $$
+begin
+  if k is null then return; end if;
+  if v is null then delete from rodar.config where clave = k; return; end if;
+  insert into rodar.config(clave, valor) values (k, v) on conflict (clave) do update set valor = excluded.valor;
+end $$;
 
 create or replace function rodar.tz() returns text language sql stable as $$
   select coalesce(rodar.cfg('zona_horaria') #>> '{}', 'America/Argentina/Buenos_Aires') $$;

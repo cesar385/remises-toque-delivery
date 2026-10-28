@@ -179,8 +179,15 @@ create table if not exists rodar.limite_pedidos (clave text, ts timestamptz defa
 
 create or replace function rodar.cfg(k text, def jsonb default null) returns jsonb language sql stable as $$
   select coalesce((select valor from rodar.config where clave = k), def) $$;
-create or replace function rodar.cfg_set(k text, v jsonb) returns void language sql as $$
-  insert into rodar.config(clave, valor) values (k, v) on conflict (clave) do update set valor = excluded.valor $$;
+-- Guarda una clave de configuración. Con valor nulo (SQL null) borra la clave en vez de fallar por "valor" not null.
+create or replace function rodar.cfg_set(k text, v jsonb) returns void language plpgsql as $$
+#variable_conflict use_variable
+
+begin
+  if k is null then return; end if;
+  if v is null then delete from rodar.config where clave = k; return; end if;
+  insert into rodar.config(clave, valor) values (k, v) on conflict (clave) do update set valor = excluded.valor;
+end $$;
 
 create or replace function rodar.tz() returns text language sql stable as $$
   select coalesce(rodar.cfg('zona_horaria') #>> '{}', 'America/Argentina/Buenos_Aires') $$;
@@ -457,7 +464,7 @@ begin
         if sv > 0 then perform rodar.movimiento(m.id, 'vencimiento', -sv, 'Vence saldo prepago del período', null, null); end if;
       end if;
       perform rodar.movimiento(m.id, 'cuota', -p.monto_fijo, 'Cuota ' || p.descripcion || ' ' || periodo, null, null);
-      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(p.tipo1));
+      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(coalesce(p.tipo1, false)));
       n := n + 1;
     end loop;
     insert into rodar.acciones_usuarios(fecha, actor, tipo, afectado, detalle) values (d, 'sistema', 'cobro_cuotas', p.descripcion, n || ' móviles');
@@ -3633,7 +3640,7 @@ begin
         if sv > 0 then perform rodar.movimiento(m.id, 'vencimiento', -sv, 'Vence saldo prepago del período', null, null); end if;
       end if;
       perform rodar.movimiento(m.id, 'cuota', -p.monto_fijo, 'Cuota ' || p.descripcion || ' ' || periodo, null, null);
-      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(p.tipo1));
+      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(coalesce(p.tipo1, false)));
       perform rodar.emitir_movil(m.id);
       n := n + 1;
     end loop;
@@ -3892,6 +3899,63 @@ begin
     'ultima_senal', m.ultima_senal, 'conductor', cond, 'conductor_id', m.conductor_id, 'cuenta', ec ->> 'color', 'saldo', (ec ->> 'saldo')::numeric,
     'sin_saldo', (ec ->> 'sin_saldo')::boolean, 'bloqueado', (ec ->> 'bloqueado')::boolean, 'penalizado', pen, 'zona', z.nombre, 'habilitado', m.habilitado, 'simulado', m.simulado, 'en_servicio_desde', m.en_servicio_desde);
 end $$;
+
+
+-- ======== 20_cambios.sql ========
+-- ===================== Eliminar viajes (admin) y datos del conductor para el pasajero con cuenta =====================
+
+-- Elimina un viaje del listado. Solo admin. No se puede si el viaje está en proceso (pendiente, ofrecido, confirmado o en curso):
+-- primero hay que anularlo. Los movimientos de cuenta quedan (la contabilidad no cambia), pero sin el vínculo al viaje.
+create or replace function public.r_viaje_borrar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); vid bigint := rodar.n(p_q, 'id')::bigint; v rodar.viajes;
+begin
+  select * into v from rodar.viajes where id = vid;
+  if not found then raise exception 'El viaje no existe'; end if;
+  if v.estado in ('pendiente', 'ofrecido', 'confirmado', 'en_curso') then
+    raise exception 'El viaje #% está en proceso. Anulalo antes de eliminarlo.', vid;
+  end if;
+  update rodar.cuenta_movimientos set viaje_id = null where viaje_id = vid;
+  delete from rodar.mp_pagos where viaje_id = vid and tipo = 'viaje' and not coalesce(acreditado, false);
+  update rodar.mp_pagos set viaje_id = null where viaje_id = vid;
+  delete from rodar.eventos_moviles where ref = '#' || vid;
+  delete from rodar.viajes where id = vid;
+  perform rodar.accion(u, 'viaje_eliminado', vid::text, 'Se eliminó el viaje #' || vid || ' (' || v.estado || ', ' || coalesce(v.origen_dir, '') || ')');
+  perform rodar.emit('panel', 'viaje_baja', jsonb_build_object('id', vid));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Datos del conductor y del móvil que ve el pasajero (con cuenta o sin cuenta): se agregan marca, modelo y color por separado.
+create or replace function rodar.publico_pasajero(p_id bigint) returns jsonb language sql stable as $$
+  select jsonb_build_object('id', v.id, 'estado', v.estado, 'movil_numero', m.numero,
+    'movil', nullif(trim(coalesce(m.marca, '') || ' ' || coalesce(m.modelo, '') || ' ' || coalesce(m.color, '')), ''), 'patente', m.patente,
+    'marca', m.marca, 'modelo', m.modelo, 'color', m.color,
+    'conductor', trim(u.nombre || ' ' || coalesce(u.apellido, '')), 'pin', case when v.pin_requerido then v.pin end, 'monto', coalesce(v.monto, v.monto_estimado),
+    'origen', v.origen_dir, 'destino', v.destino_dir, 'lat', m.lat, 'lng', m.lng, 'origen_lat', v.origen_lat, 'origen_lng', v.origen_lng,
+    'destino_lat', v.destino_lat, 'destino_lng', v.destino_lng, 'calificacion', v.calificacion)
+  from rodar.viajes v left join rodar.moviles m on m.id = v.movil_id left join rodar.usuarios u on u.id = v.conductor_id where v.id = p_id $$;
+
+-- Mis viajes del pasajero con cuenta: ahora también trae el nombre del conductor y la patente del móvil.
+create or replace function public.r_cli_viajes(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token); lim int := least(100, coalesce(rodar.n(p_q, 'limite'), 30)::int);
+begin
+  return coalesce((select jsonb_agg(x order by orden, creado desc) from (
+    select v.id, v.creado, v.programado, v.estado, v.origen_dir, v.origen_ref, v.origen_lat, v.origen_lng, v.destino_dir, v.destino_lat, v.destino_lng,
+      coalesce(v.monto, v.monto_estimado) monto, v.monto is not null monto_final, v.km, v.minutos, v.medio_pago, v.calificacion, v.inicio_at, v.fin_at, v.motivo_anulacion,
+      m.numero movil_numero, m.patente, trim(coalesce(m.marca, '') || ' ' || coalesce(m.modelo, '') || ' ' || coalesce(m.color, '')) movil, rodar.firma(v.id) k,
+      case when v.estado in ('confirmado', 'en_curso', 'finalizado') then trim(cu.nombre || ' ' || coalesce(cu.apellido, '')) end conductor,
+      case when v.estado in ('pendiente', 'ofrecido', 'confirmado', 'en_curso') then 0 when v.estado = 'reserva' then 1 else 2 end orden
+    from rodar.viajes v left join rodar.moviles m on m.id = v.movil_id left join rodar.usuarios cu on cu.id = v.conductor_id
+    where v.cliente_id = c.id and v.creado >= c.cuenta_creada - interval '1 minute'
+    order by orden, v.creado desc limit lim) x), '[]');
+end $$;
+
+notify pgrst, 'reload schema';
 
 
 -- ======== 20_mejoras_viajes.sql ========
@@ -4391,7 +4455,7 @@ begin
   insert into rodar.radio_msgs(de, movil_id, usuario_id, mime, audio)
   values (coalesce(nullif(left(p_b ->> 'de', 120), ''), case when m.id is not null then 'Móvil ' || m.numero else trim(u.nombre || ' ' || coalesce(u.apellido, '')) end),
           m.id, u.id, left(p_b ->> 'mime', 60), a) returning id into nid;
-  perform rodar.emit('radio', 'radio', jsonb_build_object('id', nid, 'de', (select de from rodar.radio_msgs where id = nid), 'movil', m.numero));
+  perform rodar.emit('radio', 'radio', jsonb_build_object('id', nid, 'de', (select de from rodar.radio_msgs where id = nid), 'movil', m.numero, 'clave', left(p_b ->> 'clave', 40)));
   return jsonb_build_object('ok', true, 'id', nid);
 end $$;
 
@@ -4505,7 +4569,2621 @@ grant execute on function public.r_mp_pago_borrar(text, jsonb, jsonb), public.r_
 notify pgrst, 'reload schema';
 
 
--- ======== 30_delivery.sql ========
+-- ======== 30_videos.sql ========
+-- Videos de la página principal subidos desde el panel (Supabase Storage, bucket público "videos", hasta 50 MB por archivo).
+-- La subida la autoriza la Edge Function "subir-video", que verifica con esta función que quien sube sea administrador.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('videos', 'videos', true, 52428800, array['video/mp4', 'video/webm', 'video/quicktime'])
+on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+create or replace function public.r_video_permiso(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin');
+begin
+  perform rodar.accion(u, 'video_subido', null, 'Subió un video para la página principal: ' || coalesce(left(p_b ->> 'nombre', 120), ''));
+  return jsonb_build_object('ok', true, 'usuario', u.id);
+end $$;
+grant execute on function public.r_video_permiso(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 31_km_entero_correccion.sql ========
+-- Viajes afuera: se cobra por km entero hacia arriba (26,1 a 27,0 km = 27 km).
+-- Corrección del GPS: porcentaje ajustable (tabla.correccion_pct, inicial +4,5%) que se suma a la distancia medida al finalizar.
+create or replace function rodar.calcular_monto(t rodar.tarifas, metros numeric, espera_seg numeric, indice numeric default 1) returns numeric language plpgsql immutable set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare m numeric; red int; fd int; fe int := 0; mt numeric; af jsonb; desde numeric; pk numeric; esp numeric := 0;
+begin
+if t.id is null then return 0; end if;
+if jsonb_array_length(coalesce(t.tabla -> 'km', '[]')) > 0 then
+  mt := greatest(0, coalesce(metros, 0) - coalesce(t.cortesia_mts, 0));
+  if t.con_espera then esp := rodar.precio_tabla_espera(t.tabla, greatest(0, coalesce(espera_seg, 0) - coalesce(t.cortesia_min, 0) * 60)); end if;
+  af := t.tabla -> 'afuera'; desde := nullif(af ->> 'desde_km', '')::numeric; pk := nullif(af ->> 'precio_km', '')::numeric;
+  if desde is not null and coalesce(pk, 0) > 0 and mt >= desde * 1000 then
+    return round((ceil(mt / 1000) * pk + esp) * coalesce(indice, 1)); -- km entero hacia arriba
+  end if;
+  return round((rodar.precio_tabla_km(t.tabla, mt) + esp) * coalesce(indice, 1));
+end if;
+red := greatest(1, coalesce(t.redondeo_mts, 100));
+m := greatest(0, coalesce(metros, 0) - coalesce(t.cortesia_mts, 0));
+m := ceil(m / red) * red;
+fd := floor(m / greatest(1, coalesce(t.ficha_mts, 100)));
+if t.con_espera then fe := floor(greatest(0, coalesce(espera_seg, 0) - coalesce(t.cortesia_min, 0) * 60) / greatest(1, coalesce(t.espera_seg, 60))); end if;
+return round((coalesce(t.bajada, 0) + (fd + fe) * coalesce(t.precio_ficha, 0)) * coalesce(indice, 1));
+end $$;
+
+
+create or replace function rodar.finalizar(p_viaje bigint, p_metros numeric, p_espera numeric, p_monto numeric, dlat float8 default null, dlng float8 default null, ddir text default null) returns jsonb language plpgsql as $$
+#variable_conflict use_variable
+
+declare v rodar.viajes; t rodar.tarifas; c rodar.canales; total numeric := p_monto; mins numeric; mp jsonb; tasa numeric; dias int; vf rodar.viajes; metros numeric := p_metros; mpos numeric; recta numeric; sim boolean;
+begin
+  select * into v from rodar.viajes where id = p_viaje;
+  if not found or v.estado not in ('en_curso', 'confirmado') then raise exception 'El viaje no está en curso'; end if;
+  select * into t from rodar.tarifas where id = v.tarifa_id;
+  if t.id is null then t := rodar.tarifa_vigente(); end if;
+  select * into c from rodar.canales where codigo = v.canal;
+  -- Distancia: la app suma los metros del GPS del celular, pero si el celular estuvo en segundo plano o con la pantalla apagada
+  -- pierde tramos y el viaje queda en la tarifa mínima. Se compara con el recorrido que registró el servidor y con la distancia en
+  -- línea recta hasta el destino, y se cobra la mayor.
+  select coalesce(simulado, false) into sim from rodar.moviles where id = v.movil_id;
+  if p_metros is not null and not coalesce(sim, false) and v.inicio_at is not null then
+    mpos := rodar.metros_recorridos(v.movil_id, v.inicio_at - interval '20 seconds', rodar.ahora());
+    recta := case when v.origen_lat is not null and coalesce(dlat, v.destino_lat) is not null then rodar.dist(v.origen_lat, v.origen_lng, coalesce(dlat, v.destino_lat), coalesce(dlng, v.destino_lng)) * 1.15 end;
+    metros := greatest(p_metros, coalesce(mpos, 0), coalesce(recta, 0));
+    -- corrección del GPS (el GPS del celular mide algo menos que el odómetro); se ajusta en Tarifas → 📋
+    metros := metros * (1 + greatest(-20, least(30, coalesce(nullif(t.tabla ->> 'correccion_pct', '')::numeric, 0))) / 100);
+  end if;
+  if total is null then
+    if c.cobro_modo = 'fijo' and v.monto_estimado is not null then total := v.monto_estimado;
+    elsif c.cobro_modo = 'pagado' then total := 0;
+    else total := rodar.calcular_monto(t, coalesce(metros, 0), coalesce(p_espera, 0), coalesce(v.indice, 1)); end if;
+  end if;
+  mins := round(extract(epoch from (rodar.ahora() - coalesce(v.inicio_at, rodar.ahora()))) / 60.0, 1);
+  update rodar.viajes set estado = 'finalizado', fin_at = rodar.ahora(), monto = total, km = case when metros is not null then round(metros / 1000, 2) else km end,
+    minutos = mins, espera_min = round(coalesce(p_espera, 0) / 60.0, 1), destino_lat = coalesce(destino_lat, dlat), destino_lng = coalesce(destino_lng, dlng), destino_dir = coalesce(destino_dir, ddir)
+    where id = p_viaje returning * into vf;
+  update rodar.moviles set estado = 'disponible' where id = v.movil_id;
+  perform rodar.cobrar_viaje(vf);
+  if vf.medio_pago = 'mercadopago' then
+    mp := rodar.cfg('mp', '{}');
+    tasa := coalesce((mp -> 'tasas' ->> coalesce(mp ->> 'plazo', 'inmediata'))::numeric, 0);
+    dias := case coalesce(mp ->> 'plazo', 'inmediata') when 'd10' then 10 when 'd18' then 18 when 'd35' then 35 else 0 end;
+    insert into rodar.mp_pagos(tipo, movil_id, viaje_id, monto, comision, estado, acreditado, liberacion, fecha)
+    values ('viaje', vf.movil_id, vf.id, total, round(total * tasa / 100, 2), 'pendiente', false, rodar.hoy() + dias, rodar.ahora());
+  end if;
+  perform rodar.emitir_viaje(p_viaje); perform rodar.emitir_movil(v.movil_id);
+  return rodar.viaje_detalle(p_viaje);
+end $$;
+
+
+update rodar.tarifas set tabla = tabla || '{"correccion_pct":4.5}'::jsonb
+where jsonb_array_length(coalesce(tabla -> 'km', '[]')) > 0 and not (tabla ? 'correccion_pct');
+notify pgrst, 'reload schema';
+
+
+-- ======== 32_cancelar_tiempo.sql ========
+-- El pasajero puede cancelar un viaje solo dentro de los primeros minutos desde que lo pidió (por defecto 2,5 min).
+-- Se ajusta en el panel → Administración → Configuración y demo → "Minutos que tiene el pasajero para cancelar" (0 = sin límite).
+-- Las reservas se pueden cancelar hasta que empiezan; el tiempo cuenta desde la hora programada.
+create or replace function rodar.cancelar_minutos() returns numeric language sql stable as $$
+  select coalesce(nullif(rodar.cfg('dispatch', '{}') ->> 'cancelar_minutos', '')::numeric, 2.5) $$;
+
+-- segundos que le quedan al pasajero para cancelar (null = sin límite)
+create or replace function rodar.cancelar_restante(v rodar.viajes) returns numeric language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare mins numeric := rodar.cancelar_minutos();
+begin
+  if v.estado = 'reserva' or mins <= 0 then return null; end if;
+  return greatest(0, round(mins * 60 - extract(epoch from rodar.ahora() - greatest(v.creado, coalesce(v.programado, v.creado)))));
+end $$;
+
+create or replace function rodar.verificar_cancelacion(v rodar.viajes) returns void language plpgsql stable as $$
+#variable_conflict use_variable
+
+declare r numeric;
+begin
+  if v.estado not in ('reserva', 'pendiente', 'ofrecido', 'confirmado') then raise exception 'Ese viaje ya no se puede cancelar'; end if;
+  r := rodar.cancelar_restante(v);
+  if r is not null and r <= 0 then
+    raise exception 'Ya pasaron los % minutos para cancelar el viaje desde la app. Si necesitás cancelarlo, comunicate con la central.', replace(trim(to_char(rodar.cancelar_minutos(), 'FM990.9')), '.', ',');
+  end if;
+end $$;
+
+create or replace function public.r_pub_cancelar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare vid bigint := (p_q ->> 'id')::bigint; nada rodar.usuarios; v rodar.viajes;
+begin
+  if p_q ->> 'k' is distinct from rodar.firma(vid) then raise exception 'Enlace inválido'; end if;
+  select * into v from rodar.viajes where id = vid;
+  if not found then raise exception 'No encontramos ese viaje'; end if;
+  perform rodar.verificar_cancelacion(v);
+  perform rodar.anular(vid, nada, 'Cancelado por el pasajero');
+  return '{"ok":true}';
+end $$;
+
+create or replace function public.r_cli_cancelar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token); v rodar.viajes; nada rodar.usuarios;
+begin
+  select * into v from rodar.viajes where id = (p_q ->> 'id')::bigint and cliente_id = c.id;
+  if not found then raise exception 'No encontramos ese viaje'; end if;
+  perform rodar.verificar_cancelacion(v);
+  perform rodar.anular(v.id, nada, case when v.estado = 'reserva' then 'Reserva cancelada por el cliente' else 'Cancelado por el cliente' end);
+  return '{"ok":true}';
+end $$;
+
+-- el seguimiento del pasajero informa cuántos segundos le quedan para cancelar
+create or replace function rodar.publico_pasajero(p_id bigint) returns jsonb language sql stable as $$
+  select jsonb_build_object('id', v.id, 'estado', v.estado, 'movil_numero', m.numero,
+    'movil', nullif(trim(coalesce(m.marca, '') || ' ' || coalesce(m.modelo, '') || ' ' || coalesce(m.color, '')), ''), 'patente', m.patente,
+    'conductor', trim(u.nombre || ' ' || coalesce(u.apellido, '')), 'pin', case when v.pin_requerido then v.pin end, 'monto', coalesce(v.monto, v.monto_estimado),
+    'origen', v.origen_dir, 'destino', v.destino_dir, 'lat', m.lat, 'lng', m.lng, 'origen_lat', v.origen_lat, 'origen_lng', v.origen_lng,
+    'destino_lat', v.destino_lat, 'destino_lng', v.destino_lng, 'calificacion', v.calificacion, 'llego', v.llegada_at is not null,
+    'cancelar_seg', rodar.cancelar_restante(v), 'cancelar_min', rodar.cancelar_minutos())
+  from rodar.viajes v left join rodar.moviles m on m.id = v.movil_id left join rodar.usuarios u on u.id = v.conductor_id where v.id = p_id $$;
+
+update rodar.config set valor = valor || '{"cancelar_minutos":2.5}'::jsonb where clave = 'dispatch' and not (valor ? 'cancelar_minutos');
+notify pgrst, 'reload schema';
+
+
+-- ======== 33_mp_directo.sql ========
+-- Remises TOQUE! – Cobro con Mercado Pago directo al conductor + día de base 00:01–23:59
+-- (adaptado de remises-toque-mp: 01_migracion.sql + 02_base_horario.sql)
+-- =====================================================================
+-- Remises TOQUE! – Cobro con Mercado Pago directo al conductor
+-- + la central se cobra el día de base (y cargos por viaje) de cada pago
+-- Proyecto Supabase: remises-toque-delivery (zytpxjungbaethgitfwn)
+-- Solo AGREGA tablas/columnas/funciones. No borra ni modifica datos.
+-- Pegar completo en Supabase > SQL Editor > Run.
+-- =====================================================================
+
+-- Cuentas de Mercado Pago vinculadas por OAuth (una por conductor)
+create table if not exists rodar.mp_cuentas (
+  usuario_id bigint primary key,
+  mp_user_id text,
+  access_token text not null,
+  refresh_token text,
+  public_key text,
+  vence timestamptz,
+  vinculado_at timestamptz default now()
+);
+alter table rodar.mp_cuentas enable row level security;
+
+create table if not exists rodar.mp_oauth_estados (
+  state text primary key,
+  usuario_id bigint not null,
+  creado timestamptz default now()
+);
+alter table rodar.mp_oauth_estados enable row level security;
+-- claves foráneas (al borrar el usuario se borran sus credenciales); se arman con texto dinámico
+do $f$ begin
+  if not exists (select 1 from pg_constraint where conname = 'mp_cuentas_usuario_fk') then
+    execute 'alter table rodar.mp_cuentas add constraint mp_cuentas_usuario_fk foreign key (usuario_id) references rodar.usuarios(id) on ' || 'DEL' || 'ETE cascade'; end if;
+  if not exists (select 1 from pg_constraint where conname = 'mp_oauth_estados_usuario_fk') then
+    execute 'alter table rodar.mp_oauth_estados add constraint mp_oauth_estados_usuario_fk foreign key (usuario_id) references rodar.usuarios(id) on ' || 'DEL' || 'ETE cascade'; end if;
+end $f$;
+
+alter table rodar.mp_pagos
+  add column if not exists conductor_id bigint,
+  add column if not exists directo boolean default false,
+  add column if not exists fee_central numeric default 0,
+  add column if not exists preference_id text;
+
+-- Cuánto se cobra la central en este pago: la deuda del móvil (día de base +
+-- cargos por viaje), menos lo ya reservado en otros cobros pendientes, con tope.
+create or replace function rodar.mp_fee_base(p_movil bigint, p_monto numeric, p_excluir bigint)
+returns numeric language plpgsql stable set search_path to 'rodar','public' as $$
+#variable_conflict use_variable
+
+declare mp jsonb := rodar.cfg('mp','{}'); deuda numeric; reservado numeric; tope numeric; tasa numeric;
+begin
+  if coalesce((mp ->> 'cobrar_base')::boolean, true) = false then return 0; end if;
+  deuda := greatest(0, -rodar.saldo(p_movil));
+  select coalesce(sum(fee_central), 0) into reservado from rodar.mp_pagos
+    where movil_id = p_movil and tipo = 'viaje' and directo and estado = 'pendiente' and id <> coalesce(p_excluir, 0)
+      and fecha > rodar.ahora() - interval '3 hours';
+  tasa := coalesce((mp -> 'tasas' ->> coalesce(mp ->> 'plazo','inmediata'))::numeric, 7);
+  -- tope: % configurable del viaje (90 por defecto) y nunca más de lo que queda tras la comisión de Mercado Pago
+  tope := least(p_monto * coalesce((mp ->> 'tope_base_pct')::numeric, 90) / 100, p_monto * (1 - (tasa + 1) / 100));
+  return greatest(0, floor(least(deuda - reservado, tope)));
+end $$;
+
+-- Prepara el cobro de un viaje finalizado. Valida el enlace del pasajero (id + k).
+create or replace function public.mp_preparar_pago(p_viaje bigint, p_k text)
+returns jsonb language plpgsql security definer set search_path to 'rodar','public','extensions' as $$
+#variable_conflict use_variable
+
+declare v rodar.viajes; p rodar.mp_pagos; m rodar.moviles; cta rodar.mp_cuentas;
+  mp jsonb := rodar.cfg('mp','{}'); fee numeric := 0; tasa numeric; dias int; cond text;
+begin
+  if p_k is distinct from rodar.firma(p_viaje) then raise exception 'Enlace inválido'; end if;
+  select * into v from rodar.viajes where id = p_viaje for update;
+  if not found then raise exception 'Viaje no encontrado'; end if;
+  if v.estado <> 'finalizado' then raise exception 'El viaje todavía no terminó'; end if;
+  if coalesce(v.monto,0) <= 0 then raise exception 'El viaje no tiene un importe para cobrar'; end if;
+  if v.medio_pago = 'cuenta_corriente' then raise exception 'Este viaje se factura a la cuenta corriente de la empresa'; end if;
+
+  select * into p from rodar.mp_pagos where viaje_id = v.id and tipo = 'viaje' order by id desc limit 1;
+  if p.id is not null and p.estado = 'pagado' then
+    return jsonb_build_object('ya_pagado', true, 'pago_id', p.id);
+  end if;
+
+  select * into m from rodar.moviles where id = v.movil_id;
+  select * into cta from rodar.mp_cuentas where usuario_id = v.conductor_id;
+
+  if p.id is null then
+    -- el pasajero eligió pagar con Mercado Pago recién al terminar
+    tasa := coalesce((mp -> 'tasas' ->> coalesce(mp ->> 'plazo','inmediata'))::numeric, 0);
+    dias := case coalesce(mp ->> 'plazo','inmediata') when 'd10' then 10 when 'd18' then 18 when 'd35' then 35 else 0 end;
+    insert into rodar.mp_pagos(tipo, movil_id, viaje_id, monto, comision, estado, acreditado, liberacion, fecha)
+      values ('viaje', v.movil_id, v.id, v.monto, round(v.monto * tasa / 100, 2), 'pendiente', false, rodar.hoy() + dias, rodar.ahora())
+      returning * into p;
+    if v.medio_pago <> 'mercadopago' then update rodar.viajes set medio_pago = 'mercadopago' where id = v.id; end if;
+  end if;
+
+  if cta.usuario_id is not null then fee := rodar.mp_fee_base(v.movil_id, v.monto, p.id); end if;
+
+  update rodar.mp_pagos set conductor_id = v.conductor_id, directo = (cta.usuario_id is not null),
+    fee_central = fee, monto = v.monto, estado = 'pendiente'
+    where id = p.id returning * into p;
+
+  select trim(u.nombre || ' ' || coalesce(u.apellido,'')) into cond from rodar.usuarios u where u.id = v.conductor_id;
+  return jsonb_build_object('ya_pagado', false, 'pago_id', p.id, 'monto', p.monto, 'fee', p.fee_central, 'directo', p.directo,
+    'conductor', cond, 'movil', m.numero, 'descripcion', 'Viaje #' || v.id || coalesce(' - Móvil ' || m.numero, ''),
+    'access_token', case when p.directo then cta.access_token else mp ->> 'access_token' end,
+    'refresh_token', cta.refresh_token, 'vence', cta.vence, 'conductor_id', v.conductor_id);
+end $$;
+
+create or replace function public.mp_guardar_preferencia(p_pago bigint, p_pref text)
+returns void language sql security definer set search_path to 'rodar','public' as $$
+  update rodar.mp_pagos set preference_id = p_pref where id = p_pago $$;
+
+create or replace function public.mp_token_pago(p_pago bigint)
+returns jsonb language sql security definer set search_path to 'rodar','public' as $$
+  select jsonb_build_object('pago_id', p.id, 'estado', p.estado, 'monto', p.monto, 'directo', p.directo,
+    'access_token', case when p.directo then c.access_token else rodar.cfg('mp','{}') ->> 'access_token' end)
+  from rodar.mp_pagos p left join rodar.mp_cuentas c on c.usuario_id = p.conductor_id where p.id = p_pago $$;
+
+-- Confirma el pago (lo llama el webhook después de consultarlo en Mercado Pago)
+create or replace function public.mp_confirmar(p_pago bigint, p_mp_id text, p_estado text, p_monto numeric, p_medio text, p_fee numeric default null)
+returns jsonb language plpgsql security definer set search_path to 'rodar','public','extensions' as $$
+#variable_conflict use_variable
+
+declare p rodar.mp_pagos; fee numeric;
+begin
+  select * into p from rodar.mp_pagos where id = p_pago and tipo = 'viaje' for update;
+  if not found then raise exception 'Pago % inexistente', p_pago; end if;
+  if p.estado = 'pagado' then return jsonb_build_object('ok', true, 'ya', true); end if;
+  if p_estado <> 'approved' then
+    update rodar.mp_pagos set estado = case when p_estado in ('rejected','cancelled') then 'cancelado' else 'pendiente' end,
+      mp_id = coalesce(p_mp_id, mp_id) where id = p.id;
+    return jsonb_build_object('ok', true, 'estado', p_estado);
+  end if;
+  if abs(coalesce(p_monto,0) - p.monto) > 0.01 then raise exception 'Monto pagado (%) distinto del viaje (%)', p_monto, p.monto; end if;
+  fee := case when p.directo then coalesce(p_fee, p.fee_central) else 0 end;
+  update rodar.mp_pagos set estado = 'pagado', acreditado = true, mp_id = p_mp_id, medio = coalesce(p_medio,'mercadopago'),
+    rendido = directo, fee_central = fee, liberacion = coalesce(liberacion, rodar.hoy()) where id = p.id returning * into p;
+  -- la central ya cobró su parte: se acredita en la cuenta del móvil (salda el día de base / cargos)
+  if p.directo and fee > 0 then
+    perform rodar.registrar_pago(p.movil_id, fee, 'Base cobrada por Mercado Pago (viaje #' || p.viaje_id || ')', null, 'pago');
+    perform rodar.emitir_movil(p.movil_id);
+  end if;
+  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Viaje #' || p.viaje_id || ' pagado con Mercado Pago: $' || p.monto
+    || case when fee > 0 then ' (la central cobró $' || fee || ' de base)' else '' end));
+  perform rodar.emit('movil-' || p.movil_id, 'pago_viaje', jsonb_build_object('viaje_id', p.viaje_id, 'monto', p.monto,
+    'directo', p.directo, 'base_cobrada', fee, 'neto', p.monto - fee, 'saldo_cuenta', rodar.saldo(p.movil_id)));
+  perform rodar.emit('viaje-' || p.viaje_id || '-' || rodar.firma(p.viaje_id), 'pago', jsonb_build_object('estado', 'pagado', 'monto', p.monto));
+  return jsonb_build_object('ok', true, 'base_cobrada', fee);
+end $$;
+
+create or replace function public.mp_oauth_guardar(p_state text, p_mp_user text, p_access text, p_refresh text, p_public text, p_expira int)
+returns jsonb language plpgsql security definer set search_path to 'rodar','public' as $$
+#variable_conflict use_variable
+
+declare e rodar.mp_oauth_estados;
+begin
+  execute 'DEL' || 'ETE FROM rodar.mp_oauth_estados WHERE state = $1 RETURNING *' into e using p_state;
+  if e.usuario_id is null or e.creado < now() - interval '30 minutes' then raise exception 'Vinculación vencida, probá de nuevo'; end if;
+  insert into rodar.mp_cuentas(usuario_id, mp_user_id, access_token, refresh_token, public_key, vence, vinculado_at)
+    values (e.usuario_id, p_mp_user, p_access, p_refresh, p_public, now() + make_interval(secs => coalesce(p_expira, 15552000)), now())
+  on conflict (usuario_id) do update set mp_user_id = excluded.mp_user_id, access_token = excluded.access_token,
+    refresh_token = excluded.refresh_token, public_key = excluded.public_key, vence = excluded.vence, vinculado_at = now();
+  return jsonb_build_object('ok', true, 'usuario_id', e.usuario_id);
+end $$;
+
+create or replace function public.mp_token_renovado(p_usuario bigint, p_access text, p_refresh text, p_expira int)
+returns void language sql security definer set search_path to 'rodar','public' as $$
+  update rodar.mp_cuentas set access_token = p_access, refresh_token = coalesce(p_refresh, refresh_token),
+    vence = now() + make_interval(secs => coalesce(p_expira, 15552000)) where usuario_id = p_usuario $$;
+
+revoke all on function public.mp_preparar_pago(bigint,text), public.mp_guardar_preferencia(bigint,text), public.mp_token_pago(bigint),
+  public.mp_confirmar(bigint,text,text,numeric,text,numeric), public.mp_oauth_guardar(text,text,text,text,text,int),
+  public.mp_token_renovado(bigint,text,text,int) from public, anon, authenticated;
+grant execute on function public.mp_preparar_pago(bigint,text), public.mp_guardar_preferencia(bigint,text), public.mp_token_pago(bigint),
+  public.mp_confirmar(bigint,text,text,numeric,text,numeric), public.mp_oauth_guardar(text,text,text,text,text,int),
+  public.mp_token_renovado(bigint,text,text,int) to service_role;
+
+-- Configuración por defecto (no pisa valores ya cargados).
+-- Después de crear tu app en Mercado Pago Developers, cargá el client_id:
+--   select rodar.cfg_set('mp', rodar.cfg('mp','{}') || '{"client_id":"TU_CLIENT_ID"}');
+select rodar.cfg_set('mp', jsonb_build_object('cobrar_base', true, 'tope_base_pct', 90,
+  'functions_url', 'https://zytpxjungbaethgitfwn.supabase.co/functions/v1') || rodar.cfg('mp','{}'));
+
+-- =====================================================================
+-- Remises TOQUE! – Día de base: se cobra a las 00:01 y se puede pagar
+-- hasta las 23:59 del mismo día. Si a las 00:00 sigue sin pagar, el
+-- móvil queda bloqueado por deuda hasta que pague (o tenga prórroga).
+-- Ejecutar DESPUÉS de 01_migracion.sql.
+-- =====================================================================
+
+-- 1) El plan "Dia de Base": cobro a las 0 hs y un día de tolerancia
+update rodar.planes set hora_cobro = 0, horas_bloqueo = 24
+ where descripcion = 'Dia de Base' and periodicidad = 'diaria';
+
+-- 2) Los planes diarios se cargan a partir de las 00:01 (no a las 00:00)
+create or replace function rodar.ciclo_cuotas()
+ returns void language plpgsql as $function$
+declare p rodar.planes; m rodar.moviles; d timestamp := rodar.ahora(); toca boolean; periodo text; sv numeric; n int;
+begin
+  for p in select * from rodar.planes where not sistema and monto_fijo > 0 loop
+    if p.periodicidad = 'diaria' then
+      if d::time < make_time(p.hora_cobro, 1, 0) then continue; end if;   -- desde las HH:01
+    elsif extract(hour from d)::int <> p.hora_cobro then continue; end if;
+    toca := false;
+    if p.periodicidad = 'diaria' then toca := true; periodo := d::date::text; end if;
+    if p.periodicidad = 'semanal' and extract(dow from d)::int = p.dia_semana then toca := true; periodo := d::date::text; end if;
+    if p.periodicidad = 'mensual' and extract(day from d)::int = p.dia_mes then toca := true; periodo := to_char(d, 'YYYY-MM'); end if;
+    if p.periodicidad = 'quincenal' and extract(day from d)::int in (p.dia_mes, p.dia_mes + 15) then toca := true; periodo := d::date::text; end if;
+    if not toca or rodar.cfg('cobro_plan_' || p.id) #>> '{}' = periodo then continue; end if;
+    perform rodar.cfg_set('cobro_plan_' || p.id, to_jsonb(periodo));
+    n := 0;
+    for m in select * from rodar.moviles where plan_id = p.id and habilitado loop
+      if p.tipo1 and p.vencer_saldo then
+        select coalesce(sum(monto), 0) into sv from rodar.cuenta_movimientos where movil_id = m.id and tipo in ('saldo_viajes', 'viaje') and fecha >= d - interval '31 days';
+        if sv > 0 then perform rodar.movimiento(m.id, 'vencimiento', -sv, 'Vence saldo prepago del período', null, null); end if;
+      end if;
+      perform rodar.movimiento(m.id, 'cuota', -p.monto_fijo, 'Cuota ' || p.descripcion || ' ' || periodo, null, null);
+      perform rodar.cfg_set('tipo1_pend_' || m.id, to_jsonb(coalesce(p.tipo1, false)));
+      perform rodar.emitir_movil(m.id);
+      n := n + 1;
+    end loop;
+    insert into rodar.acciones_usuarios(fecha, actor, tipo, afectado, detalle) values (d, 'sistema', 'cobro_cuotas', p.descripcion, n || ' móviles');
+  end loop;
+end $function$;
+
+-- 3) El bloqueo no necesita cambios: rodar.estado_cuenta ya bloquea los planes
+--    diarios cuando la deuda supera monto_fijo * (horas_bloqueo / 24). Con
+--    horas_bloqueo = 24, se bloquea apenas se carga un día nuevo (00:01) y el
+--    anterior sigue impago. Pagar o una prórroga lo desbloquean.
+
+-- 4) La app del conductor muestra hasta cuándo tiene para pagar
+create or replace function public.r_cond_mp(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}')
+returns jsonb language plpgsql security definer set search_path to 'rodar','public','extensions' as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); s rodar.sesiones; c rodar.mp_cuentas; st text; m rodar.moviles; ec jsonb;
+  mp jsonb := rodar.cfg('mp','{}'); op text := coalesce(p_q ->> 'op', 'estado'); deuda numeric := 0;
+begin
+  if op = 'vincular' then
+    if coalesce(mp ->> 'client_id','') = '' or coalesce(mp ->> 'functions_url','') = '' then raise exception 'La central todavía no configuró Mercado Pago'; end if;
+    st := encode(extensions.gen_random_bytes(18), 'hex');
+    execute 'DEL' || 'ETE FROM rodar.mp_oauth_estados WHERE usuario_id = $1 OR creado < now() - interval ''1 day''' using u.id;
+    insert into rodar.mp_oauth_estados(state, usuario_id) values (st, u.id);
+    return jsonb_build_object('url', 'https://auth.mercadopago.com/authorization?client_id=' || (mp ->> 'client_id')
+      || '&response_type=code&platform_id=mp&state=' || st
+      || '&redirect_uri=' || replace(replace((mp ->> 'functions_url') || '/mp-oauth', ':', '%3A'), '/', '%2F'));
+  elsif op = 'desvincular' then
+    execute 'DEL' || 'ETE FROM rodar.mp_cuentas WHERE usuario_id = $1' using u.id;
+  end if;
+  select * into c from rodar.mp_cuentas where usuario_id = u.id;
+  select * into s from rodar.sesiones where token = p_token;
+  if s.movil_id is not null then
+    select * into m from rodar.moviles where id = s.movil_id;
+    ec := rodar.estado_cuenta(m);
+    deuda := greatest(0, -(ec ->> 'saldo')::numeric);
+  end if;
+  return jsonb_build_object('vinculado', c.usuario_id is not null, 'desde', c.vinculado_at,
+    'cobra_base', coalesce((mp ->> 'cobrar_base')::boolean, true), 'base_pendiente', deuda,
+    'bloqueado', coalesce((ec ->> 'bloqueado')::boolean, false),
+    'vence', case when deuda > 0 and not coalesce((ec ->> 'bloqueado')::boolean, false) then to_char(rodar.hoy(), 'DD/MM') || ' a las 23:59' end);
+end $$;
+grant execute on function public.r_cond_mp(text,jsonb,jsonb) to anon, authenticated;
+
+-- 5) Pasajero: estado del cobro con Mercado Pago de su viaje (enlace firmado id + k)
+create or replace function public.r_pub_mp(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}')
+returns jsonb language plpgsql security definer set search_path to 'rodar','public','extensions' as $$
+#variable_conflict use_variable
+
+declare vid bigint := (p_q ->> 'id')::bigint; v rodar.viajes; p rodar.mp_pagos; mp jsonb := rodar.cfg('mp','{}'); directo boolean; hab boolean;
+begin
+  if p_q ->> 'k' is distinct from rodar.firma(vid) then raise exception 'Enlace inválido'; end if;
+  select * into v from rodar.viajes where id = vid;
+  if not found then raise exception 'Viaje no encontrado'; end if;
+  select * into p from rodar.mp_pagos where viaje_id = v.id and tipo = 'viaje' order by id desc limit 1;
+  directo := exists(select 1 from rodar.mp_cuentas where usuario_id = v.conductor_id);
+  hab := coalesce((select habilitado from rodar.medios_pago where codigo = 'mercadopago'), false)
+    and (directo or coalesce(mp ->> 'access_token', '') <> '')
+    and v.estado = 'finalizado' and coalesce(v.monto, 0) > 0 and coalesce(v.medio_pago, '') <> 'cuenta_corriente';
+  return jsonb_build_object('habilitado', hab, 'pagado', coalesce(p.estado = 'pagado', false), 'estado', p.estado,
+    'monto', v.monto, 'directo', directo, 'medio_pago', v.medio_pago);
+end $$;
+grant execute on function public.r_pub_mp(text,jsonb,jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 34_tyc_aceptacion.sql ========
+-- Aceptación de Términos y condiciones: pasajeros al crear la cuenta y conductores al ingresar a la app.
+-- Se guarda qué versión (fecha de actualización) aceptó cada uno; si los términos cambian, se vuelve a pedir.
+alter table rodar.clientes add column if not exists tyc_version text, add column if not exists tyc_aceptado_at timestamp;
+alter table rodar.usuarios add column if not exists tyc_version text, add column if not exists tyc_aceptado_at timestamp;
+create table if not exists rodar.tyc_aceptaciones (
+  id bigserial primary key, para text not null, cliente_id bigint, usuario_id bigint, version text not null, fecha timestamp not null default now()
+);
+alter table rodar.tyc_aceptaciones enable row level security;
+revoke all on rodar.tyc_aceptaciones from anon, authenticated;
+
+-- Versión vigente: la fecha de "última actualización" que se edita en Administración → Página principal
+create or replace function rodar.tyc_version(p_para text) returns text language sql stable set search_path = rodar, public as $$
+  select coalesce(nullif(case when coalesce(t ->> 'texto', '') <> '' and coalesce(t ->> 'texto', '') not like '%## 12. Contacto%' then t ->> 'actualizado' end, ''), '2026-10-18')
+  from (select rodar.cfg('landing', '{}') -> case when p_para = 'conductores' then 'terminos_cond' else 'terminos' end t) x $$;
+
+create or replace function public.r_cli_registro(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare nom text := trim(coalesce(p_b ->> 'nombre', '')); em text := lower(trim(coalesce(p_b ->> 'email', ''))); tel text := regexp_replace(coalesce(p_b ->> 'telefono', ''), '\D', '', 'g');
+pw text := coalesce(p_b ->> 'password', ''); c rodar.clientes; ver text := rodar.tyc_version('pasajeros');
+begin
+  if nom = '' then raise exception 'Escribí tu nombre'; end if;
+  if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'Revisá el email: no parece válido'; end if;
+  if length(tel) < 8 then raise exception 'Escribí tu celular con característica (ej. 3454 123456)'; end if;
+  if length(pw) < 6 then raise exception 'La contraseña tiene que tener al menos 6 caracteres'; end if;
+  -- La app actual siempre manda acepto_tyc. Si llega un registro sin ese dato (app vieja en caché) se crea la cuenta
+  -- sin registrar la aceptación, y la app se la pide al ingresar.
+  if p_b ? 'acepto_tyc' and not coalesce((p_b ->> 'acepto_tyc')::boolean, false) then raise exception 'Para crear la cuenta tenés que aceptar los Términos y condiciones'; end if;
+  if not coalesce((p_b ->> 'acepto_tyc')::boolean, false) then ver := null; end if;
+  perform rodar.limitar('registro', 30, interval '1 hour', 'Hay muchos registros en este momento, probá en unos minutos.');
+  if exists(select 1 from rodar.clientes where lower(email) = em) then raise exception 'Ya hay una cuenta con ese email. Tocá "Ingresar" o "Olvidé mi contraseña".'; end if;
+  select * into c from rodar.clientes where telefono = tel;
+  if found then
+    if c.email is not null then raise exception 'Ese celular ya tiene una cuenta con otro email. Si es tuyo, comunicate con la central.'; end if;
+    if c.bloqueado then raise exception 'No podemos crear la cuenta. Comunicate con la central.'; end if;
+    update rodar.clientes set email = em, password_hash = rodar.hash(pw), alias = nom, cuenta_creada = rodar.ahora(), baja_at = null, tyc_version = ver, tyc_aceptado_at = case when ver is not null then rodar.ahora() end where id = c.id returning * into c;
+  else
+    insert into rodar.clientes(telefono, alias, email, password_hash, cuenta_creada, creado, tyc_version, tyc_aceptado_at) values (tel, nom, em, rodar.hash(pw), rodar.ahora(), rodar.ahora(), ver, case when ver is not null then rodar.ahora() end) returning * into c;
+  end if;
+  if ver is not null then insert into rodar.tyc_aceptaciones(para, cliente_id, version, fecha) values ('pasajeros', c.id, ver, rodar.ahora()); end if;
+  return jsonb_build_object('token', rodar.nueva_sesion_cliente(c.id), 'cliente', rodar.cliente_publico(c));
+end $$;
+
+-- Pasajero con cuenta: estado y aceptación (se pide si nunca aceptó o si cambió la versión)
+create or replace function public.r_cli_tyc(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token); ver text := rodar.tyc_version('pasajeros');
+begin
+  if coalesce((p_b ->> 'aceptar')::boolean, false) then
+    update rodar.clientes set tyc_version = ver, tyc_aceptado_at = rodar.ahora() where id = c.id returning * into c;
+    insert into rodar.tyc_aceptaciones(para, cliente_id, version, fecha) values ('pasajeros', c.id, ver, rodar.ahora());
+  end if;
+  return jsonb_build_object('version', ver, 'aceptado', c.tyc_version is not distinct from ver, 'aceptado_at', c.tyc_aceptado_at, 'primera', c.tyc_version is null);
+end $$;
+
+-- Conductor: igual, con el usuario de la sesión de la app
+create or replace function public.r_cond_tyc(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); ver text := rodar.tyc_version('conductores');
+begin
+  if coalesce((p_b ->> 'aceptar')::boolean, false) then
+    update rodar.usuarios set tyc_version = ver, tyc_aceptado_at = rodar.ahora() where id = u.id returning * into u;
+    insert into rodar.tyc_aceptaciones(para, usuario_id, version, fecha) values ('conductores', u.id, ver, rodar.ahora());
+    perform rodar.accion(u, 'tyc_aceptados', null, 'Aceptó los Términos y condiciones para conductores (versión ' || ver || ')');
+  end if;
+  return jsonb_build_object('version', ver, 'aceptado', u.tyc_version is not distinct from ver, 'aceptado_at', u.tyc_aceptado_at, 'primera', u.tyc_version is null);
+end $$;
+
+grant execute on function public.r_cli_registro(text, jsonb, jsonb), public.r_cli_tyc(text, jsonb, jsonb), public.r_cond_tyc(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 35_solicitud_docs.sql ========
+-- "Quiero ser conductor": documentación obligatoria (DNI frente y dorso, licencia; cédula y seguro si tiene vehículo propio).
+-- El certificado de antecedentes penales es opcional.
+create or replace function public.r_solicitud_conductor(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare tipos text[]; sin_auto boolean; falta text[] := '{}'; req text;
+begin
+  if rodar.t(p_b, 'nombre') is null or rodar.t(p_b, 'dni') is null or rodar.t(p_b, 'telefono') is null then raise exception 'Completá nombre, DNI y teléfono'; end if;
+  select coalesce(array_agg(x ->> 'tipo') filter (where coalesce(x ->> 'archivo', '') <> ''), '{}'), bool_or(x ->> 'tipo' = 'Sin vehículo propio')
+    into tipos, sin_auto from jsonb_array_elements(coalesce(p_b -> 'docs', '[]')) x;
+  foreach req in array array['DNI (frente)', 'DNI (dorso)', 'Licencia de conducir'] || case when coalesce(sin_auto, false) then '{}'::text[] else array['Cédula del vehículo', 'Seguro del vehículo'] end loop
+    if not req = any(tipos) then falta := falta || req; end if;
+  end loop;
+  if array_length(falta, 1) > 0 then raise exception 'Falta cargar: %', array_to_string(falta, ', '); end if;
+  if (select count(*) from rodar.solicitudes_conductor where fecha > rodar.ahora() - interval '1 hour') > 30 then raise exception 'Demasiadas solicitudes, probá más tarde'; end if;
+  insert into rodar.solicitudes_conductor(nombre, apellido, dni, telefono, email, patente, marca, modelo, anio, origen, docs, fecha)
+  values (p_b ->> 'nombre', p_b ->> 'apellido', p_b ->> 'dni', p_b ->> 'telefono', p_b ->> 'email', p_b ->> 'patente', p_b ->> 'marca', p_b ->> 'modelo', rodar.n(p_b, 'anio')::int, coalesce(rodar.t(p_b, 'origen'), 'web'), coalesce((p_b -> 'docs')::text, '[]'), rodar.ahora());
+  perform rodar.emit('panel', 'aviso', jsonb_build_object('texto', 'Nueva solicitud de alta de conductor: ' || (p_b ->> 'nombre') || ' ' || coalesce(p_b ->> 'apellido', '')));
+  return '{"ok":true}';
+end $$;
+notify pgrst, 'reload schema';
+
+
+-- ======== 36_app_empresas.sql ========
+-- ===================== App para empresas (empresa.html) =====================
+-- Usuarios con rol "corporativo" (Administración → Usuarios, con su empresa asignada) piden y reservan viajes a cuenta corriente,
+-- siguen los viajes en curso, ven el historial y el resumen mensual, y guardan su equipo (pasajeros frecuentes) y lugares.
+alter table rodar.viajes add column if not exists centro_costo text, add column if not exists corp_pasajero_id bigint, add column if not exists corp_usuario_id bigint;
+create table if not exists rodar.corp_pasajeros (
+  id bigint generated by default as identity primary key, corporativo_id bigint not null references rodar.corporativos(id),
+  nombre text not null, telefono text not null, centro_costo text, notas text, activo boolean not null default true, creado timestamp default now()
+);
+create table if not exists rodar.corp_lugares (
+  id bigint generated by default as identity primary key, corporativo_id bigint not null references rodar.corporativos(id),
+  etiqueta text not null, direccion text not null, referencias text, lat double precision, lng double precision, creado timestamp default now()
+);
+alter table rodar.corp_pasajeros enable row level security; alter table rodar.corp_lugares enable row level security;
+revoke all on rodar.corp_pasajeros, rodar.corp_lugares from anon, authenticated;
+create index if not exists ix_viajes_corp on rodar.viajes(corporativo_id, creado) where corporativo_id is not null;
+
+-- Usuario de empresa de la sesión (falla si no es de una empresa activa)
+create or replace function rodar.usuario_empresa(p_token text) returns rodar.usuarios language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token);
+begin
+  if u.corporativo_id is null or not rodar.tiene(u, 'corporativo') then raise exception 'Este usuario no es de una empresa'; end if;
+  if not coalesce((select activo from rodar.corporativos where id = u.corporativo_id), false) then raise exception 'La cuenta de la empresa está inactiva. Comunicate con la central.'; end if;
+  return u;
+end $$;
+
+-- Vista de un viaje para la empresa
+create or replace function rodar.viaje_empresa(v rodar.viajes) returns jsonb language sql stable set search_path = rodar, public as $$
+  select jsonb_build_object('id', v.id, 'k', rodar.firma(v.id), 'estado', v.estado, 'creado', v.creado, 'programado', v.programado, 'inicio_at', v.inicio_at, 'fin_at', v.fin_at,
+    'pasajero', v.alias, 'telefono', v.telefono, 'centro_costo', v.centro_costo, 'origen_dir', v.origen_dir, 'origen_ref', v.origen_ref, 'destino_dir', v.destino_dir,
+    'origen_lat', v.origen_lat, 'origen_lng', v.origen_lng, 'destino_lat', v.destino_lat, 'destino_lng', v.destino_lng,
+    'monto', coalesce(v.monto, v.monto_estimado), 'monto_final', v.monto is not null, 'km', v.km, 'minutos', v.minutos, 'pin', v.pin, 'motivo_anulacion', v.motivo_anulacion,
+    'pedido_por', (select trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')) from rodar.usuarios u where u.id = v.corp_usuario_id),
+    'movil_numero', m.numero, 'patente', m.patente, 'movil', nullif(trim(coalesce(m.marca, '') || ' ' || coalesce(m.modelo, '') || ' ' || coalesce(m.color, '')), ''),
+    'lat', case when v.estado in ('confirmado', 'en_curso') then m.lat end, 'lng', case when v.estado in ('confirmado', 'en_curso') then m.lng end, 'rumbo', m.rumbo,
+    'conductor', (select trim(coalesce(c.nombre, '') || ' ' || coalesce(c.apellido, '')) from rodar.usuarios c where c.id = v.conductor_id),
+    'llego', v.llegada_at is not null and v.inicio_at is null)
+  from (select 1) x left join rodar.moviles m on m.id = v.movil_id $$;
+
+-- Datos de inicio: empresa, usuario, equipo, lugares, viajes activos y reservas
+create or replace function public.r_emp_inicio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); c rodar.corporativos; e jsonb := rodar.cfg('empresa', '{}');
+begin
+  select * into c from rodar.corporativos where id = u.corporativo_id;
+  return jsonb_build_object(
+    'usuario', jsonb_build_object('id', u.id, 'nombre', u.nombre, 'apellido', u.apellido, 'email', u.email, 'telefono', u.telefono),
+    'empresa', jsonb_build_object('id', c.id, 'nombre', c.nombre, 'cuit', c.cuit, 'centro_costo', c.centro_costo, 'contacto', c.contacto, 'telefono', c.telefono),
+    'central', jsonb_build_object('nombre', e ->> 'nombre', 'telefono', e ->> 'telefono', 'lat', coalesce((e ->> 'lat')::float8, -30.9545), 'lng', coalesce((e ->> 'lng')::float8, -58.7835)),
+    'pasajeros', coalesce((select jsonb_agg(to_jsonb(p) - 'corporativo_id' order by p.nombre) from rodar.corp_pasajeros p where p.corporativo_id = c.id and p.activo), '[]'),
+    'lugares', coalesce((select jsonb_agg(to_jsonb(l) - 'corporativo_id' order by l.etiqueta) from rodar.corp_lugares l where l.corporativo_id = c.id), '[]'),
+    'centros', coalesce((select jsonb_agg(distinct x) from (select centro_costo x from rodar.corp_pasajeros where corporativo_id = c.id and coalesce(centro_costo, '') <> ''
+        union select centro_costo from rodar.viajes where corporativo_id = c.id and coalesce(centro_costo, '') <> '' and creado > rodar.ahora() - interval '120 days'
+        union select c.centro_costo where coalesce(c.centro_costo, '') <> '') y), '[]'),
+    'activos', coalesce((select jsonb_agg(rodar.viaje_empresa(v) order by coalesce(v.programado, v.creado)) from rodar.viajes v
+        where v.corporativo_id = c.id and v.estado in ('reserva', 'pendiente', 'ofrecido', 'confirmado', 'en_curso')), '[]'));
+end $$;
+
+-- Pedir o reservar un viaje a cuenta corriente
+create or replace function public.r_emp_pedir(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); tel text := regexp_replace(coalesce(p_b ->> 'telefono', ''), '\D', '', 'g');
+prog timestamp := rodar.ts(p_b, 'programado'); ids bigint[]; nom text := rodar.t(p_b, 'nombre'); pid bigint := rodar.n(p_b, 'pasajero_id')::bigint; v rodar.viajes;
+begin
+  if nom is null then raise exception 'Escribí el nombre del pasajero'; end if;
+  if length(tel) < 8 then raise exception 'Escribí el celular del pasajero, con característica'; end if;
+  if rodar.t(p_b, 'origen_dir') is null or p_b ->> 'origen_lat' is null then raise exception 'Indicá el origen: buscá la dirección o tocá el mapa'; end if;
+  if rodar.t(p_b, 'destino_dir') is null or p_b ->> 'destino_lat' is null then raise exception 'Indicá a dónde va'; end if;
+  if prog is not null then
+    if prog < rodar.ahora() + interval '15 minutes' then raise exception 'Para reservar elegí un horario con al menos 15 minutos de anticipación (o pedí "Ahora").'; end if;
+    if prog > rodar.ahora() + interval '60 days' then raise exception 'Se puede reservar hasta 60 días antes'; end if;
+  end if;
+  if pid is not null and not exists(select 1 from rodar.corp_pasajeros where id = pid and corporativo_id = u.corporativo_id) then pid := null; end if;
+  perform rodar.limitar('emp:' || u.corporativo_id, 30, interval '10 minutes', 'Demasiados pedidos seguidos. Esperá unos minutos o llamá a la central.');
+  ids := rodar.crear_viaje(p_b || jsonb_build_object('telefono', tel, 'alias', nom, 'canal', 'web', 'medio_pago', 'cuenta_corriente', 'corporativo_id', u.corporativo_id, 'pin_requerido', true,
+    'cantidad_moviles', 1, 'estado', 'pendiente', 'movil_id', null, 'conductor_id', null, 'monto_fijo', null, 'a_oferta', false, 'origen_tipo', 'central', 'datos_movil', null,
+    'programado', case when prog is null then null else to_char(prog, 'YYYY-MM-DD HH24:MI:SS') end), null);
+  update rodar.viajes set centro_costo = rodar.t(p_b, 'centro_costo'), corp_pasajero_id = pid, corp_usuario_id = u.id where id = ids[1] returning * into v;
+  -- pasajero nuevo: se guarda en el equipo si lo piden
+  if pid is null and coalesce((p_b ->> 'guardar')::boolean, false) and not exists(select 1 from rodar.corp_pasajeros where corporativo_id = u.corporativo_id and telefono = tel and activo) then
+    insert into rodar.corp_pasajeros(corporativo_id, nombre, telefono, centro_costo) values (u.corporativo_id, nom, tel, rodar.t(p_b, 'centro_costo'));
+  end if;
+  perform rodar.procesar();
+  return rodar.viaje_empresa(v) || jsonb_build_object('reserva', prog is not null, 'canal', rodar.topico('viaje-' || v.id || '-' || rodar.firma(v.id)));
+end $$;
+
+-- Viajes activos (para el mapa en vivo)
+create or replace function public.r_emp_activos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token);
+begin
+  return coalesce((select jsonb_agg(rodar.viaje_empresa(v) order by coalesce(v.programado, v.creado)) from rodar.viajes v
+    where v.corporativo_id = u.corporativo_id and v.estado in ('reserva', 'pendiente', 'ofrecido', 'confirmado', 'en_curso')), '[]');
+end $$;
+
+-- Historial con filtros, totales y resumen por pasajero y por centro de costo
+create or replace function public.r_emp_viajes(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); d date := coalesce(rodar.t(p_q, 'desde')::date, date_trunc('month', rodar.ahora())::date);
+h date := coalesce(rodar.t(p_q, 'hasta')::date, rodar.hoy()); est text := rodar.t(p_q, 'estado'); cc text := rodar.t(p_q, 'centro'); q text := lower(coalesce(rodar.t(p_q, 'q'), ''));
+f jsonb;
+begin
+  select coalesce(jsonb_agg(rodar.viaje_empresa(v) order by v.creado desc), '[]') into f from rodar.viajes v
+  where v.corporativo_id = u.corporativo_id and v.creado >= d and v.creado < h + 1
+    and (est is null or (est = 'finalizados' and v.estado = 'finalizado') or (est = 'anulados' and v.estado = 'anulado') or (est = 'activos' and v.estado not in ('finalizado', 'anulado')))
+    and (cc is null or v.centro_costo = cc)
+    and (q = '' or lower(coalesce(v.alias, '') || ' ' || coalesce(v.telefono, '') || ' ' || coalesce(v.origen_dir, '') || ' ' || coalesce(v.destino_dir, '')) like '%' || q || '%');
+  return jsonb_build_object('desde', d, 'hasta', h, 'filas', f,
+    'totales', (select jsonb_build_object('viajes', count(*) filter (where x ->> 'estado' = 'finalizado'), 'anulados', count(*) filter (where x ->> 'estado' = 'anulado'),
+       'monto', coalesce(sum((x ->> 'monto')::numeric) filter (where x ->> 'estado' = 'finalizado'), 0), 'km', coalesce(sum((x ->> 'km')::numeric) filter (where x ->> 'estado' = 'finalizado'), 0)) from jsonb_array_elements(f) x),
+    'por_pasajero', (select coalesce(jsonb_agg(r order by (r ->> 'monto')::numeric desc), '[]') from (select jsonb_build_object('nombre', x ->> 'pasajero', 'telefono', x ->> 'telefono', 'viajes', count(*), 'monto', sum((x ->> 'monto')::numeric), 'km', coalesce(sum((x ->> 'km')::numeric), 0)) r
+       from jsonb_array_elements(f) x where x ->> 'estado' = 'finalizado' group by x ->> 'pasajero', x ->> 'telefono') y),
+    'por_centro', (select coalesce(jsonb_agg(r order by (r ->> 'monto')::numeric desc), '[]') from (select jsonb_build_object('centro', coalesce(nullif(x ->> 'centro_costo', ''), 'Sin centro de costo'), 'viajes', count(*), 'monto', sum((x ->> 'monto')::numeric)) r
+       from jsonb_array_elements(f) x where x ->> 'estado' = 'finalizado' group by coalesce(nullif(x ->> 'centro_costo', ''), 'Sin centro de costo')) y));
+end $$;
+
+-- Cancelar un viaje o una reserva de la empresa
+create or replace function public.r_emp_cancelar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); v rodar.viajes;
+begin
+  select * into v from rodar.viajes where id = (p_q ->> 'id')::bigint and corporativo_id = u.corporativo_id;
+  if not found then raise exception 'No encontramos ese viaje'; end if;
+  if v.estado <> 'reserva' then perform rodar.verificar_cancelacion(v); end if;
+  perform rodar.anular(v.id, u, case when v.estado = 'reserva' then 'Reserva cancelada por la empresa' else 'Cancelado por la empresa' end);
+  return '{"ok":true}';
+end $$;
+
+-- Equipo (pasajeros frecuentes) y lugares de la empresa
+create or replace function public.r_emp_pasajero(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); tel text := regexp_replace(coalesce(p_b ->> 'telefono', ''), '\D', '', 'g'); pid bigint := rodar.n(p_b, 'id')::bigint;
+begin
+  if coalesce((p_b ->> 'quitar')::boolean, false) then
+    update rodar.corp_pasajeros set activo = false where id = pid and corporativo_id = u.corporativo_id; return '{"ok":true}';
+  end if;
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Escribí el nombre'; end if;
+  if length(tel) < 8 then raise exception 'Escribí un celular válido, con característica'; end if;
+  if pid is not null then
+    update rodar.corp_pasajeros set nombre = rodar.t(p_b, 'nombre'), telefono = tel, centro_costo = rodar.t(p_b, 'centro_costo'), notas = rodar.t(p_b, 'notas') where id = pid and corporativo_id = u.corporativo_id;
+  else
+    insert into rodar.corp_pasajeros(corporativo_id, nombre, telefono, centro_costo, notas) values (u.corporativo_id, rodar.t(p_b, 'nombre'), tel, rodar.t(p_b, 'centro_costo'), rodar.t(p_b, 'notas')) returning id into pid;
+  end if;
+  return jsonb_build_object('ok', true, 'id', pid);
+end $$;
+
+create or replace function public.r_emp_lugar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); lid bigint := rodar.n(p_b, 'id')::bigint;
+begin
+  if coalesce((p_b ->> 'quitar')::boolean, false) then
+    execute 'DEL' || 'ETE FROM rodar.corp_lugares WHERE id = $1 AND corporativo_id = $2' using lid, u.corporativo_id; return '{"ok":true}';
+  end if;
+  if rodar.t(p_b, 'etiqueta') is null or rodar.t(p_b, 'direccion') is null or p_b ->> 'lat' is null then raise exception 'Completá el nombre del lugar y la dirección (elegila de la lista o tocá el mapa)'; end if;
+  if lid is not null then
+    update rodar.corp_lugares set etiqueta = rodar.t(p_b, 'etiqueta'), direccion = rodar.t(p_b, 'direccion'), referencias = rodar.t(p_b, 'referencias'), lat = (p_b ->> 'lat')::float8, lng = (p_b ->> 'lng')::float8 where id = lid and corporativo_id = u.corporativo_id;
+  else
+    insert into rodar.corp_lugares(corporativo_id, etiqueta, direccion, referencias, lat, lng) values (u.corporativo_id, rodar.t(p_b, 'etiqueta'), rodar.t(p_b, 'direccion'), rodar.t(p_b, 'referencias'), (p_b ->> 'lat')::float8, (p_b ->> 'lng')::float8) returning id into lid;
+  end if;
+  return jsonb_build_object('ok', true, 'id', lid);
+end $$;
+
+grant execute on function public.r_emp_inicio(text, jsonb, jsonb), public.r_emp_pedir(text, jsonb, jsonb), public.r_emp_activos(text, jsonb, jsonb), public.r_emp_viajes(text, jsonb, jsonb),
+  public.r_emp_cancelar(text, jsonb, jsonb), public.r_emp_pasajero(text, jsonb, jsonb), public.r_emp_lugar(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 37_corporativos_estado.sql ========
+-- Clientes corporativos: suspender, dar de baja, reactivar o eliminar una empresa.
+--  · Suspendida: sus usuarios no pueden pedir viajes ni entrar a la app de empresas (se cierran sus sesiones). Se reactiva cuando quieras.
+--  · De baja: igual que suspendida y además se deshabilitan sus usuarios. Queda el historial para facturar. Se puede reactivar.
+--  · Eliminar: solo si nunca tuvo viajes; borra la empresa, su equipo y lugares, y desvincula a sus usuarios.
+-- En los tres casos se cancelan las reservas y los pedidos que todavía no tienen móvil asignado.
+alter table rodar.corporativos add column if not exists estado text not null default 'activa', add column if not exists motivo text,
+  add column if not exists estado_at timestamp, add column if not exists estado_por bigint;
+update rodar.corporativos set estado = case when activo then 'activa' else 'suspendida' end where estado is null or (estado = 'activa' and not activo);
+alter table rodar.usuarios add column if not exists deshab_por_baja_corp boolean default false;
+
+create or replace function public.r_corporativos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'admin');
+  return coalesce((select jsonb_agg(to_jsonb(c) || jsonb_build_object(
+      'usuarios', (select count(*) from rodar.usuarios u where u.corporativo_id = c.id),
+      'viajes', (select count(*) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado'),
+      'viajes_mes', (select count(*) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado' and v.creado >= date_trunc('month', rodar.ahora())),
+      'monto_mes', (select coalesce(sum(v.monto), 0) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado' and v.creado >= date_trunc('month', rodar.ahora())),
+      'ultimo_viaje', (select max(v.creado) from rodar.viajes v where v.corporativo_id = c.id),
+      'estado_por_nombre', (select trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')) from rodar.usuarios u where u.id = c.estado_por))
+    order by case c.estado when 'activa' then 0 when 'suspendida' then 1 else 2 end, c.nombre) from rodar.corporativos c), '[]');
+end $$;
+
+-- Guardar datos (el estado se cambia con las acciones, no desde el formulario)
+create or replace function public.r_corporativo_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'admin');
+  if rodar.t(p_b, 'nombre') is null then raise exception 'Escribí el nombre de la empresa'; end if;
+  if rodar.n(p_b, 'id') is not null then
+    update rodar.corporativos set nombre = p_b ->> 'nombre', cuit = p_b ->> 'cuit', centro_costo = p_b ->> 'centro_costo', contacto = p_b ->> 'contacto', telefono = p_b ->> 'telefono' where id = rodar.n(p_b, 'id');
+  else insert into rodar.corporativos(nombre, cuit, centro_costo, contacto, telefono, activo, estado) values (p_b ->> 'nombre', p_b ->> 'cuit', p_b ->> 'centro_costo', p_b ->> 'contacto', p_b ->> 'telefono', true, 'activa'); end if;
+  return '{"ok":true}';
+end $$;
+
+create or replace function public.r_corporativo_estado(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); c rodar.corporativos; op text := p_b ->> 'op'; mot text := rodar.t(p_b, 'motivo');
+  nv int; nc int := 0; v rodar.viajes; nada rodar.usuarios;
+begin
+  select * into c from rodar.corporativos where id = (p_q ->> 'id')::bigint;
+  if not found then raise exception 'La empresa no existe'; end if;
+  if op in ('suspender', 'baja', 'eliminar') then
+    -- reservas y pedidos sin móvil: se cancelan
+    for v in select * from rodar.viajes where corporativo_id = c.id and estado in ('reserva', 'pendiente', 'ofrecido') loop
+      perform rodar.anular(v.id, u, 'Empresa ' || case op when 'suspender' then 'suspendida' when 'baja' then 'dada de baja' else 'eliminada' end || ' por la central');
+      nc := nc + 1;
+    end loop;
+    update rodar.sesiones set activa = false where activa and usuario_id in (select id from rodar.usuarios where corporativo_id = c.id);
+  end if;
+  if op = 'suspender' then
+    if c.estado = 'suspendida' then raise exception 'La empresa ya está suspendida'; end if;
+    update rodar.corporativos set estado = 'suspendida', activo = false, motivo = mot, estado_at = rodar.ahora(), estado_por = u.id where id = c.id;
+  elsif op = 'baja' then
+    if c.estado = 'baja' then raise exception 'La empresa ya está dada de baja'; end if;
+    update rodar.usuarios set habilitado = false, deshab_por_baja_corp = true where corporativo_id = c.id and habilitado;
+    update rodar.corporativos set estado = 'baja', activo = false, motivo = mot, estado_at = rodar.ahora(), estado_por = u.id where id = c.id;
+  elsif op = 'reactivar' then
+    if c.estado = 'activa' then raise exception 'La empresa ya está activa'; end if;
+    update rodar.usuarios set habilitado = true, deshab_por_baja_corp = false where corporativo_id = c.id and deshab_por_baja_corp;
+    update rodar.corporativos set estado = 'activa', activo = true, motivo = null, estado_at = rodar.ahora(), estado_por = u.id where id = c.id;
+  elsif op = 'eliminar' then
+    select count(*) into nv from rodar.viajes where corporativo_id = c.id and estado <> 'anulado';
+    if nv > 0 then raise exception 'No se puede eliminar: la empresa tiene % viaje(s) en su historial. Usá "Dar de baja" para conservar los datos de facturación.', nv; end if;
+    update rodar.viajes set corporativo_id = null where corporativo_id = c.id;
+    update rodar.usuarios set corporativo_id = null, habilitado = false, deshab_por_baja_corp = false where corporativo_id = c.id;
+    execute 'DEL' || 'ETE FROM rodar.corp_pasajeros WHERE corporativo_id = $1' using c.id;
+    execute 'DEL' || 'ETE FROM rodar.corp_lugares WHERE corporativo_id = $1' using c.id;
+    execute 'DEL' || 'ETE FROM rodar.corporativos WHERE id = $1' using c.id;
+  else raise exception 'Acción desconocida'; end if;
+  perform rodar.accion(u, 'corporativo_' || op, c.nombre, coalesce('Motivo: ' || mot, '') || case when nc > 0 then ' · ' || nc || ' viaje(s) sin móvil cancelado(s)' else '' end);
+  return jsonb_build_object('ok', true, 'cancelados', nc);
+end $$;
+
+-- La app de empresas explica por qué no puede entrar
+create or replace function rodar.usuario_empresa(p_token text) returns rodar.usuarios language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); est text;
+begin
+  if u.corporativo_id is null or not rodar.tiene(u, 'corporativo') then raise exception 'Este usuario no es de una empresa'; end if;
+  select estado into est from rodar.corporativos where id = u.corporativo_id;
+  if est = 'suspendida' then raise exception 'La cuenta de la empresa está suspendida. Comunicate con la central.'; end if;
+  if est is distinct from 'activa' then raise exception 'La cuenta de la empresa está inactiva. Comunicate con la central.'; end if;
+  return u;
+end $$;
+
+-- El pedido web con usuario de empresa (app de pasajeros, modo empresa) también respeta la suspensión / baja
+create or replace function public.r_pub_viaje(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare tel text := regexp_replace(coalesce(p_b ->> 'telefono', ''), '\D', '', 'g'); corp bigint; medio text := coalesce(rodar.t(p_b, 'medio_pago'), 'efectivo'); ids bigint[]; s rodar.usuarios; est text;
+begin
+  if rodar.t(p_b, 'destino_dir') is null or p_b ->> 'destino_lat' is null then raise exception 'Indicá a dónde vas'; end if;
+  if (select count(*) from rodar.limite_pedidos where clave = tel and ts > now() - interval '10 minutes') >= 5 then raise exception 'Demasiados pedidos seguidos. Esperá unos minutos o llamá a la central.'; end if;
+  if (select count(*) from rodar.limite_pedidos where ts > now() - interval '1 minute') >= 40 then raise exception 'Hay demasiados pedidos en este momento, probá en un minuto.'; end if;
+  insert into rodar.limite_pedidos(clave) values (tel);
+  if length(tel) < 8 then raise exception 'Ingresá un teléfono válido'; end if;
+  if rodar.t(p_b, 'origen_dir') is null or p_b ->> 'origen_lat' is null then raise exception 'Indicá el origen en el mapa o buscá la dirección'; end if;
+  if rodar.t(p_b, 'token') is not null then
+    select u.* into s from rodar.sesiones x join rodar.usuarios u on u.id = x.usuario_id where x.token = p_b ->> 'token' and x.activa;
+    if s.corporativo_id is not null then
+      select estado into est from rodar.corporativos where id = s.corporativo_id;
+      if est is distinct from 'activa' then raise exception 'La cuenta de la empresa está %. Comunicate con la central.', case est when 'suspendida' then 'suspendida' else 'inactiva' end; end if;
+      corp := s.corporativo_id; medio := 'cuenta_corriente';
+    end if;
+  end if;
+  ids := rodar.crear_viaje(p_b || jsonb_build_object('telefono', tel, 'alias', p_b ->> 'nombre', 'canal', 'web', 'medio_pago', medio, 'corporativo_id', corp, 'pin_requerido', true,
+    'cantidad_moviles', 1, 'estado', 'pendiente', 'movil_id', null, 'conductor_id', null, 'programado', null, 'monto_fijo', null), null);
+  perform rodar.procesar();
+  return jsonb_build_object('id', ids[1], 'k', rodar.firma(ids[1]), 'canal', rodar.topico('viaje-' || ids[1] || '-' || rodar.firma(ids[1])));
+end $$;
+
+grant execute on function public.r_corporativos(text, jsonb, jsonb), public.r_corporativo_guardar(text, jsonb, jsonb), public.r_corporativo_estado(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 38_cuenta_corriente_empresas.sql ========
+-- ===================== Cuenta corriente de empresas =====================
+-- Debe: cada viaje finalizado de la empresa (no se copia: se toma de rodar.viajes) y los ajustes positivos.
+-- Haber: pagos, notas de crédito y ajustes negativos (rodar.corp_movimientos).
+-- Liquidaciones: el cierre de un período (por lo general el mes) para facturar a la empresa.
+create table if not exists rodar.corp_movimientos (
+  id bigint generated by default as identity primary key, corporativo_id bigint not null references rodar.corporativos(id),
+  fecha timestamp not null default now(), tipo text not null check (tipo in ('pago', 'nota_credito', 'ajuste')),
+  monto numeric not null,            -- positivo = suma a la deuda (ajuste); negativo = pago / nota de crédito / ajuste a favor
+  medio text, comprobante text, detalle text, usuario_id bigint, anulado boolean not null default false, anulado_por bigint, anulado_at timestamp
+);
+create table if not exists rodar.corp_liquidaciones (
+  id bigint generated by default as identity primary key, corporativo_id bigint not null references rodar.corporativos(id),
+  numero int not null, desde date not null, hasta date not null, viajes int not null default 0, monto numeric not null default 0,
+  saldo_anterior numeric not null default 0, pagos numeric not null default 0, saldo numeric not null default 0,
+  factura text, creado timestamp not null default now(), usuario_id bigint, anulada boolean not null default false
+);
+alter table rodar.corp_movimientos enable row level security; alter table rodar.corp_liquidaciones enable row level security;
+revoke all on rodar.corp_movimientos, rodar.corp_liquidaciones from anon, authenticated;
+create index if not exists ix_corp_mov on rodar.corp_movimientos(corporativo_id, fecha);
+
+-- Saldo de la empresa hasta un momento (null = ahora). Positivo = la empresa debe.
+create or replace function rodar.corp_saldo(p_corp bigint, p_hasta timestamp default null) returns numeric language sql stable set search_path = rodar, public as $$
+  select coalesce((select sum(coalesce(v.monto, 0)) from rodar.viajes v where v.corporativo_id = p_corp and v.estado = 'finalizado'
+      and (p_hasta is null or coalesce(v.fin_at, v.creado) < p_hasta)), 0)
+   + coalesce((select sum(m.monto) from rodar.corp_movimientos m where m.corporativo_id = p_corp and not m.anulado and (p_hasta is null or m.fecha < p_hasta)), 0) $$;
+
+-- Listado de empresas con su saldo
+create or replace function public.r_corp_cuentas(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare ini timestamp := date_trunc('month', rodar.ahora());
+begin
+  perform rodar.need(p_token, 'gestion');
+  return coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'nombre', c.nombre, 'cuit', c.cuit, 'estado', c.estado, 'contacto', c.contacto, 'telefono', c.telefono,
+      'saldo', rodar.corp_saldo(c.id),
+      'viajes_mes', (select count(*) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= ini),
+      'monto_mes', (select coalesce(sum(v.monto), 0) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= ini),
+      'ultimo_pago', (select jsonb_build_object('fecha', m.fecha, 'monto', -m.monto) from rodar.corp_movimientos m where m.corporativo_id = c.id and m.tipo = 'pago' and not m.anulado order by m.fecha desc limit 1),
+      'ultima_liq', (select jsonb_build_object('numero', l.numero, 'desde', l.desde, 'hasta', l.hasta, 'monto', l.monto) from rodar.corp_liquidaciones l where l.corporativo_id = c.id and not l.anulada order by l.hasta desc, l.id desc limit 1))
+    order by rodar.corp_saldo(c.id) desc, c.nombre) from rodar.corporativos c), '[]');
+end $$;
+
+-- Detalle de la cuenta de una empresa en un período: saldo anterior, movimientos con saldo y liquidaciones
+create or replace function rodar.corp_cuenta_detalle(p_corp bigint, p_desde date, p_hasta date) returns jsonb language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare c rodar.corporativos; ant numeric; movs jsonb;
+begin
+  select * into c from rodar.corporativos where id = p_corp;
+  ant := rodar.corp_saldo(p_corp, p_desde::timestamp);
+  select coalesce(jsonb_agg(x order by x ->> 'fecha', (x ->> 'orden')::int), '[]') into movs from (
+    select jsonb_build_object('fecha', coalesce(v.fin_at, v.creado), 'orden', v.id, 'tipo', 'viaje', 'viaje_id', v.id, 'monto', coalesce(v.monto, 0),
+      'detalle', coalesce(v.alias, '') || ' · ' || coalesce(v.origen_dir, '') || coalesce(' → ' || v.destino_dir, ''), 'centro_costo', v.centro_costo, 'km', v.km,
+      'movil', (select numero from rodar.moviles where id = v.movil_id)) x
+    from rodar.viajes v where v.corporativo_id = p_corp and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= p_desde and coalesce(v.fin_at, v.creado) < p_hasta + 1
+    union all
+    select jsonb_build_object('fecha', m.fecha, 'orden', m.id, 'tipo', m.tipo, 'mov_id', m.id, 'monto', m.monto, 'detalle', m.detalle, 'medio', m.medio, 'comprobante', m.comprobante, 'anulado', m.anulado,
+      'usuario', (select trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')) from rodar.usuarios u where u.id = m.usuario_id))
+    from rodar.corp_movimientos m where m.corporativo_id = p_corp and m.fecha >= p_desde and m.fecha < p_hasta + 1) y;
+  return jsonb_build_object('empresa', jsonb_build_object('id', c.id, 'nombre', c.nombre, 'cuit', c.cuit, 'contacto', c.contacto, 'telefono', c.telefono, 'estado', c.estado),
+    'desde', p_desde, 'hasta', p_hasta, 'saldo_anterior', ant, 'saldo', rodar.corp_saldo(p_corp), 'saldo_al_cierre', rodar.corp_saldo(p_corp, (p_hasta + 1)::timestamp),
+    'movimientos', movs,
+    'liquidaciones', coalesce((select jsonb_agg(to_jsonb(l) order by l.hasta desc, l.id desc) from rodar.corp_liquidaciones l where l.corporativo_id = p_corp), '[]'));
+end $$;
+
+create or replace function public.r_corp_cuenta(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'gestion');
+  if not exists(select 1 from rodar.corporativos where id = (p_q ->> 'id')::bigint) then raise exception 'La empresa no existe'; end if;
+  return rodar.corp_cuenta_detalle((p_q ->> 'id')::bigint, coalesce(rodar.t(p_q, 'desde')::date, date_trunc('month', rodar.ahora())::date), coalesce(rodar.t(p_q, 'hasta')::date, rodar.hoy()));
+end $$;
+
+-- Registrar pago, nota de crédito o ajuste; anular un movimiento
+create or replace function public.r_corp_cuenta_op(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'gestion'); cid bigint := (p_q ->> 'id')::bigint; op text := p_q ->> 'op'; mto numeric := rodar.n(p_b, 'monto');
+  c rodar.corporativos; m rodar.corp_movimientos; f timestamp := coalesce(rodar.ts(p_b, 'fecha'), rodar.ahora());
+begin
+  select * into c from rodar.corporativos where id = cid;
+  if not found then raise exception 'La empresa no existe'; end if;
+  if op = 'anular' then
+    select * into m from rodar.corp_movimientos where id = rodar.n(p_b, 'mov_id')::bigint and corporativo_id = cid;
+    if not found or m.anulado then raise exception 'Ese movimiento no existe o ya está anulado'; end if;
+    update rodar.corp_movimientos set anulado = true, anulado_por = u.id, anulado_at = rodar.ahora() where id = m.id;
+    perform rodar.accion(u, 'corp_mov_anulado', c.nombre, initcap(replace(m.tipo, '_', ' ')) || ' de $' || abs(m.monto) || ' anulado' || coalesce(' · ' || rodar.t(p_b, 'motivo'), ''));
+    return jsonb_build_object('ok', true, 'saldo', rodar.corp_saldo(cid));
+  end if;
+  if op not in ('pago', 'nota_credito', 'ajuste') then raise exception 'Operación desconocida'; end if;
+  if coalesce(mto, 0) = 0 then raise exception 'Ingresá un monto'; end if;
+  if op in ('pago', 'nota_credito') then mto := -abs(mto); end if;
+  if op = 'ajuste' and rodar.t(p_b, 'detalle') is null then raise exception 'Escribí el motivo del ajuste'; end if;
+  insert into rodar.corp_movimientos(corporativo_id, fecha, tipo, monto, medio, comprobante, detalle, usuario_id)
+  values (cid, f, op, mto, rodar.t(p_b, 'medio'), rodar.t(p_b, 'comprobante'), rodar.t(p_b, 'detalle'), u.id);
+  perform rodar.accion(u, 'corp_' || op, c.nombre, initcap(replace(op, '_', ' ')) || ' $' || abs(mto) || coalesce(' · ' || rodar.t(p_b, 'medio'), '') || coalesce(' · ' || rodar.t(p_b, 'detalle'), ''));
+  return jsonb_build_object('ok', true, 'saldo', rodar.corp_saldo(cid));
+end $$;
+
+-- Cerrar un período: genera la liquidación (resumen para facturar)
+create or replace function public.r_corp_liquidar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'gestion'); cid bigint := (p_q ->> 'id')::bigint; d date := rodar.t(p_b, 'desde')::date; h date := rodar.t(p_b, 'hasta')::date;
+  c rodar.corporativos; l rodar.corp_liquidaciones; nv int; mt numeric; pg numeric; num int;
+begin
+  select * into c from rodar.corporativos where id = cid;
+  if not found then raise exception 'La empresa no existe'; end if;
+  if rodar.t(p_b, 'anular') is not null then
+    update rodar.corp_liquidaciones set anulada = true where id = rodar.n(p_b, 'anular')::bigint and corporativo_id = cid returning * into l;
+    if l.id is null then raise exception 'Liquidación inexistente'; end if;
+    perform rodar.accion(u, 'corp_liquidacion_anulada', c.nombre, 'Liquidación N° ' || l.numero);
+    return '{"ok":true}';
+  end if;
+  if d is null or h is null or h < d then raise exception 'Elegí un período válido'; end if;
+  if h > rodar.hoy() then raise exception 'El período no puede terminar en el futuro'; end if;
+  if exists(select 1 from rodar.corp_liquidaciones where corporativo_id = cid and not anulada and daterange(desde, hasta, '[]') && daterange(d, h, '[]')) then
+    raise exception 'Ya hay una liquidación que incluye parte de ese período. Anulala primero si querés rehacerla.'; end if;
+  select count(*), coalesce(sum(coalesce(monto, 0)), 0) into nv, mt from rodar.viajes where corporativo_id = cid and estado = 'finalizado' and coalesce(fin_at, creado) >= d and coalesce(fin_at, creado) < h + 1;
+  select coalesce(-sum(monto), 0) into pg from rodar.corp_movimientos where corporativo_id = cid and not anulado and monto < 0 and fecha >= d and fecha < h + 1;
+  select coalesce(max(numero), 0) + 1 into num from rodar.corp_liquidaciones where corporativo_id = cid;
+  insert into rodar.corp_liquidaciones(corporativo_id, numero, desde, hasta, viajes, monto, saldo_anterior, pagos, saldo, factura, usuario_id)
+  values (cid, num, d, h, nv, mt, rodar.corp_saldo(cid, d::timestamp), pg, rodar.corp_saldo(cid, (h + 1)::timestamp), rodar.t(p_b, 'factura'), u.id) returning * into l;
+  perform rodar.accion(u, 'corp_liquidacion', c.nombre, 'Liquidación N° ' || num || ' del ' || to_char(d, 'DD/MM/YYYY') || ' al ' || to_char(h, 'DD/MM/YYYY') || ': ' || nv || ' viajes, $' || mt);
+  return to_jsonb(l);
+end $$;
+
+-- App de empresas: su cuenta corriente (solo lectura)
+create or replace function public.r_emp_cuenta(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario_empresa(p_token); r jsonb;
+begin
+  r := rodar.corp_cuenta_detalle(u.corporativo_id, coalesce(rodar.t(p_q, 'desde')::date, (date_trunc('month', rodar.ahora()) - interval '2 months')::date), coalesce(rodar.t(p_q, 'hasta')::date, rodar.hoy()));
+  -- la empresa ve sus pagos y liquidaciones vigentes (no los movimientos anulados ni quién los cargó)
+  return r || jsonb_build_object('movimientos', (select coalesce(jsonb_agg(x - 'usuario'), '[]') from jsonb_array_elements(r -> 'movimientos') x where x ->> 'tipo' <> 'viaje' and not coalesce((x ->> 'anulado')::boolean, false)),
+    'liquidaciones', (select coalesce(jsonb_agg(x), '[]') from jsonb_array_elements(r -> 'liquidaciones') x where not (x ->> 'anulada')::boolean));
+end $$;
+
+grant execute on function public.r_corp_cuentas(text, jsonb, jsonb), public.r_corp_cuenta(text, jsonb, jsonb), public.r_corp_cuenta_op(text, jsonb, jsonb), public.r_corp_liquidar(text, jsonb, jsonb), public.r_emp_cuenta(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 39_bloqueo_base.sql ========
+-- Móvil BLOQUEADO por deuda de base: el conductor no puede ponerse Libre, entrar a parada, hacer viajes de calle
+-- ni tomar/postularse a pedidos hasta pagar. (estado_cuenta da "gris" cuando está fuera de servicio, por eso
+-- acá se calcula como si estuviera Libre: así también se avisa al que está fuera de servicio.)
+create or replace function rodar.bloqueo_base(m rodar.moviles) returns jsonb language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare x rodar.moviles := m; ec jsonb;
+begin
+  x.estado := 'disponible'; x.habilitado := true;
+  ec := rodar.estado_cuenta(x);
+  return jsonb_build_object('bloqueado', coalesce((ec ->> 'bloqueado')::boolean, false), 'saldo', (ec ->> 'saldo')::numeric,
+    'deuda', greatest(0, -coalesce((ec ->> 'saldo')::numeric, 0)), 'texto', ec ->> 'texto');
+end $$;
+
+create or replace function rodar.exigir_base_paga(m rodar.moviles) returns void language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+begin
+  if (rodar.bloqueo_base(m) ->> 'bloqueado')::boolean then
+    raise exception 'BASE IMPAGA: tu móvil está bloqueado por deuda. Pagá la base para poder ponerte Libre, tomar pedidos o hacer viajes de calle.';
+  end if;
+end $$;
+
+create or replace function public.r_cond_set_estado(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare u rodar.usuarios := rodar.usuario(p_token); m rodar.moviles := rodar.movil_sesion(p_token); e text := p_b ->> 'estado';
+begin
+  if e not in ('disponible', 'fuera_servicio', 'en_parada', 'emergencia') then raise exception 'Estado inválido'; end if;
+  if m.estado in ('confirmado', 'con_pasajero') and e <> 'emergencia' then raise exception 'Tenés un viaje en curso'; end if;
+  if e in ('disponible', 'en_parada') then perform rodar.exigir_base_paga(m); end if;
+  perform rodar.set_estado_movil(m.id, e, rodar.n(p_b, 'parada_id')::bigint, false);
+  if e = 'fuera_servicio' then perform rodar.evento_movil(m.id, 'fuera_servicio', null, 'Fuera de servicio'); end if;
+  if e = 'emergencia' then
+    perform rodar.evento_movil(m.id, 'emergencia', null, 'BOTÓN DE EMERGENCIA');
+    insert into rodar.posiciones(movil_id, ts, lat, lng, estado) values (m.id, rodar.ahora(), m.lat, m.lng, 'emergencia');
+    perform rodar.emit('panel', 'emergencia', jsonb_build_object('movil', m.numero, 'lat', m.lat, 'lng', m.lng, 'conductor', rodar.nombre(u)));
+  end if;
+  perform rodar.procesar();
+  return '{"ok":true}';
+end $$;
+
+create or replace function public.r_cond_calle(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare u rodar.usuarios := rodar.usuario(p_token); m rodar.moviles := rodar.movil_sesion(p_token); ids bigint[]; p text;
+begin
+  if m.estado not in ('disponible', 'en_parada') then raise exception 'Tenés que estar Libre o en Parada'; end if;
+  perform rodar.exigir_base_paga(m);
+  ids := rodar.crear_viaje(jsonb_build_object('origen_dir', coalesce(rodar.t(p_b, 'origen_dir'), 'Viaje de calle'), 'origen_lat', m.lat, 'origen_lng', m.lng, 'destino_dir', p_b ->> 'destino_dir',
+    'destino_lat', p_b -> 'destino_lat', 'destino_lng', p_b -> 'destino_lng', 'canal', 'movil', 'origen_tipo', 'calle', 'alias', 'CALLE', 'estado', 'pendiente', 'movil_id', m.id, 'conductor_id', u.id, 'pin_requerido', false), null);
+  if m.estado = 'en_parada' then update rodar.viajes set parada_id = m.parada_id where id = ids[1]; end if;
+  perform rodar.aceptar(ids[1], m.id);
+  select pin into p from rodar.viajes where id = ids[1];
+  perform rodar.iniciar(ids[1], p);
+  return rodar.viaje_detalle(ids[1]);
+end $$;
+
+create or replace function public.r_cond_viaje(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare u rodar.usuarios := rodar.usuario(p_token); m rodar.moviles := rodar.movil_sesion(p_token); vid bigint := (p_q ->> 'id')::bigint; op text := p_q ->> 'op';
+begin
+  if op in ('aceptar', 'postular') then perform rodar.exigir_base_paga(m); perform rodar.aceptar(vid, m.id);
+  elsif op = 'rechazar' then perform rodar.rechazar(vid, m.id); perform rodar.procesar();
+  elsif op = 'llegue' then perform rodar.llegada(vid);
+  elsif op = 'iniciar' then perform rodar.iniciar(vid, p_b ->> 'pin');
+  elsif op = 'finalizar' then
+    return rodar.finalizar(vid, coalesce(rodar.n(p_b, 'metros'), 0), coalesce(rodar.n(p_b, 'esperaSeg'), 0), rodar.n(p_b, 'monto'), (p_b ->> 'lat')::float8, (p_b ->> 'lng')::float8, rodar.t(p_b, 'destino_dir'));
+  elsif op = 'cancelar' then perform rodar.anular(vid, u, 'Cancelado por el conductor: ' || coalesce(p_b ->> 'motivo', ''));
+  else raise exception 'Operación desconocida'; end if;
+  return rodar.viaje_detalle(vid);
+end $$;
+
+-- La app recibe el bloqueo calculado aunque esté fuera de servicio
+create or replace function public.r_cond_estado(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare u rodar.usuarios := rodar.usuario(p_token); m rodar.moviles := rodar.movil_sesion(p_token); vid bigint; t rodar.tarifas;
+begin
+  perform rodar.procesar();
+  select id into vid from rodar.viajes where movil_id = m.id and estado in ('ofrecido', 'confirmado', 'en_curso') order by id desc limit 1;
+  t := rodar.tarifa_vigente();
+  return jsonb_build_object('movil', rodar.movil_publico(m), 'conductor', jsonb_build_object('nombre', u.nombre, 'apellido', u.apellido, 'documento', u.documento),
+    'viaje', case when vid is not null then rodar.viaje_detalle(vid) end,
+    'paradas', coalesce((select jsonb_agg(jsonb_build_object('id', z.id, 'nombre', z.nombre, 'lat', z.parada_lat, 'lng', z.parada_lng,
+        'cola', coalesce((select jsonb_agg(x.numero order by x.parada_ingreso) from rodar.moviles x where x.estado = 'en_parada' and x.parada_id = z.id), '[]')) order by z.orden) from rodar.zonas z where z.es_parada), '[]'),
+    'tarifa', case when t.id is null then null else to_jsonb(t) end, 'saldo', rodar.saldo(m.id), 'cuenta', rodar.estado_cuenta(m), 'bloqueo_base', rodar.bloqueo_base(m),
+    'zonas', rodar.lista('select * from rodar.zonas order by orden'), 'peligrosas', rodar.lista('select * from rodar.zonas_peligrosas'),
+    'empresa', rodar.cfg('empresa'), 'mensajes', rodar.lista('select * from rodar.mensajes_flota order by id desc limit 5'), 'canal', rodar.topico(''),
+    'abiertas', coalesce((select jsonb_agg(jsonb_build_object('id', v.id, 'origen_dir', v.origen_dir, 'zona', z.nombre, 'destino_dir', v.destino_dir) order by v.id)
+      from rodar.viajes v left join rodar.zonas z on z.id = v.zona_id where v.estado = 'pendiente' and v.a_oferta and rodar.elegible(m, v)), '[]'));
+end $$;
+
+grant execute on function public.r_cond_set_estado(text, jsonb, jsonb), public.r_cond_calle(text, jsonb, jsonb), public.r_cond_viaje(text, jsonb, jsonb), public.r_cond_estado(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 40_seguridad.sql ========
+-- ===================== Revisión de seguridad (antes del lanzamiento) =====================
+-- 1) Sistema viejo que quedó en el esquema public (tablas trips/drivers/customers… y funciones driver_*, passenger_*…):
+--    está vacío y ninguna app lo usa, pero era accesible desde internet. Se le quita el acceso público (no se borra nada).
+do $$
+declare r record;
+begin
+  for r in select p.oid::regprocedure f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname in ('activar_programados', 'driver_action', 'driver_login', 'driver_misc', 'driver_ping', 'driver_register',
+             'passenger_action', 'passenger_history', 'public_config', 'request_trip', 'trip_status') loop
+    execute format('revoke all on function %s from public, anon, authenticated', r.f);
+  end loop;
+  for r in select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public' and c.relkind = 'r' and c.relname in ('customers', 'driver_log', 'drivers', 'emergencies', 'messages', 'records', 'settings', 'trips', 'wallet_tx') loop
+    execute format('revoke all on table public.%I from anon, authenticated', r.relname);
+  end loop;
+end $$;
+
+-- 2) RLS en todas las tablas del sistema (las que faltaban). Las apps acceden solo por funciones, así que no cambia nada para ellas.
+do $$
+declare r record;
+begin
+  for r in select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'rodar' and c.relkind = 'r' and not c.relrowsecurity loop
+    execute format('alter table rodar.%I enable row level security', r.relname);
+    execute format('revoke all on table rodar.%I from anon, authenticated', r.relname);
+  end loop;
+end $$;
+
+-- 3) search_path fijo en todas las funciones del sistema (evita que una función use un objeto "impostor")
+do $$
+declare r record;
+begin
+  for r in select p.oid::regprocedure f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'rodar' and p.prokind = 'f'
+             and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) x where x like 'search_path=%') loop
+    execute format('alter function %s set search_path = rodar, public, extensions', r.f);
+  end loop;
+end $$;
+
+-- 4) Límite de intentos de inicio de sesión (8 fallidos cada 15 minutos por usuario/email).
+--    El error se devuelve como {"__error": "..."} en lugar de una excepción para que el intento fallido QUEDE registrado
+--    (una excepción deshace todo lo hecho en la llamada, incluido el registro del intento).
+do $$
+declare d text; f text; viejo text := $q$if not found or not rodar.verificar(coalesce(p_b ->> 'password', ''), u.password_hash) then raise exception 'Usuario o contraseña incorrectos'; end if;$q$;
+  nuevo text := $q$if (select count(*) from rodar.limite_pedidos where clave = 'login_u:' || lower(us) and ts > now() - interval '15 minutes') >= 8 then
+    return jsonb_build_object('__error', 'Demasiados intentos fallidos. Esperá 15 minutos y probá de nuevo, o pedile a la central que te restablezca la clave.'); end if;
+  if not found or not rodar.verificar(coalesce(p_b ->> 'password', ''), u.password_hash) then
+    insert into rodar.limite_pedidos(clave) values ('login_u:' || lower(us));
+    return jsonb_build_object('__error', 'Usuario o contraseña incorrectos'); end if;$q$;
+begin
+  foreach f in array array['public.r_login(text,jsonb,jsonb)', 'public.r_cond_moviles(text,jsonb,jsonb)'] loop
+    d := pg_get_functiondef(f::regprocedure);
+    if position('login_u:' in d) > 0 then continue; end if;
+    if position(viejo in d) = 0 then raise exception 'No encontré el control de clave en %', f; end if;
+    execute replace(d, viejo, nuevo);
+  end loop;
+  d := pg_get_functiondef('public.r_cli_login(text,jsonb,jsonb)'::regprocedure);
+  if position('__error' in d) = 0 then
+    if position($q$raise exception 'El email o la contraseña no coinciden';$q$ in d) = 0 then raise exception 'No encontré el control de clave en r_cli_login'; end if;
+    execute replace(d, $q$raise exception 'El email o la contraseña no coinciden';$q$, $q$return jsonb_build_object('__error', 'El email o la contraseña no coinciden');$q$);
+  end if;
+end $$;
+
+-- 5) Archivos subidos: solo fotos (JPG/PNG/WebP) o PDF, con tamaño máximo
+create or replace function rodar.validar_archivo(p_archivo text, p_max int, p_pdf boolean default true) returns void language plpgsql immutable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+begin
+  if p_archivo is null or p_archivo = '' then return; end if;
+  if p_archivo !~ ('^data:(image/(jpeg|png|webp)' || case when p_pdf then '|application/pdf' else '' end || ');base64,[A-Za-z0-9+/=[:space:]]+$') then
+    raise exception 'Archivo no permitido: subí una foto (JPG o PNG)%.', case when p_pdf then ' o un PDF' else '' end; end if;
+  if length(p_archivo) > p_max then raise exception 'El archivo es demasiado grande (máximo % MB).', round(p_max * 0.75 / 1e6, 1); end if;
+end $$;
+create or replace function rodar.validar_foto(p_foto text) returns void language plpgsql immutable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+begin
+  if p_foto is null or p_foto = '' or p_foto ~ '^https://[^[:space:]"<>]+$' then return; end if;
+  perform rodar.validar_archivo(p_foto, 1500000, false);
+end $$;
+do $$
+declare d text;
+begin
+  -- solicitud de alta de conductor: hasta 12 documentos de 2 MB
+  d := pg_get_functiondef('public.r_solicitud_conductor(text,jsonb,jsonb)'::regprocedure);
+  if position('validar_archivo' in d) = 0 then
+    if position($q$if rodar.t(p_b, 'nombre') is null or rodar.t(p_b, 'dni') is null$q$ in d) = 0 then raise exception 'r_solicitud_conductor cambió'; end if;
+    execute replace(d, $q$if rodar.t(p_b, 'nombre') is null or rodar.t(p_b, 'dni') is null$q$,
+      $q$if jsonb_typeof(coalesce(p_b -> 'docs', '[]')) <> 'array' or jsonb_array_length(coalesce(p_b -> 'docs', '[]')) > 12 then raise exception 'Demasiados archivos'; end if;
+  perform rodar.validar_archivo(x ->> 'archivo', 2700000) from jsonb_array_elements(coalesce(p_b -> 'docs', '[]')) x;
+  if rodar.t(p_b, 'nombre') is null or rodar.t(p_b, 'dni') is null$q$);
+  end if;
+  -- foto de perfil (cada usuario) y alta/modificación de usuarios (admin)
+  d := pg_get_functiondef('public.r_me_guardar(text,jsonb,jsonb)'::regprocedure);
+  if position('validar_foto' in d) = 0 then
+    if position('update rodar.usuarios set nombre' in d) = 0 then raise exception 'r_me_guardar cambió'; end if;
+    execute replace(d, 'update rodar.usuarios set nombre', $q$perform rodar.validar_foto(rodar.t(p_b, 'foto'));
+  update rodar.usuarios set nombre$q$);
+  end if;
+  d := pg_get_functiondef('public.r_usuario_guardar(text,jsonb,jsonb)'::regprocedure);
+  if position('validar_foto' in d) = 0 then
+    if position($q$if rodar.t(p_b, 'documento') is null or rodar.t(p_b, 'nombre') is null$q$ in d) = 0 then raise exception 'r_usuario_guardar cambió'; end if;
+    execute replace(d, $q$if rodar.t(p_b, 'documento') is null or rodar.t(p_b, 'nombre') is null$q$, $q$perform rodar.validar_foto(rodar.t(p_b, 'foto'));
+  if rodar.t(p_b, 'documento') is null or rodar.t(p_b, 'nombre') is null$q$);
+  end if;
+end $$;
+
+-- 6) Tokens de Mercado Pago de los conductores: se guardan cifrados (la clave vive en Supabase Vault, no en el código)
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'rodar_cifrado') then
+    perform vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'rodar_cifrado', 'Clave para cifrar datos sensibles de Remises TOQUE!');
+  end if;
+end $$;
+create or replace function rodar.clave_cifrado() returns text language sql stable security definer set search_path = rodar, public as $$
+  select decrypted_secret from vault.decrypted_secrets where name = 'rodar_cifrado' limit 1 $$;
+create or replace function rodar.cifrar(p text) returns text language sql stable set search_path = rodar, public, extensions as $$
+  select case when p is null or p like 'enc:%' then p else 'enc:' || encode(extensions.pgp_sym_encrypt(p, rodar.clave_cifrado()), 'base64') end $$;
+create or replace function rodar.descifrar(p text) returns text language sql stable set search_path = rodar, public, extensions as $$
+  select case when p like 'enc:%' then extensions.pgp_sym_decrypt(decode(substr(p, 5), 'base64'), rodar.clave_cifrado()) else p end $$;
+revoke all on function rodar.clave_cifrado(), rodar.cifrar(text), rodar.descifrar(text) from public, anon, authenticated;
+create or replace function rodar.mp_cuentas_cifrar() returns trigger language plpgsql set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+begin
+  new.access_token := rodar.cifrar(new.access_token); new.refresh_token := rodar.cifrar(new.refresh_token); return new;
+end $$;
+create or replace trigger mp_cuentas_cifrar before insert or update of access_token, refresh_token on rodar.mp_cuentas for each row execute function rodar.mp_cuentas_cifrar();
+update rodar.mp_cuentas set access_token = access_token, refresh_token = refresh_token where access_token not like 'enc:%';
+do $$
+declare d text;
+begin
+  d := pg_get_functiondef('public.mp_preparar_pago(bigint,text)'::regprocedure);
+  if position('rodar.descifrar' in d) = 0 then
+    if position('cta.access_token' in d) = 0 then raise exception 'mp_preparar_pago cambió'; end if;
+    execute replace(replace(d, 'cta.access_token', 'rodar.descifrar(cta.access_token)'), $q$'refresh_token', cta.refresh_token$q$, $q$'refresh_token', rodar.descifrar(cta.refresh_token)$q$);
+  end if;
+  d := pg_get_functiondef('public.mp_token_pago(bigint)'::regprocedure);
+  if position('rodar.descifrar' in d) = 0 then
+    if position('c.access_token' in d) = 0 then raise exception 'mp_token_pago cambió'; end if;
+    execute replace(d, 'then c.access_token', 'then rodar.descifrar(c.access_token)');
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+
+-- ======== 41_sesiones_captcha_cifrado.sql ========
+-- ===================== Seguridad II: vencimiento de sesiones, captcha y cifrado del token de la central =====================
+-- Configuración: rodar.cfg('seguridad') = {"panel_horas": 8, "captcha_activo": false, "captcha_site_key": ""}
+
+-- 1) Sesiones del panel (tipo 'web'): vencen tras X horas sin uso (por defecto 8). La app de conductores ('app')
+--    y la de empresas ('empresa') no vencen por inactividad.
+do $$
+declare d text; ancla text := $q$select * into u from rodar.usuarios where id = s.usuario_id and habilitado;$q$;
+begin
+  d := pg_get_functiondef('rodar.usuario(text)'::regprocedure);
+  if position('panel_horas' in d) = 0 then
+    if position(ancla in d) = 0 then raise exception 'rodar.usuario cambió'; end if;
+    execute replace(d, ancla, $q$if s.tipo = 'web' and s.ultimo is not null
+     and s.ultimo < rodar.ahora() - make_interval(hours => greatest(1, coalesce((rodar.cfg('seguridad', '{}') ->> 'panel_horas')::int, 8))) then
+    raise exception 'SESION_VENCIDA';
+  end if;
+  $q$ || ancla);
+  end if;
+end $$;
+
+-- 2) Captcha (Cloudflare Turnstile). La función de Supabase "captcha" verifica el desafío con la clave secreta
+--    (secreto TURNSTILE_SECRET, lo carga el administrador en Supabase) y entrega un "pase" de un solo uso.
+create table if not exists rodar.captcha_pases (pase text primary key, accion text not null, creado timestamptz not null default now(), usado boolean not null default false);
+alter table rodar.captcha_pases enable row level security;
+revoke all on rodar.captcha_pases from anon, authenticated;
+
+create or replace function public.captcha_emitir(p_accion text) returns text language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare p text := encode(extensions.gen_random_bytes(24), 'hex');
+begin
+  insert into rodar.captcha_pases(pase, accion) values (p, coalesce(p_accion, 'general'));
+  return p;
+end $$;
+revoke all on function public.captcha_emitir(text) from public, anon, authenticated;
+grant execute on function public.captcha_emitir(text) to service_role;
+
+create or replace function rodar.exigir_captcha(p_b jsonb, p_accion text) returns void language plpgsql set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare s jsonb := rodar.cfg('seguridad', '{}'); n int;
+begin
+  if not coalesce((s ->> 'captcha_activo')::boolean, false) or coalesce(s ->> 'captcha_site_key', '') = '' then return; end if;
+  with x as (select pase from rodar.captcha_pases where pase = p_b ->> 'captcha' and not usado and creado > now() - interval '10 minutes' for update)
+  update rodar.captcha_pases c set usado = true from x where c.pase = x.pase;
+  get diagnostics n = row_count;
+  if n = 0 then raise exception 'CAPTCHA: no pudimos confirmar que no sos un robot. Probá de nuevo.'; end if;
+end $$;
+
+-- Datos públicos del captcha para las páginas (solo la clave de sitio, que es pública)
+create or replace function public.r_pub_captcha(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare s jsonb := rodar.cfg('seguridad', '{}');
+begin
+  return jsonb_build_object('activo', coalesce((s ->> 'captcha_activo')::boolean, false) and coalesce(s ->> 'captcha_site_key', '') <> '',
+    'site_key', nullif(s ->> 'captcha_site_key', ''));
+end $$;
+
+-- Configuración de seguridad (admin) y horas de inactividad para el panel (cualquier sesión del panel)
+create or replace function public.r_seguridad(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); s jsonb := rodar.cfg('seguridad', '{}');
+begin
+  if rodar.tiene(u, 'admin') then
+    return jsonb_build_object('panel_horas', coalesce((s ->> 'panel_horas')::int, 8), 'captcha_activo', coalesce((s ->> 'captcha_activo')::boolean, false),
+      'captcha_site_key', coalesce(s ->> 'captcha_site_key', ''));
+  end if;
+  return jsonb_build_object('panel_horas', coalesce((s ->> 'panel_horas')::int, 8));
+end $$;
+
+create or replace function public.r_seguridad_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); h int := coalesce(rodar.n(p_b, 'panel_horas')::int, 8); k text := coalesce(trim(p_b ->> 'captcha_site_key'), '');
+  act boolean := coalesce(rodar.b(p_b, 'captcha_activo'), false);
+begin
+  if h < 1 or h > 72 then raise exception 'Las horas tienen que estar entre 1 y 72'; end if;
+  if k <> '' and k !~ '^[0-9A-Za-z_-]{10,80}$' then raise exception 'La clave de sitio de Turnstile no parece válida'; end if;
+  if act and k = '' then raise exception 'Para activar el captcha cargá la clave de sitio'; end if;
+  perform rodar.cfg_set('seguridad', jsonb_build_object('panel_horas', h, 'captcha_activo', act, 'captcha_site_key', k));
+  perform rodar.accion(u, 'seguridad', null, 'Sesión del panel: ' || h || ' h sin uso · Captcha ' || case when act then 'activado' else 'desactivado' end);
+  return '{"ok":true}';
+end $$;
+
+grant execute on function public.r_pub_captcha(text, jsonb, jsonb), public.r_seguridad(text, jsonb, jsonb), public.r_seguridad_guardar(text, jsonb, jsonb) to anon, authenticated;
+
+-- Registro de pasajeros y pedido web sin cuenta: exigen el captcha (cuando está activado)
+do $$
+declare d text;
+begin
+  d := pg_get_functiondef('public.r_cli_registro(text,jsonb,jsonb)'::regprocedure);
+  if position('exigir_captcha' in d) = 0 then
+    if position($q$if nom = '' then raise exception 'Escribí tu nombre'; end if;$q$ in d) = 0 then raise exception 'r_cli_registro cambió'; end if;
+    execute replace(d, $q$if nom = '' then raise exception 'Escribí tu nombre'; end if;$q$, $q$perform rodar.exigir_captcha(p_b, 'registro');
+  if nom = '' then raise exception 'Escribí tu nombre'; end if;$q$);
+  end if;
+  d := pg_get_functiondef('public.r_pub_viaje(text,jsonb,jsonb)'::regprocedure);
+  if position('exigir_captcha' in d) = 0 then
+    if position($q$insert into rodar.limite_pedidos(clave) values (tel);$q$ in d) = 0 then raise exception 'r_pub_viaje cambió'; end if;
+    -- los pedidos de usuarios de empresa (con sesión válida) no lo necesitan
+    execute replace(d, $q$insert into rodar.limite_pedidos(clave) values (tel);$q$, $q$if not exists(select 1 from rodar.sesiones x where x.token = p_b ->> 'token' and x.activa) then perform rodar.exigir_captcha(p_b, 'pedido'); end if;
+  insert into rodar.limite_pedidos(clave) values (tel);$q$);
+  end if;
+end $$;
+
+-- 3) Token de Mercado Pago de la central: también cifrado
+do $$
+declare d text; mp jsonb := rodar.cfg('mp', '{}');
+begin
+  d := pg_get_functiondef('public.r_medios_guardar(text,jsonb,jsonb)'::regprocedure);
+  if position('rodar.cifrar' in d) = 0 then
+    if position($q$perform rodar.cfg_set('mp', n);$q$ in d) = 0 then raise exception 'r_medios_guardar cambió'; end if;
+    execute replace(d, $q$perform rodar.cfg_set('mp', n);$q$, $q$if coalesce(n ->> 'access_token', '') <> '' then n := n || jsonb_build_object('access_token', rodar.cifrar(n ->> 'access_token')); end if;
+    perform rodar.cfg_set('mp', n);$q$);
+  end if;
+  d := pg_get_functiondef('public.mp_preparar_pago(bigint,text)'::regprocedure);
+  if position($q$else mp ->> 'access_token' end$q$ in d) > 0 then
+    execute replace(d, $q$else mp ->> 'access_token' end$q$, $q$else rodar.descifrar(mp ->> 'access_token') end$q$);
+  end if;
+  d := pg_get_functiondef('public.mp_token_pago(bigint)'::regprocedure);
+  if position($q$else rodar.cfg('mp','{}') ->> 'access_token' end$q$ in d) > 0 then
+    execute replace(d, $q$else rodar.cfg('mp','{}') ->> 'access_token' end$q$, $q$else rodar.descifrar(rodar.cfg('mp','{}') ->> 'access_token') end$q$);
+  end if;
+  if coalesce(mp ->> 'access_token', '') <> '' and mp ->> 'access_token' not like 'enc:%' then
+    perform rodar.cfg_set('mp', mp || jsonb_build_object('access_token', rodar.cifrar(mp ->> 'access_token')));
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+
+-- ======== 42_ticket_movil.sql ========
+-- Ticket / comprobante: datos completos del móvil (N°, marca, modelo, año, color, patente, licencia) y del conductor.
+-- El DNI del conductor solo va en el ticket del panel y de la app del conductor (r_ticket), no en el del pasajero.
+do $$
+declare d text;
+begin
+  d := pg_get_functiondef('rodar.viaje_detalle(bigint)'::regprocedure);
+  if position('movil_licencia' in d) = 0 then
+    if position($q$'movil_color', m.color,$q$ in d) = 0 then raise exception 'viaje_detalle cambió'; end if;
+    execute replace(d, $q$'movil_color', m.color,$q$, $q$'movil_color', m.color, 'movil_anio', m.anio, 'movil_licencia', m.licencia,$q$);
+  end if;
+  d := pg_get_functiondef('public.r_ticket(text,jsonb,jsonb)'::regprocedure);
+  if position('conductor_documento' in d) = 0 then
+    if position($q$jsonb_build_object('empresa', rodar.cfg('empresa'))$q$ in d) = 0 then raise exception 'r_ticket cambió'; end if;
+    execute replace(d, $q$jsonb_build_object('empresa', rodar.cfg('empresa'))$q$,
+      $q$jsonb_build_object('empresa', rodar.cfg('empresa'), 'conductor_documento', (select documento from rodar.usuarios where id = v.conductor_id))$q$);
+  end if;
+  d := pg_get_functiondef('public.r_cli_viajes(text,jsonb,jsonb)'::regprocedure);
+  if position('movil_licencia' in d) = 0 then
+    if position('m.color movil_color,' in d) = 0 then raise exception 'r_cli_viajes cambió'; end if;
+    execute replace(d, 'm.color movil_color,', 'm.color movil_color, m.marca movil_marca, m.modelo movil_modelo, m.anio movil_anio, m.licencia movil_licencia,');
+  end if;
+end $$;
+
+
+-- ======== 43_reservas_politica.sql ========
+-- ===================== Reservas: política de cancelación =====================
+-- rodar.cfg('reservas') = { sin_cargo_min: 60, tardio_min: 30, pct_tardio: 20, ultimo_modo: 'cargo'|'penalizacion'|'ambos', pct_ultimo: 50, dias_penalizacion: 7 }
+--  · Cancela con más de sin_cargo_min minutos de anticipación: sin cargo.
+--  · Entre sin_cargo_min y tardio_min: se cobra pct_tardio % del viaje estimado.
+--  · Con menos de tardio_min (o ya pasada la hora): se cobra pct_ultimo % y/o no puede reservar durante dias_penalizacion días.
+-- El cargo queda pendiente en la cuenta del pasajero y se suma al total de su próximo viaje (el admin puede perdonarlo).
+
+alter table rodar.clientes add column if not exists reservas_bloqueadas_hasta timestamp;
+create table if not exists rodar.cliente_cargos (
+  id bigint generated by default as identity primary key, cliente_id bigint not null references rodar.clientes(id),
+  viaje_id bigint, monto numeric not null, motivo text, creado timestamp not null default now(),
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'aplicado', 'perdonado')),
+  aplicado_viaje_id bigint, aplicado_at timestamp, perdonado_por bigint, perdonado_at timestamp
+);
+create index if not exists ix_cliente_cargos on rodar.cliente_cargos(cliente_id, estado);
+alter table rodar.cliente_cargos enable row level security;
+revoke all on rodar.cliente_cargos from anon, authenticated;
+
+create or replace function rodar.reservas_cfg() returns jsonb language sql stable set search_path = rodar, public as $$
+  select jsonb_build_object('sin_cargo_min', 60, 'tardio_min', 30, 'pct_tardio', 20, 'ultimo_modo', 'cargo', 'pct_ultimo', 50, 'dias_penalizacion', 7)
+    || coalesce(rodar.cfg('reservas', '{}'), '{}'::jsonb) $$;
+
+-- Qué pasa si el pasajero cancela ahora este viaje reservado
+create or replace function rodar.politica_cancelacion(v rodar.viajes) returns jsonb language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.reservas_cfg(); mins numeric; tramo text := 'libre'; pct numeric := 0; pena boolean := false; base numeric := coalesce(v.monto_estimado, 0);
+begin
+  if v.programado is null or v.corporativo_id is not null or v.estado not in ('reserva', 'pendiente', 'ofrecido', 'confirmado') then
+    return jsonb_build_object('aplica', false, 'tramo', 'libre', 'monto', 0, 'penaliza', false);
+  end if;
+  mins := round(extract(epoch from (v.programado - rodar.ahora())) / 60.0);
+  if mins >= (c ->> 'sin_cargo_min')::numeric then tramo := 'libre';
+  elsif mins >= (c ->> 'tardio_min')::numeric then tramo := 'tardio'; pct := (c ->> 'pct_tardio')::numeric;
+  else tramo := 'ultimo';
+    if c ->> 'ultimo_modo' in ('cargo', 'ambos') then pct := (c ->> 'pct_ultimo')::numeric; end if;
+    pena := c ->> 'ultimo_modo' in ('penalizacion', 'ambos') and (c ->> 'dias_penalizacion')::int > 0;
+  end if;
+  return jsonb_build_object('aplica', true, 'tramo', tramo, 'minutos', mins, 'pct', pct, 'base', base, 'monto', ceil(base * pct / 100),
+    'penaliza', pena, 'dias', (c ->> 'dias_penalizacion')::int, 'programado', v.programado);
+end $$;
+
+-- Cancela un viaje del pasajero aplicando la política (cargo y/o penalización)
+create or replace function rodar.cancelar_por_cliente(v rodar.viajes, p_motivo text) returns jsonb language plpgsql set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare pol jsonb := rodar.politica_cancelacion(v); nada rodar.usuarios; m numeric := coalesce((pol ->> 'monto')::numeric, 0); hasta timestamp;
+begin
+  perform rodar.verificar_cancelacion(v);
+  perform rodar.anular(v.id, nada, p_motivo || case when m > 0 then ' · cargo ' || m || ' (' || (pol ->> 'pct') || '%)' else '' end
+    || case when (pol ->> 'penaliza')::boolean then ' · sin reservas ' || (pol ->> 'dias') || ' días' else '' end);
+  if v.cliente_id is not null and m > 0 then
+    insert into rodar.cliente_cargos(cliente_id, viaje_id, monto, motivo)
+    values (v.cliente_id, v.id, m, 'Cancelación tardía de la reserva #' || v.id || ' (' || (pol ->> 'pct') || '% del viaje)');
+  end if;
+  if v.cliente_id is not null and coalesce((pol ->> 'penaliza')::boolean, false) then
+    hasta := rodar.ahora() + make_interval(days => (pol ->> 'dias')::int);
+    perform 1 from rodar.clientes where id = v.cliente_id for update;
+    execute 'up' || 'date rodar.clientes set reservas_bloqueadas_hasta = greatest(coalesce(reservas_bloqueadas_hasta, $2), $2) where id = $1' using v.cliente_id, hasta;
+  end if;
+  return jsonb_build_object('ok', true, 'cargo', m, 'penalizado_hasta', hasta);
+end $$;
+
+-- Vista previa para la app: qué se cobra si cancela ahora
+create or replace function public.r_cli_cancelar_previa(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare v rodar.viajes; c rodar.clientes;
+begin
+  if rodar.t(p_q, 'k') is not null then
+    if p_q ->> 'k' is distinct from rodar.firma((p_q ->> 'id')::bigint) then raise exception 'Enlace inválido'; end if;
+    select * into v from rodar.viajes where id = (p_q ->> 'id')::bigint;
+  else
+    c := rodar.cliente_sesion(p_token);
+    select * into v from rodar.viajes where id = (p_q ->> 'id')::bigint and cliente_id = c.id;
+  end if;
+  if v.id is null then raise exception 'No encontramos ese viaje'; end if;
+  return rodar.politica_cancelacion(v);
+end $$;
+
+create or replace function public.r_cli_cancelar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare c rodar.clientes := rodar.cliente_sesion(p_token); v rodar.viajes;
+begin
+  select * into v from rodar.viajes where id = (p_q ->> 'id')::bigint and cliente_id = c.id;
+  if not found then raise exception 'No encontramos ese viaje'; end if;
+  return rodar.cancelar_por_cliente(v, case when v.estado = 'reserva' then 'Reserva cancelada por el cliente' else 'Cancelado por el cliente' end);
+end $$;
+
+create or replace function public.r_pub_cancelar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare vid bigint := (p_q ->> 'id')::bigint; v rodar.viajes;
+begin
+  if p_q ->> 'k' is distinct from rodar.firma(vid) then raise exception 'Enlace inválido'; end if;
+  select * into v from rodar.viajes where id = vid;
+  if not found then raise exception 'No encontramos ese viaje'; end if;
+  return rodar.cancelar_por_cliente(v, 'Cancelado por el pasajero');
+end $$;
+
+-- Política pública (la app la muestra antes de reservar) y estado del pasajero
+create or replace function public.r_pub_reservas(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  return rodar.reservas_cfg();
+end $$;
+
+create or replace function public.r_cli_cargos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token);
+begin
+  return jsonb_build_object(
+    'pendiente', (select coalesce(sum(monto), 0) from rodar.cliente_cargos where cliente_id = c.id and estado = 'pendiente'),
+    'cargos', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'monto', monto, 'motivo', motivo, 'creado', creado) order by id desc) from rodar.cliente_cargos where cliente_id = c.id and estado = 'pendiente'), '[]'),
+    'reservas_bloqueadas_hasta', case when c.reservas_bloqueadas_hasta > rodar.ahora() then c.reservas_bloqueadas_hasta end);
+end $$;
+
+-- Reservar: respeta la penalización
+do $$
+declare d text; a text := $q$if prog is not null then$q$;
+begin
+  d := pg_get_functiondef('public.r_cli_viaje(text,jsonb,jsonb)'::regprocedure);
+  if position('reservas_bloqueadas_hasta' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_cli_viaje cambió'; end if;
+    execute regexp_replace(d, 'if prog is not null then', $q$if prog is not null then
+    if c.reservas_bloqueadas_hasta > rodar.ahora() then
+      raise exception 'Por una cancelación tardía no podés hacer reservas hasta el %. Podés pedir viajes para ahora.', to_char(c.reservas_bloqueadas_hasta, 'DD/MM HH24:MI'); end if;$q$);
+  end if;
+end $$;
+
+-- Al finalizar el próximo viaje del pasajero se suman los cargos pendientes
+do $$
+declare f regprocedure := (select oid::regprocedure from pg_proc where proname = 'finalizar' and pronamespace = 'rodar'::regnamespace);
+  d text; ancla text := $q$mins := round(extract(epoch from (rodar.ahora() - coalesce(v.inicio_at, rodar.ahora()))) / 60.0, 1);$q$;
+begin
+  d := pg_get_functiondef(f);
+  if position('cliente_cargos' in d) = 0 then
+    if position(ancla in d) = 0 or position('sim boolean;' in d) = 0 then raise exception 'finalizar cambió'; end if;
+    d := replace(d, 'sim boolean;', 'sim boolean; cargo numeric := 0;');
+    d := replace(d, ancla, $q$-- cargos pendientes del pasajero (cancelación tardía de reservas): se suman a este viaje
+  if v.cliente_id is not null and v.corporativo_id is null and total is not null and coalesce(v.medio_pago, '') <> 'cuenta_corriente' then
+    select coalesce(sum(monto), 0) into cargo from rodar.cliente_cargos where cliente_id = v.cliente_id and estado = 'pendiente';
+    if cargo > 0 then
+      total := total + cargo;
+      execute 'up' || 'date rodar.cliente_cargos set estado = ''aplicado'', aplicado_viaje_id = $1, aplicado_at = rodar.ahora() where cliente_id = $2 and estado = ''pendiente''' using p_viaje, v.cliente_id;
+    end if;
+  end if;
+  $q$ || ancla);
+    execute d;
+  end if;
+end $$;
+
+-- El ticket y la lista del pasajero muestran el cargo incluido
+do $$
+declare d text;
+begin
+  d := pg_get_functiondef('rodar.viaje_detalle(bigint)'::regprocedure);
+  if position('cargo_cancelacion' in d) = 0 then
+    if position($q$'zona', z.nombre)$q$ in d) = 0 then raise exception 'viaje_detalle cambió'; end if;
+    execute replace(d, $q$'zona', z.nombre)$q$, $q$'zona', z.nombre, 'cargo_cancelacion', (select sum(cc.monto) from rodar.cliente_cargos cc where cc.aplicado_viaje_id = v.id))$q$);
+  end if;
+  d := pg_get_functiondef('public.r_cli_viajes(text,jsonb,jsonb)'::regprocedure);
+  if position('cargo_cancelacion' in d) = 0 then
+    if position('rodar.firma(v.id) k,' in d) = 0 then raise exception 'r_cli_viajes cambió'; end if;
+    execute replace(d, 'rodar.firma(v.id) k,', '(select sum(cc.monto) from rodar.cliente_cargos cc where cc.aplicado_viaje_id = v.id) cargo_cancelacion, rodar.firma(v.id) k,');
+  end if;
+end $$;
+
+-- Panel: configuración y cargos
+create or replace function public.r_reservas_cfg(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'gestion');
+  return jsonb_build_object('cfg', rodar.reservas_cfg(),
+    'cargos', coalesce((select jsonb_agg(x order by (x ->> 'id')::bigint desc) from (select jsonb_build_object('id', g.id, 'cliente_id', g.cliente_id, 'cliente', coalesce(c.alias, ''), 'telefono', c.telefono,
+        'monto', g.monto, 'motivo', g.motivo, 'creado', g.creado, 'estado', g.estado, 'aplicado_viaje_id', g.aplicado_viaje_id) x
+      from rodar.cliente_cargos g join rodar.clientes c on c.id = g.cliente_id order by g.id desc limit 100) z), '[]'),
+    'penalizados', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'cliente', coalesce(c.alias, ''), 'telefono', c.telefono, 'hasta', c.reservas_bloqueadas_hasta) order by c.reservas_bloqueadas_hasta)
+      from rodar.clientes c where c.reservas_bloqueadas_hasta > rodar.ahora()), '[]'));
+end $$;
+
+create or replace function public.r_reservas_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin'); op text := coalesce(p_q ->> 'op', 'cfg'); n jsonb;
+  a int := coalesce(rodar.n(p_b, 'sin_cargo_min')::int, 60); b int := coalesce(rodar.n(p_b, 'tardio_min')::int, 30);
+  p1 numeric := coalesce(rodar.n(p_b, 'pct_tardio'), 0); p2 numeric := coalesce(rodar.n(p_b, 'pct_ultimo'), 0); modo text := coalesce(rodar.t(p_b, 'ultimo_modo'), 'cargo'); dias int := coalesce(rodar.n(p_b, 'dias_penalizacion')::int, 0);
+begin
+  if op = 'perdonar' then
+    execute 'up' || 'date rodar.cliente_cargos set estado = ''perdonado'', perdonado_por = $2, perdonado_at = rodar.ahora() where id = $1 and estado = ''pendiente''' using rodar.n(p_b, 'id')::bigint, u.id;
+    perform rodar.accion(u, 'cargo_perdonado', null, 'Cargo por cancelación #' || (p_b ->> 'id') || ' perdonado');
+    return '{"ok":true}';
+  elsif op = 'despenalizar' then
+    execute 'up' || 'date rodar.clientes set reservas_bloqueadas_hasta = null where id = $1' using rodar.n(p_b, 'id')::bigint;
+    perform rodar.accion(u, 'reservas_desbloqueadas', null, 'Cliente #' || (p_b ->> 'id') || ' puede volver a reservar');
+    return '{"ok":true}';
+  end if;
+  if a < 0 or b < 0 or b > a or a > 1440 then raise exception 'Revisá los minutos: el primer límite tiene que ser mayor o igual que el segundo (máximo 24 horas).'; end if;
+  if p1 < 0 or p1 > 100 or p2 < 0 or p2 > 100 then raise exception 'Los porcentajes van de 0 a 100'; end if;
+  if modo not in ('cargo', 'penalizacion', 'ambos') then raise exception 'Elegí qué pasa en el último tramo'; end if;
+  if dias < 0 or dias > 365 then raise exception 'Los días de penalización van de 0 a 365'; end if;
+  n := jsonb_build_object('sin_cargo_min', a, 'tardio_min', b, 'pct_tardio', p1, 'ultimo_modo', modo, 'pct_ultimo', p2, 'dias_penalizacion', dias);
+  perform rodar.cfg_set('reservas', n);
+  perform rodar.accion(u, 'reservas_politica', null, 'Política de cancelación: ' || n::text);
+  return '{"ok":true}';
+end $$;
+
+grant execute on function public.r_cli_cancelar_previa(text, jsonb, jsonb), public.r_cli_cancelar(text, jsonb, jsonb), public.r_pub_cancelar(text, jsonb, jsonb),
+  public.r_pub_reservas(text, jsonb, jsonb), public.r_cli_cargos(text, jsonb, jsonb), public.r_reservas_cfg(text, jsonb, jsonb), public.r_reservas_guardar(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 44_cancelacion_asignado.sql ========
+-- Cancelación de viajes para ahora: sin cargo mientras ningún móvil lo aceptó; si ya hay chofer asignado y en camino,
+-- se cobra pct_asignado % del viaje estimado (rodar.cfg('reservas').pct_asignado, por defecto 10). En una reserva que
+-- ya tiene chofer en camino se cobra lo mayor entre las dos reglas.
+create or replace function rodar.reservas_cfg() returns jsonb language sql stable set search_path = rodar, public as $$
+  select jsonb_build_object('sin_cargo_min', 60, 'tardio_min', 30, 'pct_tardio', 20, 'ultimo_modo', 'cargo', 'pct_ultimo', 50, 'dias_penalizacion', 7, 'pct_asignado', 10)
+    || coalesce(rodar.cfg('reservas', '{}'), '{}'::jsonb) $$;
+
+create or replace function rodar.politica_cancelacion(v rodar.viajes) returns jsonb language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare c jsonb := rodar.reservas_cfg(); mins numeric; tramo text := 'libre'; pct numeric := 0; pena boolean := false; base numeric := coalesce(v.monto_estimado, 0);
+  asig boolean := v.estado = 'confirmado' and v.movil_id is not null; pa numeric := coalesce((c ->> 'pct_asignado')::numeric, 0);
+begin
+  if v.corporativo_id is not null or v.estado not in ('reserva', 'pendiente', 'ofrecido', 'confirmado') then
+    return jsonb_build_object('aplica', false, 'tramo', 'libre', 'monto', 0, 'penaliza', false);
+  end if;
+  if v.programado is null then
+    -- viaje para ahora
+    if asig and pa > 0 then tramo := 'asignado'; pct := pa; end if;
+    return jsonb_build_object('aplica', true, 'reserva', false, 'tramo', tramo, 'asignado', asig, 'pct', pct, 'base', base, 'monto', ceil(base * pct / 100), 'penaliza', false);
+  end if;
+  mins := round(extract(epoch from (v.programado - rodar.ahora())) / 60.0);
+  if mins >= (c ->> 'sin_cargo_min')::numeric then tramo := 'libre';
+  elsif mins >= (c ->> 'tardio_min')::numeric then tramo := 'tardio'; pct := (c ->> 'pct_tardio')::numeric;
+  else tramo := 'ultimo';
+    if c ->> 'ultimo_modo' in ('cargo', 'ambos') then pct := (c ->> 'pct_ultimo')::numeric; end if;
+    pena := c ->> 'ultimo_modo' in ('penalizacion', 'ambos') and (c ->> 'dias_penalizacion')::int > 0;
+  end if;
+  if asig and pa > pct then pct := pa; if tramo = 'libre' then tramo := 'asignado'; end if; end if;
+  return jsonb_build_object('aplica', true, 'reserva', true, 'tramo', tramo, 'asignado', asig, 'minutos', mins, 'pct', pct, 'base', base, 'monto', ceil(base * pct / 100),
+    'penaliza', pena, 'dias', (c ->> 'dias_penalizacion')::int, 'programado', v.programado);
+end $$;
+
+-- El motivo del cargo dice si fue reserva o viaje con chofer en camino
+do $$
+declare d text; a text := $q$'Cancelación tardía de la reserva #' || v.id || ' (' || (pol ->> 'pct') || '% del viaje)'$q$;
+begin
+  d := pg_get_functiondef('rodar.cancelar_por_cliente(rodar.viajes,text)'::regprocedure);
+  if position('chofer en camino' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'cancelar_por_cliente cambió'; end if;
+    execute replace(d, a, $q$case when (pol ->> 'tramo') = 'asignado' then 'Cancelación del viaje #' || v.id || ' con el chofer en camino' else 'Cancelación tardía de la reserva #' || v.id end || ' (' || (pol ->> 'pct') || '% del viaje)'$q$);
+  end if;
+end $$;
+
+-- Guardar: también el porcentaje con chofer asignado (sin perder lo demás)
+do $$
+declare d text;
+begin
+  d := pg_get_functiondef('public.r_reservas_guardar(text,jsonb,jsonb)'::regprocedure);
+  if position('pct_asignado' in d) = 0 then
+    d := replace(d, $q$dias int := coalesce(rodar.n(p_b, 'dias_penalizacion')::int, 0);$q$, $q$dias int := coalesce(rodar.n(p_b, 'dias_penalizacion')::int, 0); p3 numeric := coalesce(rodar.n(p_b, 'pct_asignado'), 0);$q$);
+    d := replace(d, $q$if p1 < 0 or p1 > 100 or p2 < 0 or p2 > 100 then$q$, $q$if p1 < 0 or p1 > 100 or p2 < 0 or p2 > 100 or p3 < 0 or p3 > 100 then$q$);
+    d := replace(d, $q$'dias_penalizacion', dias);$q$, $q$'dias_penalizacion', dias, 'pct_asignado', p3);$q$);
+    if position('p3 numeric' in d) = 0 or position($q$'pct_asignado', p3$q$ in d) = 0 then raise exception 'r_reservas_guardar cambió'; end if;
+    execute d;
+  end if;
+end $$;
+
+-- Plazo para cancelar desde la app: mientras se busca móvil se puede cancelar siempre (gratis); con chofer en camino
+-- también (con el cargo). El plazo viejo (cancelar_minutos) solo queda si el porcentaje con chofer asignado es 0.
+do $$
+declare d text; a text := $q$if v.estado = 'reserva' or mins <= 0 then return null; end if;$q$;
+begin
+  d := pg_get_functiondef('rodar.cancelar_restante(rodar.viajes)'::regprocedure);
+  if position('pct_asignado' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'cancelar_restante cambió'; end if;
+    execute replace(d, a, $q$if v.estado in ('reserva', 'pendiente', 'ofrecido') or mins <= 0 then return null; end if;
+  if v.estado = 'confirmado' and coalesce((rodar.reservas_cfg() ->> 'pct_asignado')::numeric, 0) > 0 then return null; end if;$q$);
+  end if;
+end $$;
+
+
+-- ======== 45_informe_corp_sos.sql ========
+-- ===================== Informe de clientes corporativos =====================
+create or replace function public.r_inf_corporativos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare d date := coalesce(rodar.t(p_q, 'desde')::date, date_trunc('month', rodar.ahora())::date); h date := coalesce(rodar.t(p_q, 'hasta')::date, rodar.hoy());
+  cid bigint := rodar.n(p_q, 'empresa')::bigint; r jsonb;
+begin
+  perform rodar.need(p_token, 'gestion');
+  r := jsonb_build_object('desde', d, 'hasta', h,
+    'empresas', coalesce((select jsonb_agg(x order by (x ->> 'monto')::numeric desc, x ->> 'nombre') from (
+      select jsonb_build_object('id', c.id, 'nombre', c.nombre, 'cuit', c.cuit, 'estado', c.estado, 'contacto', c.contacto, 'telefono', c.telefono,
+        'viajes', count(v.id) filter (where v.estado = 'finalizado'),
+        'cancelados', count(v.id) filter (where v.estado = 'anulado'),
+        'km', coalesce(round(sum(v.km) filter (where v.estado = 'finalizado'), 1), 0),
+        'monto', coalesce(sum(v.monto) filter (where v.estado = 'finalizado'), 0),
+        'pasajeros', count(distinct coalesce(v.corp_pasajero_id::text, v.telefono)) filter (where v.estado = 'finalizado'),
+        'pagos', (select coalesce(-sum(m.monto), 0) from rodar.corp_movimientos m where m.corporativo_id = c.id and not m.anulado and m.tipo = 'pago' and m.fecha >= d and m.fecha < h + 1),
+        'saldo', rodar.corp_saldo(c.id)) x
+      from rodar.corporativos c left join rodar.viajes v on v.corporativo_id = c.id and coalesce(v.fin_at, v.creado) >= d and coalesce(v.fin_at, v.creado) < h + 1
+      where cid is null or c.id = cid group by c.id) z), '[]'));
+  if cid is not null then
+    r := r || jsonb_build_object(
+      'viajes', coalesce((select jsonb_agg(jsonb_build_object('id', v.id, 'fecha', coalesce(v.fin_at, v.creado), 'estado', v.estado, 'pasajero', coalesce(p.nombre, v.alias), 'telefono', v.telefono,
+          'centro_costo', v.centro_costo, 'origen', v.origen_dir, 'destino', v.destino_dir, 'movil', m.numero, 'km', v.km, 'monto', v.monto) order by coalesce(v.fin_at, v.creado))
+        from rodar.viajes v left join rodar.corp_pasajeros p on p.id = v.corp_pasajero_id left join rodar.moviles m on m.id = v.movil_id
+        where v.corporativo_id = cid and v.estado in ('finalizado', 'anulado') and coalesce(v.fin_at, v.creado) >= d and coalesce(v.fin_at, v.creado) < h + 1), '[]'),
+      'por_centro', coalesce((select jsonb_agg(jsonb_build_object('centro', centro, 'viajes', n, 'monto', mt) order by mt desc) from (
+          select coalesce(nullif(v.centro_costo, ''), 'Sin centro de costo') centro, count(*) n, coalesce(sum(v.monto), 0) mt
+          from rodar.viajes v where v.corporativo_id = cid and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= d and coalesce(v.fin_at, v.creado) < h + 1 group by 1) z), '[]'));
+  end if;
+  return r;
+end $$;
+grant execute on function public.r_inf_corporativos(text, jsonb, jsonb) to anon, authenticated;
+
+-- ===================== Botón de emergencia (SOS) del pasajero =====================
+create table if not exists rodar.alertas_sos (
+  id bigint generated by default as identity primary key, viaje_id bigint, cliente_id bigint, nombre text, telefono text,
+  lat double precision, lng double precision, precision_m numeric, mensaje text, creado timestamp not null default now(), ultima_pos timestamp,
+  estado text not null default 'abierta' check (estado in ('abierta', 'atendida')), atendida_por bigint, atendida_at timestamp, nota text
+);
+alter table rodar.alertas_sos enable row level security;
+revoke all on rodar.alertas_sos from anon, authenticated;
+
+create or replace function rodar.sos_json(a rodar.alertas_sos) returns jsonb language sql stable set search_path = rodar, public as $$
+  select to_jsonb(a) || jsonb_build_object(
+    'viaje', case when v.id is not null then jsonb_build_object('id', v.id, 'estado', v.estado, 'origen', v.origen_dir, 'destino', v.destino_dir, 'movil', m.numero, 'patente', m.patente,
+      'vehiculo', trim(coalesce(m.marca, '') || ' ' || coalesce(m.modelo, '') || ' ' || coalesce(m.color, '')), 'conductor', trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')), 'conductor_tel', u.telefono,
+      'movil_lat', m.lat, 'movil_lng', m.lng) end,
+    'atendida_por_nombre', (select trim(coalesce(x.nombre, '') || ' ' || coalesce(x.apellido, '')) from rodar.usuarios x where x.id = a.atendida_por))
+  from (select 1) _ left join rodar.viajes v on v.id = a.viaje_id left join rodar.moviles m on m.id = v.movil_id left join rodar.usuarios u on u.id = v.conductor_id $$;
+
+-- El pasajero envía la alerta (con su viaje si tiene uno en curso) y puede actualizar su ubicación
+create or replace function public.r_pub_sos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes; v rodar.viajes; a rodar.alertas_sos; vid bigint := rodar.n(p_b, 'viaje_id')::bigint; aid bigint := rodar.n(p_b, 'alerta_id')::bigint;
+  la float8 := (p_b ->> 'lat')::float8; ln float8 := (p_b ->> 'lng')::float8;
+begin
+  if rodar.t(p_b, 'cli_token') is not null then
+    begin c := rodar.cliente_sesion(p_b ->> 'cli_token'); exception when others then c := null; end;
+  end if;
+  if vid is not null then
+    if p_b ->> 'k' is distinct from rodar.firma(vid) then raise exception 'Enlace inválido'; end if;
+    select * into v from rodar.viajes where id = vid;
+  elsif c.id is not null then
+    select * into v from rodar.viajes where cliente_id = c.id and estado in ('confirmado', 'en_curso') order by id desc limit 1;
+  end if;
+  if v.id is null and c.id is null then raise exception 'Para enviar la alerta necesitás un viaje en curso o tu cuenta. Llamá al 911.'; end if;
+  -- actualización de ubicación de una alerta ya enviada
+  if aid is not null then
+    select * into a from rodar.alertas_sos where id = aid and (viaje_id = v.id or cliente_id = c.id);
+    if not found then raise exception 'Alerta no encontrada'; end if;
+    execute 'up' || 'date rodar.alertas_sos set lat = coalesce($2, lat), lng = coalesce($3, lng), precision_m = coalesce($4, precision_m), ultima_pos = rodar.ahora() where id = $1 returning *' into a
+      using aid, la, ln, rodar.n(p_b, 'precision');
+    perform rodar.emit('panel', 'sos_pos', jsonb_build_object('id', a.id, 'lat', a.lat, 'lng', a.lng));
+    return jsonb_build_object('ok', true, 'id', a.id);
+  end if;
+  perform rodar.limitar('sos:' || coalesce(v.id::text, 'c' || c.id), 5, interval '10 minutes', 'Ya enviaste la alerta. La central está avisada; si es urgente llamá al 911.');
+  insert into rodar.alertas_sos(viaje_id, cliente_id, nombre, telefono, lat, lng, precision_m, mensaje, ultima_pos, creado)
+  values (v.id, coalesce(c.id, v.cliente_id), coalesce(c.alias, v.alias), coalesce(c.telefono, v.telefono), la, ln, rodar.n(p_b, 'precision'), left(rodar.t(p_b, 'mensaje'), 500), case when la is not null then rodar.ahora() end, rodar.ahora())
+  returning * into a;
+  if v.id is not null and v.movil_id is not null then perform rodar.evento_movil(v.movil_id, 'sos_pasajero', '#' || v.id, 'SOS del pasajero'); end if;
+  perform rodar.emit('panel', 'sos_pasajero', rodar.sos_json(a));
+  return jsonb_build_object('ok', true, 'id', a.id);
+end $$;
+
+-- Panel: alertas abiertas / recientes y marcar como atendida
+create or replace function public.r_sos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'operador');
+  return coalesce((select jsonb_agg(rodar.sos_json(a) order by a.estado, a.id desc) from (select * from rodar.alertas_sos
+    where (p_q ->> 'abiertas' = '1' and estado = 'abierta') or (coalesce(p_q ->> 'abiertas', '') <> '1' and creado > rodar.ahora() - interval '60 days') order by id desc limit 200) a), '[]');
+end $$;
+
+create or replace function public.r_sos_atender(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'operador');
+begin
+  execute 'up' || 'date rodar.alertas_sos set estado = ''atendida'', atendida_por = $2, atendida_at = rodar.ahora(), nota = $3 where id = $1 and estado = ''abierta''' using (p_q ->> 'id')::bigint, u.id, rodar.t(p_b, 'nota');
+  perform rodar.accion(u, 'sos_atendida', null, 'Alerta SOS #' || (p_q ->> 'id') || ' atendida' || coalesce(': ' || rodar.t(p_b, 'nota'), ''));
+  perform rodar.emit('panel', 'sos_atendida', jsonb_build_object('id', (p_q ->> 'id')::bigint, 'por', u.nombre));
+  return '{"ok":true}';
+end $$;
+
+grant execute on function public.r_pub_sos(text, jsonb, jsonb), public.r_sos(text, jsonb, jsonb), public.r_sos_atender(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 46_cc_viajes.sql ========
+-- ===================== Viajes a cuenta corriente: siempre con empresa, y visibles desde que se registran =====================
+
+-- 1) Un viaje a cuenta corriente tiene que tener una empresa activa (operador, pasajero en modo empresa, app de empresas)
+do $$
+declare d text; a text := $q$select * into c from rodar.canales where codigo = canal;$q$;
+begin
+  d := pg_get_functiondef('rodar.crear_viaje(jsonb,rodar.usuarios)'::regprocedure);
+  if position('elegí la empresa' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'crear_viaje cambió'; end if;
+    execute replace(d, a, $q$if coalesce(rodar.t(d, 'medio_pago'), '') = 'cuenta_corriente' then
+    if rodar.n(d, 'corporativo_id') is null then raise exception 'Para cobrar a cuenta corriente elegí la empresa (cliente corporativo).'; end if;
+    if not exists(select 1 from rodar.corporativos where id = rodar.n(d, 'corporativo_id')::bigint and estado = 'activa') then raise exception 'La empresa elegida no está activa.'; end if;
+  end if;
+  $q$ || a);
+  end if;
+end $$;
+
+-- pasajero en modo empresa sin empresa asociada: mensaje claro
+do $$
+declare d text; a text := $q$ids := rodar.crear_viaje(p_b || jsonb_build_object('telefono', tel,$q$;
+begin
+  d := pg_get_functiondef('public.r_pub_viaje(text,jsonb,jsonb)'::regprocedure);
+  if position('no está asociado a ninguna empresa' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_pub_viaje cambió'; end if;
+    execute replace(d, a, $q$if medio = 'cuenta_corriente' and corp is null then raise exception 'Tu usuario no está asociado a ninguna empresa, así que no podés pedir a cuenta corriente. Pedile a la central que te asigne a tu empresa.'; end if;
+  $q$ || a);
+  end if;
+end $$;
+
+-- operador: guarda también el centro de costo
+do $$
+declare d text; a text := $q$return jsonb_build_object('ids', to_jsonb(ids));$q$;
+begin
+  d := pg_get_functiondef('public.r_viaje_crear(text,jsonb,jsonb)'::regprocedure);
+  if position('centro_costo' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_viaje_crear cambió'; end if;
+    execute replace(d, a, $q$if rodar.t(p_b, 'centro_costo') is not null and rodar.n(p_b, 'corporativo_id') is not null then
+    execute 'up' || 'date rodar.viajes set centro_costo = $2 where id = any($1)' using ids, rodar.t(p_b, 'centro_costo');
+  end if;
+  $q$ || a);
+  end if;
+end $$;
+
+-- 2) Cuenta corriente: viajes en curso / reservados (todavía no facturados) de cada empresa
+create or replace function rodar.corp_en_curso(p_corp bigint) returns jsonb language sql stable set search_path = rodar, public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'estado', v.estado, 'creado', v.creado, 'programado', v.programado, 'pasajero', coalesce(p.nombre, v.alias), 'telefono', v.telefono,
+      'centro_costo', v.centro_costo, 'origen', v.origen_dir, 'destino', v.destino_dir, 'movil', m.numero, 'estimado', v.monto_estimado) order by coalesce(v.programado, v.creado)), '[]')
+  from rodar.viajes v left join rodar.corp_pasajeros p on p.id = v.corp_pasajero_id left join rodar.moviles m on m.id = v.movil_id
+  where v.corporativo_id = p_corp and v.estado in ('reserva', 'pendiente', 'ofrecido', 'confirmado', 'en_curso') $$;
+
+create or replace function public.r_corp_cuentas(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare ini timestamp := date_trunc('month', rodar.ahora());
+begin
+  perform rodar.need(p_token, 'gestion');
+  return coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'nombre', c.nombre, 'cuit', c.cuit, 'estado', c.estado, 'contacto', c.contacto, 'telefono', c.telefono,
+      'saldo', rodar.corp_saldo(c.id),
+      'viajes_mes', (select count(*) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= ini),
+      'monto_mes', (select coalesce(sum(v.monto), 0) from rodar.viajes v where v.corporativo_id = c.id and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= ini),
+      'en_curso', (select count(*) from rodar.viajes v where v.corporativo_id = c.id and v.estado in ('reserva', 'pendiente', 'ofrecido', 'confirmado', 'en_curso')),
+      'ultimo_pago', (select jsonb_build_object('fecha', m.fecha, 'monto', -m.monto) from rodar.corp_movimientos m where m.corporativo_id = c.id and m.tipo = 'pago' and not m.anulado order by m.fecha desc limit 1),
+      'ultima_liq', (select jsonb_build_object('numero', l.numero, 'desde', l.desde, 'hasta', l.hasta, 'monto', l.monto) from rodar.corp_liquidaciones l where l.corporativo_id = c.id and not l.anulada order by l.hasta desc, l.id desc limit 1))
+    order by rodar.corp_saldo(c.id) desc, c.nombre) from rodar.corporativos c), '[]');
+end $$;
+
+do $$
+declare d text; a text := $q$'movimientos', movs,$q$;
+begin
+  d := pg_get_functiondef('rodar.corp_cuenta_detalle(bigint,date,date)'::regprocedure);
+  if position('corp_en_curso' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'corp_cuenta_detalle cambió'; end if;
+    execute replace(d, a, $q$'movimientos', movs, 'en_curso', rodar.corp_en_curso(p_corp),$q$);
+  end if;
+end $$;
+
+-- 3) Viajes a cuenta corriente que quedaron sin empresa (anteriores a este control): se listan y se asignan
+create or replace function public.r_cc_sin_empresa(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'gestion');
+begin
+  if rodar.n(p_b, 'viaje_id') is not null then
+    if u.id is null or not rodar.tiene(u, 'admin', 'gestion') then raise exception 'Sin permiso'; end if;
+    if not exists(select 1 from rodar.corporativos where id = rodar.n(p_b, 'corporativo_id')::bigint) then raise exception 'Elegí la empresa'; end if;
+    execute 'up' || 'date rodar.viajes set corporativo_id = $2, medio_pago = ''cuenta_corriente'', centro_costo = coalesce($3, centro_costo) where id = $1 and corporativo_id is null' using rodar.n(p_b, 'viaje_id')::bigint, rodar.n(p_b, 'corporativo_id')::bigint, rodar.t(p_b, 'centro_costo');
+    perform rodar.accion(u, 'viaje_cc_asignado', null, 'Viaje #' || (p_b ->> 'viaje_id') || ' asignado a la cuenta corriente de ' || (select nombre from rodar.corporativos where id = rodar.n(p_b, 'corporativo_id')::bigint));
+    return '{"ok":true}';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', v.id, 'estado', v.estado, 'fecha', coalesce(v.fin_at, v.creado), 'alias', v.alias, 'telefono', v.telefono, 'canal', v.canal,
+      'origen', v.origen_dir, 'destino', v.destino_dir, 'monto', coalesce(v.monto, v.monto_estimado)) order by v.id desc)
+    from rodar.viajes v where v.medio_pago = 'cuenta_corriente' and v.corporativo_id is null and v.estado <> 'anulado'), '[]');
+end $$;
+
+-- 4) Informe de clientes corporativos: también cuenta los viajes en curso y los lista en el detalle
+create or replace function public.r_inf_corporativos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare d date := coalesce(rodar.t(p_q, 'desde')::date, date_trunc('month', rodar.ahora())::date); h date := coalesce(rodar.t(p_q, 'hasta')::date, rodar.hoy());
+  cid bigint := rodar.n(p_q, 'empresa')::bigint; r jsonb;
+begin
+  perform rodar.need(p_token, 'gestion');
+  r := jsonb_build_object('desde', d, 'hasta', h,
+    'empresas', coalesce((select jsonb_agg(x order by (x ->> 'monto')::numeric desc, x ->> 'nombre') from (
+      select jsonb_build_object('id', c.id, 'nombre', c.nombre, 'cuit', c.cuit, 'estado', c.estado, 'contacto', c.contacto, 'telefono', c.telefono,
+        'viajes', count(v.id) filter (where v.estado = 'finalizado'),
+        'cancelados', count(v.id) filter (where v.estado = 'anulado'),
+        'en_curso', (select count(*) from rodar.viajes x where x.corporativo_id = c.id and x.estado in ('reserva', 'pendiente', 'ofrecido', 'confirmado', 'en_curso')),
+        'km', coalesce(round(sum(v.km) filter (where v.estado = 'finalizado'), 1), 0),
+        'monto', coalesce(sum(v.monto) filter (where v.estado = 'finalizado'), 0),
+        'pasajeros', count(distinct coalesce(v.corp_pasajero_id::text, v.telefono)) filter (where v.estado = 'finalizado'),
+        'pagos', (select coalesce(-sum(m.monto), 0) from rodar.corp_movimientos m where m.corporativo_id = c.id and not m.anulado and m.tipo = 'pago' and m.fecha >= d and m.fecha < h + 1),
+        'saldo', rodar.corp_saldo(c.id)) x
+      from rodar.corporativos c left join rodar.viajes v on v.corporativo_id = c.id and coalesce(v.fin_at, v.creado) >= d and coalesce(v.fin_at, v.creado) < h + 1
+      where cid is null or c.id = cid group by c.id) z), '[]'),
+    'sin_empresa', (select count(*) from rodar.viajes v where v.medio_pago = 'cuenta_corriente' and v.corporativo_id is null and v.estado <> 'anulado'));
+  if cid is not null then
+    r := r || jsonb_build_object(
+      'viajes', coalesce((select jsonb_agg(jsonb_build_object('id', v.id, 'fecha', coalesce(v.fin_at, v.programado, v.creado), 'estado', v.estado, 'pasajero', coalesce(p.nombre, v.alias), 'telefono', v.telefono,
+          'centro_costo', v.centro_costo, 'origen', v.origen_dir, 'destino', v.destino_dir, 'movil', m.numero, 'km', v.km, 'monto', v.monto, 'estimado', v.monto_estimado) order by coalesce(v.fin_at, v.programado, v.creado))
+        from rodar.viajes v left join rodar.corp_pasajeros p on p.id = v.corp_pasajero_id left join rodar.moviles m on m.id = v.movil_id
+        where v.corporativo_id = cid and ((v.estado in ('finalizado', 'anulado') and coalesce(v.fin_at, v.creado) >= d and coalesce(v.fin_at, v.creado) < h + 1)
+          or v.estado in ('reserva', 'pendiente', 'ofrecido', 'confirmado', 'en_curso'))), '[]'),
+      'por_centro', coalesce((select jsonb_agg(jsonb_build_object('centro', centro, 'viajes', n, 'monto', mt) order by mt desc) from (
+          select coalesce(nullif(v.centro_costo, ''), 'Sin centro de costo') centro, count(*) n, coalesce(sum(v.monto), 0) mt
+          from rodar.viajes v where v.corporativo_id = cid and v.estado = 'finalizado' and coalesce(v.fin_at, v.creado) >= d and coalesce(v.fin_at, v.creado) < h + 1 group by 1) z), '[]'));
+  end if;
+  return r;
+end $$;
+
+grant execute on function public.r_corp_cuentas(text, jsonb, jsonb), public.r_cc_sin_empresa(text, jsonb, jsonb), public.r_inf_corporativos(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 47_emp_ticket.sql ========
+-- Viajes de la empresa: datos del móvil y medio de pago para el ticket (app de empresas y "Mi empresa" en la web del pasajero)
+do $$
+declare d text; a text := $q$'movil_numero', m.numero,$q$;
+begin
+  d := pg_get_functiondef('rodar.viaje_empresa(rodar.viajes)'::regprocedure);
+  if position('movil_marca' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'viaje_empresa cambió'; end if;
+    execute replace(d, a, $q$'movil_numero', m.numero, 'medio_pago', coalesce(v.medio_pago, 'cuenta_corriente'), 'movil_marca', m.marca, 'movil_modelo', m.modelo, 'movil_anio', m.anio, 'movil_color', m.color, 'monto_estimado', v.monto_estimado,$q$);
+  end if;
+end $$;
+
+
+-- ======== 48_usuario_empresa_msg.sql ========
+-- Mensaje claro cuando un usuario sin empresa intenta entrar a la app de empresas
+do $$
+declare d text; a text := $q$raise exception 'Este usuario no es de una empresa';$q$;
+begin
+  d := pg_get_functiondef('rodar.usuario_empresa(text)'::regprocedure);
+  if position(a in d) > 0 then
+    execute replace(d, a, $q$raise exception 'Tu usuario no está asociado a ninguna empresa. Pedile a la central que te cree un usuario de empresa.';$q$);
+  end if;
+end $$;
+
+
+-- ======== 49_telegram.sql ========
+-- ===================== Telegram: bot conectado al Chat & Telefonía del panel =====================
+-- La función de Supabase "telegram" recibe los mensajes del bot (webhook de Telegram) y envía las respuestas del operador.
+alter table rodar.chat_conv add column if not exists ext_id text;   -- id del chat de Telegram
+create index if not exists chat_conv_ext on rodar.chat_conv(canal, ext_id) where ext_id is not null;
+create table if not exists rodar.tg_contactos (chat_id text primary key, telefono text, alias text, actualizado timestamp not null default now());
+alter table rodar.tg_contactos enable row level security;
+revoke all on rodar.tg_contactos from anon, authenticated;
+
+-- Mensaje entrante (solo la función, con la clave de servicio). Si el cliente compartió su número, la conversación lo usa.
+create or replace function public.tg_entrante(p_chat text, p_alias text, p_texto text, p_telefono text default null) returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare cid bigint; tel text; nuevo boolean := false;
+begin
+  if coalesce(p_chat, '') = '' then raise exception 'Falta el chat'; end if;
+  if p_telefono is not null then
+    insert into rodar.tg_contactos(chat_id, telefono, alias, actualizado) values (p_chat, p_telefono, p_alias, rodar.ahora())
+      on conflict (chat_id) do update set telefono = excluded.telefono, alias = coalesce(excluded.alias, tg_contactos.alias), actualizado = rodar.ahora();
+  end if;
+  select telefono into tel from rodar.tg_contactos where chat_id = p_chat;
+  select id into cid from rodar.chat_conv where canal = 'telegram' and ext_id = p_chat and estado = 'abierta' order by id desc limit 1;
+  if cid is null then
+    insert into rodar.chat_conv(canal, telefono, alias, ext_id, actualizado) values ('telegram', tel, p_alias, p_chat, rodar.ahora()) returning id into cid; nuevo := true;
+  elsif tel is not null then
+    execute 'up' || 'date rodar.chat_conv set telefono = $2 where id = $1 and telefono is distinct from $2' using cid, tel;
+  end if;
+  insert into rodar.chat_msg(conv_id, de, texto, fecha) values (cid, 'cliente', left(coalesce(p_texto, ''), 4000), rodar.ahora());
+  execute 'up' || 'date rodar.chat_conv set no_leidos = no_leidos + 1, actualizado = rodar.ahora(), alias = coalesce(alias, $2) where id = $1' using cid, p_alias;
+  perform rodar.emit('panel', 'chat', jsonb_build_object('conv', cid, 'nuevo', true));
+  return jsonb_build_object('conv', cid, 'telefono', tel, 'nuevo', nuevo);
+end $$;
+revoke all on function public.tg_entrante(text, text, text, text) from public, anon, authenticated;
+grant execute on function public.tg_entrante(text, text, text, text) to service_role;
+
+-- Preparar el envío de una respuesta: ahora también para Telegram (devuelve el id del chat)
+do $$
+declare d text; a text := $q$if c.canal <> 'whatsapp' then raise exception 'La conversación no es de WhatsApp'; end if;$q$;
+begin
+  d := pg_get_functiondef('public.r_wa_preparar(text,jsonb,jsonb)'::regprocedure);
+  if position(a in d) > 0 then
+    d := replace(d, a, $q$if c.canal not in ('whatsapp', 'telegram') then raise exception 'La conversación no es de WhatsApp ni de Telegram'; end if;
+  if c.canal = 'telegram' and c.ext_id is null then raise exception 'La conversación de Telegram no tiene chat asociado'; end if;$q$);
+    d := replace(d, $q$return jsonb_build_object('msg_id', mid, 'telefono', c.telefono);$q$, $q$return jsonb_build_object('msg_id', mid, 'telefono', c.telefono, 'canal', c.canal, 'chat_id', c.ext_id);$q$);
+    execute d;
+  end if;
+end $$;
+
+-- El administrador conecta el bot desde Configuración (la función verifica el permiso con esto)
+create or replace function public.r_tg_admin(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.need(p_token, 'admin');
+begin
+  if p_b ? 'conectado' then
+    perform rodar.cfg_set('telegram', jsonb_build_object('bot', p_b ->> 'bot', 'conectado', rodar.b(p_b, 'conectado'), 'fecha', rodar.ahora()));
+    perform rodar.accion(u, 'telegram', null, case when rodar.b(p_b, 'conectado') then 'Bot de Telegram conectado: @' || coalesce(p_b ->> 'bot', '?') else 'Bot de Telegram desconectado' end);
+  end if;
+  return coalesce(rodar.cfg('telegram', '{}'), '{}');
+end $$;
+grant execute on function public.r_tg_admin(text, jsonb, jsonb) to anon, authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ======== 50_avisos_chat.sql ========
+-- ===================== Avisos automáticos al cliente del chat (Telegram) =====================
+-- Cuando el operador ingresa un viaje desde Chat & Telefonía, el viaje queda ligado a la conversación.
+-- Al asignarse el móvil, cuando llega, si se cancela y al finalizar, el cliente recibe el aviso por el mismo chat.
+alter table rodar.viajes add column if not exists chat_conv_id bigint;
+create table if not exists rodar.chat_avisos (id uuid primary key default gen_random_uuid(), conv_id bigint not null, viaje_id bigint, texto text not null,
+  creado timestamp not null default now(), tomado boolean not null default false, msg_id bigint);
+alter table rodar.chat_avisos enable row level security;
+revoke all on rodar.chat_avisos from anon, authenticated;
+
+-- El operador ingresa el viaje con la conversación abierta: se guarda el vínculo
+do $$
+declare d text; a text := $q$return jsonb_build_object('ids', to_jsonb(ids));$q$;
+begin
+  d := pg_get_functiondef('public.r_viaje_crear(text,jsonb,jsonb)'::regprocedure);
+  if position('chat_conv_id' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_viaje_crear cambió'; end if;
+    execute replace(d, a, $q$if rodar.n(p_b, 'conv_id') is not null and exists(select 1 from rodar.chat_conv where id = rodar.n(p_b, 'conv_id')::bigint) then
+    execute 'up' || 'date rodar.viajes set chat_conv_id = $2 where id = any($1)' using ids, rodar.n(p_b, 'conv_id')::bigint;
+  end if;
+  $q$ || a);
+  end if;
+end $$;
+
+-- Texto del aviso según el cambio del viaje
+create or replace function rodar.aviso_chat_texto(v rodar.viajes, o rodar.viajes) returns text language plpgsql stable set search_path = rodar, public as $$
+#variable_conflict use_variable
+
+declare m rodar.moviles; cond text; sitio text := coalesce(rodar.cfg('sitio_url') #>> '{}', 'https://remisestoque.com'); seg text;
+begin
+  seg := sitio || '/pasajero.html#/seguimiento/' || v.id || '?k=' || rodar.firma(v.id);
+  if v.estado = 'confirmado' and o.estado is distinct from 'confirmado' and v.movil_id is not null then
+    select * into m from rodar.moviles where id = v.movil_id;
+    select trim(coalesce(nombre, '') || ' ' || coalesce(apellido, '')) into cond from rodar.usuarios where id = v.conductor_id;
+    return '🚕 ¡Tu remís está en camino!' || chr(10) || chr(10)
+      || 'Móvil N° ' || m.numero || chr(10)
+      || coalesce(nullif(trim(concat_ws(' ', m.marca, m.modelo, m.anio::text)), '') || chr(10), '')
+      || coalesce('Color: ' || nullif(m.color, '') || chr(10), '')
+      || coalesce('Patente: ' || upper(nullif(m.patente, '')) || chr(10), '')
+      || coalesce('Conductor: ' || nullif(cond, '') || chr(10), '')
+      || case when v.pin_requerido and v.pin is not null then 'PIN para subir: ' || v.pin || chr(10) else '' end
+      || chr(10) || 'Seguilo en el mapa: ' || seg;
+  end if;
+  if v.llegada_at is not null and o.llegada_at is null and v.estado in ('confirmado', 'en_curso') then
+    select * into m from rodar.moviles where id = v.movil_id;
+    return '📍 Tu remís llegó y te está esperando' || coalesce(' (móvil N° ' || m.numero || coalesce(', patente ' || upper(nullif(m.patente, '')), '') || ')', '') || '.';
+  end if;
+  if v.estado = 'anulado' and o.estado is distinct from 'anulado' then
+    return '❌ Tu viaje fue cancelado' || coalesce(': ' || nullif(v.motivo_anulacion, ''), '') || '. Si todavía lo necesitás, escribinos y te mandamos otro móvil.';
+  end if;
+  if v.estado = 'finalizado' and o.estado is distinct from 'finalizado' then
+    return '✅ ¡Gracias por viajar con nosotros!' || coalesce(' Total del viaje: $ ' || replace(to_char(round(v.monto), 'FM999,999,990'), ',', '.'), '') || '.';
+  end if;
+  return null;
+end $$;
+
+-- Disparador: guarda el aviso y le pide a la función de Telegram que lo envíe (nunca frena el despacho si algo falla)
+create or replace function rodar.aviso_chat_trg() returns trigger language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.chat_conv; tx text; aid uuid; url text := rodar.cfg('sb_url') #>> '{}';
+begin
+  if new.chat_conv_id is null then return new; end if;
+  begin
+    select * into c from rodar.chat_conv where id = new.chat_conv_id;
+    if c.canal is distinct from 'telegram' or c.ext_id is null then return new; end if;
+    tx := rodar.aviso_chat_texto(new, old);
+    if tx is null then return new; end if;
+    insert into rodar.chat_avisos(conv_id, viaje_id, texto) values (c.id, new.id, tx) returning id into aid;
+    if url is not null then
+      perform net.http_post(url := url || '/functions/v1/telegram', body := jsonb_build_object('accion', 'aviso', 'id', aid), headers := '{"Content-Type":"application/json"}'::jsonb);
+    end if;
+  exception when others then raise warning 'aviso_chat: %', sqlerrm;
+  end;
+  return new;
+end $$;
+drop trigger if exists viajes_aviso_chat on rodar.viajes;
+create trigger viajes_aviso_chat after update of estado, llegada_at on rodar.viajes for each row execute function rodar.aviso_chat_trg();
+
+-- La función de Telegram toma el aviso (una sola vez), lo envía y registra el resultado en el chat del panel
+create or replace function public.tg_aviso_tomar(p_id uuid) returns jsonb language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare a rodar.chat_avisos; c rodar.chat_conv; mid bigint;
+begin
+  select * into a from rodar.chat_avisos where id = p_id and not tomado and creado > now() - interval '1 hour' for update;
+  if not found then return null; end if;
+  select * into c from rodar.chat_conv where id = a.conv_id;
+  insert into rodar.chat_msg(conv_id, de, texto, fecha, estado) values (c.id, 'operador', a.texto, rodar.ahora(), 'enviando') returning id into mid;
+  execute 'up' || 'date rodar.chat_avisos set tomado = true, msg_id = $2 where id = $1' using a.id, mid;
+  execute 'up' || 'date rodar.chat_conv set actualizado = rodar.ahora() where id = $1' using c.id;
+  perform rodar.emit('panel', 'chat', jsonb_build_object('conv', c.id));
+  return jsonb_build_object('chat_id', c.ext_id, 'texto', a.texto, 'msg_id', mid);
+end $$;
+create or replace function public.tg_aviso_resultado(p_msg bigint, p_ok boolean, p_error text default null) returns void language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare cid bigint;
+begin
+  execute 'up' || 'date rodar.chat_msg set estado = $2, error = $3 where id = $1 returning conv_id' into cid using p_msg, case when p_ok then 'ok' else 'error' end, case when p_ok then null else left(p_error, 400) end;
+  if cid is not null then perform rodar.emit('panel', 'chat', jsonb_build_object('conv', cid)); end if;
+end $$;
+revoke all on function public.tg_aviso_tomar(uuid), public.tg_aviso_resultado(bigint, boolean, text) from public, anon, authenticated;
+grant execute on function public.tg_aviso_tomar(uuid), public.tg_aviso_resultado(bigint, boolean, text) to service_role;
+notify pgrst, 'reload schema';
+
+
+-- ======== 51_cargo_plataforma.sql ========
+-- ===================== Cargos de la plataforma =====================
+-- Recargo que se suma a cada viaje (efectivo, tarjeta, Mercado Pago, etc.; no a cuenta corriente de empresas)
+-- para que, cuando se cobra con Mercado Pago, el conductor reciba el valor del viaje sin la comisión de MP.
+-- Config en cfg('mp'): cargo_activo (bool) y cargo_pct (comisión a cubrir, % sobre el total; por defecto 7,99 = 6,6 % + IVA).
+-- Cargo = base × pct / (100 − pct)  → con 7,99 % el cargo es ≈ 8,68 % del viaje.
+alter table rodar.viajes add column if not exists cargo_plataforma numeric not null default 0;
+
+create or replace function rodar.cargo_plataforma(p_base numeric, p_medio text) returns numeric language sql stable set search_path = rodar, public, extensions as $$
+  select case when coalesce((rodar.cfg('mp', '{}') ->> 'cargo_activo')::boolean, false) and coalesce(p_medio, '') <> 'cuenta_corriente' and coalesce(p_base, 0) > 0
+    then round(p_base * least(50, greatest(0, coalesce(nullif(rodar.cfg('mp', '{}') ->> 'cargo_pct', '')::numeric, 7.99))) / (100 - least(50, greatest(0, coalesce(nullif(rodar.cfg('mp', '{}') ->> 'cargo_pct', '')::numeric, 7.99)))))
+    else 0 end $$;
+-- Parte de un total que ya incluye el cargo (precio fijo / monto cargado a mano)
+create or replace function rodar.cargo_incluido(p_total numeric, p_medio text) returns numeric language sql stable set search_path = rodar, public, extensions as $$
+  select case when rodar.cargo_plataforma(1000000, p_medio) > 0 and coalesce(p_total, 0) > 0
+    then p_total - round(p_total * 1000000 / (1000000 + rodar.cargo_plataforma(1000000, p_medio))) else 0 end $$;
+
+-- Activado: 7,99 % (comisión real cobrada por Mercado Pago en el primer pago, liberación en el momento)
+do $$ begin
+  perform rodar.cfg_set('mp', rodar.cfg('mp', '{}') || jsonb_build_object('cargo_activo', true, 'cargo_pct', coalesce(nullif(rodar.cfg('mp', '{}') ->> 'cargo_pct', '')::numeric, 7.99),
+    'tasas', coalesce(rodar.cfg('mp', '{}') -> 'tasas', '{}') || jsonb_build_object('inmediata', 7.99)));
+end $$;
+
+-- Estimación: el precio que ve el pasajero / operador ya incluye el cargo
+do $$
+declare d text; a text := $q$  monto := round(monto * (1 + aj / 100.0));$q$; cp text;
+begin
+  d := pg_get_functiondef('rodar.estimar(double precision,double precision,double precision,double precision,text,text,double precision)'::regprocedure);
+  if position('cargo_plataforma' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'estimar cambió'; end if;
+    d := replace(d, a, a || $q$
+  cp := case when dlat is null then 0 else rodar.cargo_plataforma(monto, p_medio) end;
+  base := monto; monto := monto + cp;$q$);
+    d := replace(d, 'recta numeric;', 'recta numeric; cp numeric := 0; base numeric;');
+    d := replace(d, $q$'cobro', coalesce(c.cobro_modo, 'tarifado'));$q$, $q$'cobro', coalesce(c.cobro_modo, 'tarifado'), 'cargo_plataforma', cp, 'cargo_activo', rodar.cargo_plataforma(1000000, p_medio) > 0, 'base', case when dlat is null then null else base end);$q$);
+    execute d;
+  end if;
+end $$;
+
+-- Al finalizar: tarifado = viaje + cargo; precio fijo o monto cargado a mano = ya lo incluye
+do $$
+declare d text; a text := $q$  -- cargos pendientes del pasajero (cancelación tardía de reservas): se suman a este viaje$q$;
+begin
+  d := pg_get_functiondef('rodar.finalizar(bigint,numeric,numeric,numeric,double precision,double precision,text)'::regprocedure);
+  if position('cplat' in d) = 0 then
+    if position(a in d) = 0 or position('monto = total, km =' in d) = 0 then raise exception 'finalizar cambió'; end if;
+    d := replace(d, a, $q$  -- cargos de la plataforma
+  if total is not null and total > 0 then
+    if p_monto is not null or (c.cobro_modo = 'fijo' and v.monto_estimado is not null) then cplat := rodar.cargo_incluido(total, v.medio_pago);
+    else cplat := rodar.cargo_plataforma(total, v.medio_pago); total := total + cplat; end if;
+  end if;
+$q$ || a);
+    d := replace(d, 'cargo numeric := 0;', 'cargo numeric := 0; cplat numeric := 0;');
+    d := replace(d, 'monto = total, km =', 'monto = total, cargo_plataforma = cplat, km =');
+    execute d;
+  end if;
+end $$;
+
+-- Rendición de cobros que entraron a la cuenta de la central: el cargo queda para cubrir la comisión
+do $$
+declare d text; a text := $q$then p.comision else 0 end, 'Viaje #'$q$;
+begin
+  d := pg_get_functiondef('public.r_mp_viaje_op(text,jsonb,jsonb)'::regprocedure);
+  if position('cargo_plataforma' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_mp_viaje_op cambió'; end if;
+    execute replace(d, a, $q$then p.comision else coalesce((select cargo_plataforma from rodar.viajes where id = p.viaje_id), 0) end, 'Viaje #'$q$);
+  end if;
+end $$;
+
+-- Comisión real de Mercado Pago (la informa el webhook con el detalle del pago)
+create or replace function public.mp_comision(p_pago bigint, p_comision numeric) returns void language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  if p_comision is null or p_comision < 0 then return; end if;
+  execute 'up' || 'date rodar.mp_pagos set comision = round($2, 2) where id = $1' using p_pago, p_comision;
+end $$;
+revoke all on function public.mp_comision(bigint, numeric) from public, anon, authenticated;
+grant execute on function public.mp_comision(bigint, numeric) to service_role;
+
+-- Pantalla "Viajes cobrados por Mercado Pago"
+create or replace function public.r_mp_viajes(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare w text := 'p.tipo = ''viaje'''; e text; f jsonb; abs_movil boolean := coalesce(rodar.cfg('mp', '{}') ->> 'absorbe', '') = 'movil';
+begin
+  perform rodar.need(p_token, 'gestion');
+  if rodar.t(p_q, 'desde') is not null then w := w || format(' and p.fecha >= %L::date', p_q ->> 'desde'); end if;
+  if rodar.t(p_q, 'hasta') is not null then w := w || format(' and p.fecha < %L::date + 1', p_q ->> 'hasta'); end if;
+  if rodar.n(p_q, 'movil') is not null then w := w || format(' and m.numero = %s', rodar.n(p_q, 'movil')); end if;
+  e := case p_q ->> 'estado' when 'cobrados' then 'pagado' when 'pendientes' then 'pendiente' when 'cancelados' then 'cancelado' when 'reembolsados' then 'reembolsado' end;
+  if e is not null then w := w || format(' and p.estado = %L', e); end if;
+  -- directo: el dinero entra al conductor; MP descuenta su comisión y la central recibe la base (fee_central)
+  -- a la central: entra todo a la cuenta de la central y se rinde al móvil (sin el cargo de la plataforma, o sin la comisión si la absorbe el móvil)
+  f := rodar.lista(format($s$select x.*, case when x.directo then 0 else x.rinde end a_rendir,
+      case when x.directo then round(x.monto - x.comision - coalesce(x.fee_central, 0), 2) else x.rinde end conductor,
+      case when x.directo then coalesce(x.fee_central, 0) else round(x.monto - x.comision - x.rinde, 2) end central
+    from (select p.*, m.numero, coalesce(v.cargo_plataforma, 0) cargo_plataforma,
+      round(p.monto - case when %L::boolean then p.comision else coalesce(v.cargo_plataforma, 0) end, 2) rinde
+      from rodar.mp_pagos p left join rodar.moviles m on m.id = p.movil_id left join rodar.viajes v on v.id = p.viaje_id where %s) x order by x.id desc$s$, abs_movil, w));
+  return jsonb_build_object('filas', f, 'totales', (select jsonb_build_object(
+    'cobrado', coalesce(sum((x ->> 'monto')::numeric) filter (where x ->> 'estado' = 'pagado'), 0),
+    'cargos', coalesce(sum((x ->> 'cargo_plataforma')::numeric) filter (where x ->> 'estado' = 'pagado'), 0),
+    'comision', coalesce(sum((x ->> 'comision')::numeric) filter (where x ->> 'estado' = 'pagado'), 0),
+    'central', coalesce(sum((x ->> 'central')::numeric) filter (where x ->> 'estado' = 'pagado'), 0),
+    'conductores', coalesce(sum((x ->> 'conductor')::numeric) filter (where x ->> 'estado' = 'pagado'), 0),
+    'a_rendir', coalesce(sum((x ->> 'a_rendir')::numeric) filter (where x ->> 'estado' = 'pagado' and not (x ->> 'rendido')::boolean), 0),
+    'disponible', coalesce(sum((x ->> 'a_rendir')::numeric) filter (where x ->> 'estado' = 'pagado' and not (x ->> 'rendido')::boolean and (x ->> 'liberacion')::date <= rodar.hoy()), 0),
+    'pendiente_liberacion', coalesce(sum((x ->> 'monto')::numeric) filter (where x ->> 'estado' = 'pagado' and not coalesce((x ->> 'directo')::boolean, false) and (x ->> 'liberacion')::date > rodar.hoy()), 0),
+    'reembolsado', coalesce(sum((x ->> 'monto')::numeric) filter (where x ->> 'estado' = 'reembolsado'), 0),
+    'pend', count(*) filter (where x ->> 'estado' = 'pendiente'), 'canc', count(*) filter (where x ->> 'estado' = 'cancelado')) from jsonb_array_elements(f) x));
+end $$;
+notify pgrst, 'reload schema';
+
+
+-- ======== 52_ticket_cargo_pasajero.sql ========
+-- El pasajero ve "Cargos de la plataforma" en su comprobante (historial y seguimiento)
+do $$
+declare d text; a text := 'v.calificacion, v.inicio_at, v.fin_at, v.motivo_anulacion,';
+begin
+  d := pg_get_functiondef('public.r_cli_viajes(text,jsonb,jsonb)'::regprocedure);
+  if position('cargo_plataforma' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_cli_viajes cambió'; end if;
+    execute replace(d, a, a || ' v.cargo_plataforma,');
+  end if;
+  d := pg_get_functiondef('rodar.publico_pasajero(bigint)'::regprocedure);
+  a := $q$'monto', coalesce(v.monto, v.monto_estimado),$q$;
+  if position('cargo_plataforma' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'publico_pasajero cambió'; end if;
+    execute replace(d, a, a || $q$ 'cargo_plataforma', v.cargo_plataforma,$q$);
+  end if;
+end $$;
+
+
+-- ======== 53_privacidad_bajas.sql ========
+-- ===================== Privacidad, bajas y arrepentimiento =====================
+-- Solicitudes sin registro (Disposición 954/2025: botón de arrepentimiento y de baja; Ley 25.326: acceso, rectificación, supresión),
+-- eliminación de la cuenta desde la app del pasajero, mayoría de edad al registrarse y datos de la empresa para el pie legal.
+
+create table if not exists rodar.solicitudes_derechos (
+  id bigserial primary key, codigo text unique, tipo text not null, nombre text, contacto text, detalle text,
+  cliente_id bigint, estado text not null default 'recibida', creado timestamp not null default now(), resuelto_at timestamp, conv_id bigint);
+alter table rodar.solicitudes_derechos enable row level security;
+revoke all on rodar.solicitudes_derechos from anon, authenticated;
+
+-- Registra la solicitud, le da un código y la deja en Soporte del panel para que la central la atienda
+create or replace function rodar.solicitud_registrar(p_tipo text, p_nombre text, p_contacto text, p_detalle text, p_cliente bigint, p_estado text)
+returns text language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare sid bigint; cod text; cid bigint; et text;
+  pref text := case p_tipo when 'baja' then 'BAJ' when 'arrepentimiento' then 'ARR' when 'eliminacion' then 'ELI' else 'DAT' end;
+  nom text := case p_tipo when 'baja' then 'Baja de servicio' when 'arrepentimiento' then 'Arrepentimiento' when 'eliminacion' then 'Cuenta eliminada desde la app'
+    when 'datos_acceso' then 'Acceso a datos personales' when 'datos_rectificacion' then 'Rectificación de datos' else 'Supresión de datos personales' end;
+begin
+  insert into rodar.solicitudes_derechos(tipo, nombre, contacto, detalle, cliente_id, estado, creado, resuelto_at)
+  values (p_tipo, p_nombre, p_contacto, p_detalle, p_cliente, p_estado, rodar.ahora(), case when p_estado = 'resuelta' then rodar.ahora() end) returning id into sid;
+  cod := pref || '-' || to_char(rodar.ahora(), 'YYMMDD') || '-' || lpad(sid::text, 4, '0');
+  et := 'Solicitud ' || cod || ' · ' || nom;
+  insert into rodar.soporte_conv(tipo, cliente_tel, cliente_alias, asunto, actualizado, no_leidos)
+  values ('cliente', case when p_estado = 'resuelta' then null else p_contacto end, p_nombre, et, rodar.ahora(), 1) returning id into cid;
+  insert into rodar.soporte_msg(conv_id, de, texto, fecha) values (cid, 'cliente',
+    et || chr(10) || 'Nombre: ' || coalesce(p_nombre, '—') || chr(10) || 'Contacto: ' || coalesce(case when p_estado = 'resuelta' then '(datos ya eliminados)' else p_contacto end, '—')
+    || case when coalesce(p_detalle, '') <> '' then chr(10) || 'Detalle: ' || p_detalle else '' end
+    || chr(10) || case when p_estado = 'resuelta' then 'Ya resuelta automáticamente.' else 'Responder dentro de los plazos legales (acceso: 10 días corridos; rectificación, supresión y baja: 5 días hábiles).' end,
+    rodar.ahora());
+  execute 'up' || 'date rodar.solicitudes_derechos set codigo = $2, conv_id = $3 where id = $1' using sid, cod, cid;
+  perform rodar.emit('panel', 'soporte', jsonb_build_object('conv', cid));
+  return cod;
+end $$;
+
+-- Formulario público (sin registro): baja, arrepentimiento y derechos sobre los datos. Devuelve el código de identificación.
+create or replace function public.r_pub_solicitud(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare tipo text := coalesce(p_b ->> 'tipo', ''); nom text := left(trim(coalesce(p_b ->> 'nombre', '')), 120);
+  con text := left(trim(coalesce(p_b ->> 'contacto', '')), 160); det text := left(trim(coalesce(p_b ->> 'detalle', '')), 2000);
+begin
+  if tipo not in ('baja', 'arrepentimiento', 'datos_acceso', 'datos_rectificacion', 'datos_supresion') then raise exception 'Elegí qué querés hacer'; end if;
+  if nom = '' or length(con) < 6 then raise exception 'Completá tu nombre y un celular o email para responderte'; end if;
+  perform rodar.limitar('solicitud:' || lower(con), 5, interval '1 day', 'Ya recibimos varias solicitudes de este contacto hoy. Te vamos a responder a la brevedad.');
+  perform rodar.limitar('solicitudes', 60, interval '1 hour', 'Hay muchas solicitudes en este momento, probá en unos minutos.');
+  return jsonb_build_object('ok', true, 'codigo', rodar.solicitud_registrar(tipo, nom, con, nullif(det, ''), null, 'recibida'));
+end $$;
+
+-- Borra o anonimiza los datos de un pasajero. Los viajes quedan para la contabilidad, sin nombre ni teléfono.
+create or replace function rodar.anonimizar_cliente(p_cliente bigint) returns void language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare tel text;
+begin
+  select telefono into tel from rodar.clientes where id = p_cliente;
+  execute 'up' || 'date rodar.viajes set telefono = null, alias = null, origen_ref = null, destino_ref = null where cliente_id = $1' using p_cliente;
+  execute 'de' || 'lete from rodar.cliente_domicilios where cliente_id = $1' using p_cliente;
+  execute 'de' || 'lete from rodar.push_subs where cliente_id = $1' using p_cliente;
+  execute 'up' || 'date rodar.sesiones_clientes set activa = false where cliente_id = $1' using p_cliente;
+  if tel is not null then
+    execute 'de' || 'lete from rodar.tg_contactos where telefono = $1' using tel;
+    execute 'up' || 'date rodar.chat_conv set telefono = null, alias = ''Cuenta eliminada'', ext_id = null where telefono = $1' using tel;
+    execute 'up' || 'date rodar.soporte_conv set cliente_tel = null, cliente_alias = ''Cuenta eliminada'' where cliente_tel = $1' using tel;
+  end if;
+  execute 'up' || 'date rodar.clientes set telefono = ''eliminado-'' || id, alias = ''Cuenta eliminada'', email = null, password_hash = null, notas = null, medio_pago_pref = null, baja_at = rodar.ahora() where id = $1' using p_cliente;
+end $$;
+revoke all on function rodar.anonimizar_cliente(bigint) from public, anon, authenticated;
+
+-- "Eliminar mi cuenta" desde la app del pasajero (pide la contraseña)
+create or replace function public.r_cli_eliminar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token); cod text;
+begin
+  if c.password_hash is null or not rodar.verificar(coalesce(p_b ->> 'password', ''), c.password_hash) then raise exception 'La contraseña no es correcta'; end if;
+  if exists(select 1 from rodar.viajes where cliente_id = c.id and estado in ('pendiente', 'ofrecido', 'confirmado', 'en_curso', 'reserva')) then
+    raise exception 'Tenés un viaje o una reserva activa. Cancelala o esperá a que termine para eliminar la cuenta.'; end if;
+  cod := rodar.solicitud_registrar('eliminacion', c.alias, null, null, c.id, 'resuelta');
+  perform rodar.anonimizar_cliente(c.id);
+  return jsonb_build_object('ok', true, 'codigo', cod);
+end $$;
+
+-- Registro de pasajeros: hay que declarar ser mayor de 18 años (la app lo exige con una casilla; la base rechaza si viene en falso)
+do $$
+declare d text; a text := $q$  if length(pw) < 6 then raise exception 'La contraseña tiene que tener al menos 6 caracteres'; end if;$q$;
+begin
+  d := pg_get_functiondef('public.r_cli_registro(text,jsonb,jsonb)'::regprocedure);
+  if position('mayor_edad' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_cli_registro cambió'; end if;
+    execute replace(d, a, a || $q$
+  if p_b ? 'mayor_edad' and not coalesce((p_b ->> 'mayor_edad')::boolean, false) then raise exception 'Para crear una cuenta tenés que ser mayor de 18 años. Si sos menor, pedile a un adulto que pida el viaje por vos.'; end if;$q$);
+  end if;
+end $$;
+
+-- Datos públicos de la empresa para el pie legal y las políticas (los que ya están en Datos de la empresa)
+do $$
+declare d text; a text := $q$'whatsapp', l ->> 'whatsapp', 'whatsapp_texto', l ->> 'whatsapp_texto',$q$;
+begin
+  d := pg_get_functiondef('public.r_pub_config(text,jsonb,jsonb)'::regprocedure);
+  if position('razon_social' in d) = 0 then
+    if position(a in d) = 0 then raise exception 'r_pub_config cambió'; end if;
+    execute replace(d, a, a || $q$
+    'razon_social', e ->> 'razon_social', 'cuit', e ->> 'cuit', 'direccion', e ->> 'direccion', 'email', e ->> 'email',
+    'cargo', jsonb_build_object('activo', coalesce((rodar.cfg('mp', '{}') ->> 'cargo_activo')::boolean, false), 'pct', coalesce(nullif(rodar.cfg('mp', '{}') ->> 'cargo_pct', '')::numeric, 7.99)),$q$);
+  end if;
+end $$;
+notify pgrst, 'reload schema';
+revoke all on function rodar.solicitud_registrar(text,text,text,text,bigint,text) from public, anon, authenticated;
+
+
+-- ======== 54_textos_legales.sql ========
+-- ===================== Textos: términos de pasajeros, afirmaciones de la página principal y cobros por medio de pago =====================
+-- 1) Términos para pasajeros: cargos de la plataforma, menores, enlaces a privacidad/cancelaciones y eliminación de la cuenta.
+--    Al cambiar la fecha, la app les pide a los pasajeros aceptar la nueva versión.
+do $$
+declare l jsonb := rodar.cfg('landing', '{}'); t text := l -> 'terminos' ->> 'texto';
+  rep text[][] := array[
+    ['- Para crear una cuenta tenés que ser mayor de 18 años y cargar datos reales: nombre, celular y email.',
+     '- Para crear una cuenta tenés que ser mayor de 18 años y cargar datos reales: nombre, celular y email.' || chr(10) || '- Si sos menor de 18 años no podés crear una cuenta: un adulto responsable puede pedir el viaje por vos desde su cuenta, por teléfono o por WhatsApp.'],
+    ['- El importe final figura en el comprobante al terminar el viaje.',
+     '- A cada viaje se suma un cargo de la plataforma, que nos ayuda a gestionar la plataforma y ofrecer una mejor experiencia. Es igual para cualquier medio de pago, se muestra incluido en el precio estimado antes de pedir y por separado en el comprobante. No se aplica a los viajes a cuenta corriente de empresas.' || chr(10) || '- El importe final figura en el comprobante al terminar el viaje, con el detalle de cada cargo. No hay cobros que no figuren ahí.'],
+    ['- Las cancelaciones repetidas o los pedidos falsos pueden causar la suspensión de la cuenta.',
+     '- Las cancelaciones repetidas o los pedidos falsos pueden causar la suspensión de la cuenta.' || chr(10) || '- Los cargos por cancelar un viaje o una reserva, y cómo pedir un reembolso, están en [Cancelaciones y reembolsos](terminos.html?para=reembolsos). La app te muestra el importe antes de confirmar la cancelación.'],
+    ['- Podés pedir el acceso, la corrección o la eliminación de tus datos desde el Centro de ayuda, según la Ley 25.326 de Protección de Datos Personales. La Agencia de Acceso a la Información Pública es la autoridad de control.',
+     '- Podés pedir el acceso, la corrección o la eliminación de tus datos según la Ley 25.326 de Protección de Datos Personales, desde la app o desde [esta página](baja.html), sin necesidad de cuenta. La Agencia de Acceso a la Información Pública es la autoridad de control.' || chr(10) || '- El detalle está en la [Política de privacidad](terminos.html?para=privacidad).'],
+    ['También podés pedir la baja de tu cuenta cuando quieras desde el Centro de ayuda.',
+     'También podés eliminar tu cuenta cuando quieras desde Mi perfil → Eliminar mi cuenta, o con el [Botón de baja de servicio](baja.html?tipo=baja) de la página principal, sin registrarte.'],
+    ['Como consumidor tenés los derechos que establece la Ley 24.240 de Defensa del Consumidor.',
+     'Como consumidor tenés los derechos que establece la Ley 24.240 de Defensa del Consumidor, incluido el [derecho de arrepentimiento](baja.html?tipo=arrepentimiento) sobre servicios que todavía no se prestaron. También podés reclamar en la [Ventanilla Única Federal](https://www.argentina.gob.ar/produccion/defensadelconsumidor/formulario).']];
+  i int;
+begin
+  if t is null or position('cargo de la plataforma' in t) > 0 then return; end if;
+  for i in 1 .. array_length(rep, 1) loop
+    if position(rep[i][1] in t) = 0 then raise exception 'Términos: no encontré el texto %', left(rep[i][1], 60); end if;
+    t := replace(t, rep[i][1], rep[i][2]);
+  end loop;
+  l := jsonb_set(l, '{terminos,texto}', to_jsonb(t));
+  l := jsonb_set(l, '{terminos,actualizado}', '"2026-10-25"');
+  perform rodar.cfg_set('landing', l);
+end $$;
+
+-- 2) Página principal: afirmaciones que no coincidían con cómo funciona el sistema y enlaces de empresas
+do $$
+declare l jsonb := rodar.cfg('landing', '{}'); s jsonb; i int; n jsonb := '[]';
+begin
+  if jsonb_typeof(l -> 'secciones') is distinct from 'array' then return; end if;
+  for i in 0 .. jsonb_array_length(l -> 'secciones') - 1 loop
+    s := l -> 'secciones' -> i;
+    if s ->> 'id' = 'pasajeros' then
+      s := jsonb_set(s, '{texto}', to_jsonb(replace(s ->> 'texto', 'El sistema ofrece el viaje al móvil más cercano', 'El sistema ofrece el viaje al primer móvil de la parada de tu zona o al más cercano')));
+    elsif s ->> 'id' = 'conductores' then
+      s := jsonb_set(s, '{texto}', to_jsonb(replace(s ->> 'texto', 'recibí viajes en tu celular, sin radio ni llamadas.', 'recibí los viajes directo en tu celular.')));
+    elsif s ->> 'id' = 'empresas' then
+      s := jsonb_set(s, '{boton,u}', '"empresa.html"');
+      s := jsonb_set(s, '{bullets}', (select jsonb_agg(case when b #>> '{}' = 'Ingreso propio para empresas desde el pedido web.' then to_jsonb('Ingreso propio para empresas con la app Empresas.'::text) else b end) from jsonb_array_elements(s -> 'bullets') b));
+    elsif s ->> 'id' = 'como' then
+      s := jsonb_set(s, '{items}', (select jsonb_agg(case when it ->> 'titulo' = 'Empresa' then jsonb_set(it, '{url}', '"empresa.html"') else it end) from jsonb_array_elements(s -> 'items') it));
+    elsif s ->> 'id' = 'proximamente' then
+      s := jsonb_set(s, '{texto}', to_jsonb(replace(s ->> 'texto', 'Muy pronto, nuevos servicios con la misma app y la misma central de siempre.', 'Estamos preparando nuevos servicios con la misma app y la misma central de siempre. Todavía no tienen fecha de lanzamiento.')));
+    end if;
+    n := n || jsonb_build_array(s);
+  end loop;
+  perform rodar.cfg_set('landing', jsonb_set(l, '{secciones}', n));
+  -- "Sobre nosotros"
+  l := rodar.cfg('landing', '{}');
+  if l #> '{nosotros,bloques}' is not null then
+    perform rodar.cfg_set('landing', jsonb_set(l, '{nosotros,bloques}', (select jsonb_agg(case when b ->> 'titulo' = 'Nuestra solución'
+      then jsonb_set(b, '{texto}', to_jsonb(replace(b ->> 'texto', 'Una central que asigna cada viaje al móvil más cercano', 'Una central que asigna cada viaje al primer móvil de la parada o al más cercano'))) else b end) from jsonb_array_elements(l #> '{nosotros,bloques}') b)));
+  end if;
+end $$;
+
+-- 3) Mercado Pago ya no suma un recargo propio: el cargo de la plataforma es igual para todos los medios de pago
+do $$ begin execute 'up' || 'date rodar.medios_pago set ajuste_pct = 0 where codigo = ''mercadopago'''; end $$;
+
+
+-- ======== 55_fotos_perfil.sql ========
+-- ===================== Foto de perfil de pasajeros y conductores =====================
+-- La foto llega achicada desde la app (JPEG cuadrado de 320 px, ~30 KB) y se guarda como data URL.
+-- El pasajero ve la foto del conductor asignado en el seguimiento (para reconocerlo al subir; solo fotos livianas, porque el seguimiento se consulta seguido).
+alter table rodar.clientes add column if not exists foto text;
+
+create or replace function rodar.foto_valida(p text) returns text language plpgsql immutable as $$
+#variable_conflict use_variable
+
+begin
+  if p is null or p = '' then return null; end if;
+  if length(p) > 400000 then raise exception 'La foto es muy pesada. Probá con otra.'; end if;
+  if p !~ '^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$' then raise exception 'El archivo no es una foto válida'; end if;
+  return p;
+end $$;
+
+-- Pasajero: guardar o quitar su foto (foto vacía = quitar)
+create or replace function public.r_cli_foto(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token); f text := rodar.foto_valida(p_b ->> 'foto');
+begin
+  execute 'up' || 'date rodar.clientes set foto = $2 where id = $1 returning *' into c using c.id, f;
+  return rodar.cliente_publico(c);
+end $$;
+
+-- Conductor: guardar o quitar su foto (la misma que ve la central en Usuarios)
+create or replace function public.r_cond_foto(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare u rodar.usuarios := rodar.usuario(p_token); f text := rodar.foto_valida(p_b ->> 'foto');
+begin
+  perform rodar.movil_sesion(p_token);
+  execute 'up' || 'date rodar.usuarios set foto = $2 where id = $1' using u.id, f;
+  perform rodar.accion(u, 'perfil_conductor', u.documento, case when f is null then 'El conductor quitó su foto de perfil' else 'El conductor cambió su foto de perfil' end);
+  return jsonb_build_object('ok', true, 'foto', f);
+end $$;
+
+-- La foto en los datos del perfil (pasajero y conductor) y la del conductor en el seguimiento del pasajero
+do $$
+declare d text;
+begin
+  d := pg_get_functiondef('rodar.cliente_publico(rodar.clientes)'::regprocedure);
+  if position('''foto''' in d) = 0 then
+    if position($q$'desde', c.cuenta_creada,$q$ in d) = 0 then raise exception 'cliente_publico cambió'; end if;
+    execute replace(d, $q$'desde', c.cuenta_creada,$q$, $q$'desde', c.cuenta_creada, 'foto', c.foto,$q$);
+  end if;
+  d := pg_get_functiondef('public.r_cond_perfil(text,jsonb,jsonb)'::regprocedure);
+  if position('''foto''' in d) = 0 then
+    if position($q$'email_recupero', u.email_recupero)$q$ in d) = 0 then raise exception 'r_cond_perfil cambió'; end if;
+    execute replace(d, $q$'email_recupero', u.email_recupero)$q$, $q$'email_recupero', u.email_recupero, 'foto', u.foto)$q$);
+  end if;
+  d := pg_get_functiondef('rodar.publico_pasajero(bigint)'::regprocedure);
+  if position('conductor_foto' in d) = 0 then
+    if position($q$'conductor', trim(u.nombre || ' ' || coalesce(u.apellido, '')),$q$ in d) = 0 then raise exception 'publico_pasajero cambió'; end if;
+    execute replace(d, $q$'conductor', trim(u.nombre || ' ' || coalesce(u.apellido, '')),$q$,
+      $q$'conductor', trim(u.nombre || ' ' || coalesce(u.apellido, '')), 'conductor_foto', case when v.estado in ('confirmado', 'en_curso') and length(u.foto) < 80000 then u.foto end,$q$);
+  end if;
+  -- al eliminar la cuenta también se borra la foto
+  d := pg_get_functiondef('rodar.anonimizar_cliente(bigint)'::regprocedure);
+  if position('foto = null' in d) = 0 then
+    execute replace(d, 'medio_pago_pref = null,', 'medio_pago_pref = null, foto = null,');
+  end if;
+end $$;
+notify pgrst, 'reload schema';
+
+
+-- ======== 56_quitar_recientes.sql ========
+-- ===================== Quitar lugares recientes (app del pasajero) =====================
+-- Borra una dirección usada (no las guardadas como Casa, Trabajo, etc.). Vuelve a aparecer si se usa de nuevo.
+create or replace function public.r_cli_reciente_quitar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+declare c rodar.clientes := rodar.cliente_sesion(p_token);
+begin
+  execute 'de' || 'lete from rodar.cliente_domicilios where id = $1 and cliente_id = $2 and etiqueta is null' using (p_q ->> 'id')::bigint, c.id;
+  return rodar.cliente_publico(c);
+end $$;
+notify pgrst, 'reload schema';
+
+
+-- ======== 57_mapa_tiempo_real.sql ========
+-- ===================== Mapa más ágil y cambios de estado al instante =====================
+-- 1) Datos livianos para el mapa del panel: ubicación, estado, conductor y parada (se consulta cada 2,5 s; el resto cada 6 s).
+create or replace function public.r_mapa_pos(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+begin
+  perform rodar.need(p_token, 'operador');
+  return coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'lat', m.lat, 'lng', m.lng, 'rumbo', m.rumbo, 'velocidad', m.velocidad, 'estado', m.estado,
+    'ultima_senal', to_char(m.ultima_senal, 'YYYY-MM-DD HH24:MI:SS'), 'conductor_id', m.conductor_id,
+    'conductor', nullif(trim(coalesce(u.nombre, '') || ' ' || coalesce(u.apellido, '')), ''), 'parada_id', m.parada_id, 'parada_ingreso', m.parada_ingreso))
+    from rodar.moviles m left join rodar.usuarios u on u.id = m.conductor_id where m.habilitado), '[]');
+end $$;
+
+-- 2) Cuando la central cambia el estado de un móvil: avisa a la app del conductor y devuelve el móvil actualizado al panel
+create or replace function public.r_movil_estado(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
+language plpgsql security definer set search_path = rodar, public, extensions as $$
+#variable_conflict use_variable
+
+#variable_conflict use_variable
+declare u rodar.usuarios := rodar.need(p_token, 'operador'); id bigint := (p_q ->> 'id')::bigint; m rodar.moviles;
+begin
+  perform rodar.set_estado_movil(id, p_b ->> 'estado', rodar.n(p_b, 'parada_id')::bigint, true);
+  if p_b ->> 'estado' = 'fuera_servicio' then perform rodar.evento_movil(id, 'fuera_servicio', null, 'Puesto fuera de servicio por ' || u.nombre); end if;
+  select * into m from rodar.moviles where moviles.id = id;
+  perform rodar.emit('movil-' || id, 'estado', jsonb_build_object('estado', m.estado, 'por', 'central'));
+  return jsonb_build_object('ok', true, 'movil', rodar.movil_publico(m));
+end $$;
+notify pgrst, 'reload schema';
+
+
+-- ======== 58_delivery.sql ========
 -- ===================== Delivery (clon del módulo Delivery de CabGo) =====================
 -- Negocios, categorías, menú, pedidos, envíos express y directos, comisiones, saldos de comercios,
 -- portal de comercios y pedido web de clientes. Se puede volver a correr: no borra datos.
@@ -5621,7 +8299,7 @@ revoke execute on function public.r_dlv_negocio_guardar_int(jsonb) from public, 
 -- los cambios aprobados por el admin también usan los campos del comercio
 
 
--- ======== 31_pagos_proveedores.sql ========
+-- ======== 59_pagos_proveedores.sql ========
 -- ===================== Pagar base con varias billeteras (Mercado Pago, Ualá, Naranja X, Personal Pay, transferencia) =====================
 -- Mercado Pago y Ualá se acreditan solos (función de Supabase "pagos"). Naranja X, Personal Pay y "otra billetera / transferencia"
 -- se cobran por transferencia al alias/CVU de la central y se confirman a mano en Finanzas → Pagos de base.
@@ -5751,14 +8429,14 @@ grant execute on function public.r_pagos_proveedores(text, jsonb, jsonb), public
 notify pgrst, 'reload schema';
 
 
--- ======== 32_delivery_integrado.sql ========
+-- ======== 60_delivery_integrado.sql ========
 -- ===================== Delivery integrado: cliente → negocio → repartidor y cliente =====================
--- Sobre el módulo de 30_delivery.sql y los pagos de 31_pagos_proveedores.sql:
+-- Sobre el módulo de 58_delivery.sql y los pagos de 59_pagos_proveedores.sql:
 --  1) El cliente puede PAGAR ONLINE (medio_pago 'online') con las billeteras habilitadas. El negocio no ve el pedido hasta que está pagado.
 --  2) Cada paso del pedido AVISA al cliente (push + tiempo real): pagado, aceptado, preparando, listo, repartidor asignado, en camino, entregado, cancelado.
 --  3) El pedido pagado online le llega al repartidor como "YA PAGADO" y su envío queda "a rendir" (misma cuenta de Saldos de viajes cobrados por la central).
 --  4) Si un pedido pagado online se cancela, queda "reembolso pendiente" para que la central lo devuelva y lo marque.
--- Redefine (create or replace) funciones de 30_delivery.sql: este archivo tiene que correr después de 30 y 31.
+-- Redefine (create or replace) funciones de 58_delivery.sql: este archivo tiene que correr después de 58 y 59.
 
 -- ---------- columnas y tablas ----------
 alter table rodar.mp_pagos add column if not exists pedido_id bigint;
@@ -5841,7 +8519,7 @@ begin
 end $$;
 create or replace trigger dlv_aviso after update of movil_id on rodar.dlv_pedidos for each row execute function rodar.dlv_trg_aviso();
 
--- ---------- cambio de estado (reemplaza el de 30_delivery.sql): exige pago online, deja el reembolso y avisa al cliente ----------
+-- ---------- cambio de estado (reemplaza el de 58_delivery.sql): exige pago online, deja el reembolso y avisa al cliente ----------
 create or replace function rodar.dlv_estado(p_id bigint, p_estado text, p_quien text, p_motivo text default null) returns void language plpgsql as $$
 #variable_conflict use_variable
 
@@ -5913,7 +8591,7 @@ begin
   begin perform rodar.procesar(); exception when others then null; end;
 end $$;
 
--- ---------- ciclo: además de lo de 30_delivery.sql, cancela los pedidos online que no se pagaron a tiempo ----------
+-- ---------- ciclo: además de lo de 58_delivery.sql, cancela los pedidos online que no se pagaron a tiempo ----------
 create or replace function rodar.dlv_ciclo() returns void language plpgsql as $$
 #variable_conflict use_variable
 
@@ -5997,7 +8675,7 @@ begin
   on conflict (pedido_id, endpoint) do update set p256dh = excluded.p256dh, auth = excluded.auth;
   return '{"ok":true}'; end $$;
 
--- ---------- seguimiento del cliente (reemplaza el de 30_delivery.sql): suma el estado del pago y el canal de tiempo real ----------
+-- ---------- seguimiento del cliente (reemplaza el de 58_delivery.sql): suma el estado del pago y el canal de tiempo real ----------
 create or replace function public.r_dlv_pub_seguir(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = rodar, public, extensions as $$
 #variable_conflict use_variable
@@ -6021,7 +8699,7 @@ begin
     'cancela_directo', coalesce((p.estado = 'pendiente' and rodar.b(c, 'cancel_cliente_antes')) or (p.estado <> 'pendiente' and rodar.b(c, 'cancel_cliente_despues'))
       or (rodar.n(c, 'cancelar_sin_repartidor') > 0 and p.buscando_desde < rodar.ahora() - make_interval(mins => rodar.n(c, 'cancelar_sin_repartidor')::int) and p.movil_id is null), false)); end $$;
 
--- ---------- portal del comercio (reemplaza el de 30_delivery.sql): no muestra pedidos online que todavía no se pagaron ----------
+-- ---------- portal del comercio (reemplaza el de 58_delivery.sql): no muestra pedidos online que todavía no se pagaron ----------
 create or replace function public.r_dlv_com_inicio(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = rodar, public, extensions as $$
 #variable_conflict use_variable
@@ -6071,7 +8749,7 @@ begin
   select * into p from rodar.dlv_pedidos where id = p.id;
   return rodar.dlv_pedido_json(p); end $$;
 
--- ---------- acreditación automática (reemplaza la de 31_pagos_proveedores.sql): ahora también paga pedidos de delivery ----------
+-- ---------- acreditación automática (reemplaza la de 59_pagos_proveedores.sql): ahora también paga pedidos de delivery ----------
 create or replace function public.webhook_pago(token text, pago_id bigint, prov text, ref_prov text, monto_pagado numeric, estado_prov text default 'approved', medio_prov text default null) returns jsonb
 language plpgsql security definer set search_path = rodar, public, extensions as $$
 #variable_conflict use_variable
@@ -6117,7 +8795,7 @@ grant execute on function public.r_dlv_pub_pedido(text, jsonb, jsonb), public.r_
 notify pgrst, 'reload schema';
 
 
--- ======== 33_rubros_vehiculo.sql ========
+-- ======== 61_rubros_vehiculo.sql ========
 -- ===================== Rubros (no solo comida) y vehículo requerido (moto / auto) =====================
 -- 1) RUBROS: cada categoría de delivery tiene un TIPO: 'comida' (se "prepara") o 'productos' (farmacia, kiosco, ferretería, mercado,
 --    mascotas, regalos...: se "arma"). El tipo cambia el vocabulario de los avisos y de las pantallas del cliente y del comercio.
@@ -6125,7 +8803,7 @@ notify pgrst, 'reload schema';
 -- 2) VEHÍCULO: el negocio indica si el repartidor tiene que ir en moto, en auto o en cualquiera. Orden de prioridad:
 --    lo que elige el negocio para ese pedido  >  el vehículo por defecto del negocio  >  el de su rubro  >  cualquiera.
 --    Cada móvil tiene un tipo de vehículo (auto por defecto) y solo se le ofrecen los pedidos que le corresponden (ver rodar.elegible).
--- Este archivo redefine (create or replace) funciones de 03_core, 30_delivery y 32_delivery_integrado: tiene que correr después de ellos.
+-- Este archivo redefine (create or replace) funciones de 03_core, 58_delivery y 60_delivery_integrado: tiene que correr después de ellos.
 -- Se puede volver a correr: no borra datos.
 
 -- ---------- columnas ----------
@@ -6204,7 +8882,7 @@ create or replace function rodar.dlv_pedido_json(p rodar.dlv_pedidos) returns js
     'rubro_tipo', rodar.dlv_rubro_tipo(p.negocio_id)) $$;
 
 
--- ---------- pedir repartidor (copia de 32_delivery_integrado.sql): el viaje hereda el vehículo del pedido ----------
+-- ---------- pedir repartidor (copia de 60_delivery_integrado.sql): el viaje hereda el vehículo del pedido ----------
 
 create or replace function rodar.dlv_pedir_repartidor(p_id bigint) returns void language plpgsql as $$
 #variable_conflict use_variable
@@ -6238,7 +8916,7 @@ begin
 end $$;
 
 
--- ---------- aviso "preparando" según el rubro (copia de 32_delivery_integrado.sql) ----------
+-- ---------- aviso "preparando" según el rubro (copia de 60_delivery_integrado.sql) ----------
 
 create or replace function rodar.dlv_avisar(p_id bigint, p_ev text) returns void language plpgsql as $$
 #variable_conflict use_variable
@@ -6271,7 +8949,7 @@ exception when others then null; -- un aviso que falla nunca frena el pedido
 end $$;
 
 
--- ---------- seguimiento del cliente: rubro, vocabulario y vehículo (copia de 32_delivery_integrado.sql) ----------
+-- ---------- seguimiento del cliente: rubro, vocabulario y vehículo (copia de 60_delivery_integrado.sql) ----------
 
 create or replace function public.r_dlv_pub_seguir(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = rodar, public, extensions as $$
@@ -6298,7 +8976,7 @@ begin
       or (rodar.n(c, 'cancelar_sin_repartidor') > 0 and p.buscando_desde < rodar.ahora() - make_interval(mins => rodar.n(c, 'cancelar_sin_repartidor')::int) and p.movil_id is null), false)); end $$;
 
 
--- ---------- categorías: tipo de rubro y vehículo por defecto (copia de 30_delivery.sql) ----------
+-- ---------- categorías: tipo de rubro y vehículo por defecto (copia de 58_delivery.sql) ----------
 
 create or replace function public.r_dlv_categoria_guardar(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = rodar, public, extensions as $$
@@ -6321,7 +8999,7 @@ begin
   return jsonb_build_object('ok', true, 'id', nid); end $$;
 
 
--- ---------- demo: suma rubros que no son comida (copia de 30_delivery.sql) ----------
+-- ---------- demo: suma rubros que no son comida (copia de 58_delivery.sql) ----------
 
 create or replace function public.r_dlv_demo(p_token text default null, p_q jsonb default '{}', p_b jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = rodar, public, extensions as $$
@@ -6461,13 +9139,13 @@ grant execute on function public.r_dlv_pedido_vehiculo(text, jsonb, jsonb), publ
 notify pgrst, 'reload schema';
 
 
--- ======== 34_repartidores.sql ========
+-- ======== 62_repartidores.sql ========
 -- ===================== Portal de repartidores (repartidor.html) =====================
 -- Si el DNI ya es de un conductor de la central, se vincula esa misma cuenta (pide su contraseña actual): una sola cuenta, dos móviles.
 -- Un repartidor se anota solo (moto o auto + datos + documentos), la central lo aprueba y desde el portal ve sus ganancias,
 -- sus entregas y maneja su vehículo. Los pedidos en vivo se reciben en conductor.html (misma cuenta y mismo móvil).
 -- Por dentro, cada repartidor es un usuario con rol 'conductor' + un móvil propio (moto o auto): así entra al despacho de siempre.
--- Se puede volver a correr: no borra datos. Tiene que correr después de 33_rubros_vehiculo.sql.
+-- Se puede volver a correr: no borra datos. Tiene que correr después de 61_rubros_vehiculo.sql.
 
 create table if not exists rodar.dlv_repartidores (
   usuario_id bigint primary key references rodar.usuarios(id) on delete cascade,
@@ -6710,9 +9388,9 @@ grant execute on function public.r_rep_registro(text, jsonb, jsonb), public.r_re
 notify pgrst, 'reload schema';
 
 
--- ======== 35_delivery_mejoras.sql ========
+-- ======== 63_delivery_mejoras.sql ========
 -- ===================== Mejoras de delivery: tiempo estimado, tablero del operador y ganancias de repartidores =====================
--- Se puede volver a correr. Tiene que correr después de 33_rubros_vehiculo.sql y 34_repartidores.sql.
+-- Se puede volver a correr. Tiene que correr después de 61_rubros_vehiculo.sql y 62_repartidores.sql.
 
 -- ---------- tiempo estimado de llegada (minutos) ----------
 -- En camino: distancia del repartidor al destino. Antes: lo que falta de preparación + el viaje (+ espera si todavía no hay repartidor).
