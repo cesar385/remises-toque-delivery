@@ -1,0 +1,8 @@
+# Direcciones cortas de los documentos legales (para tiendas de apps, redes y el pie de la página)
+/privacidad         /terminos.html?para=privacidad   301
+/privacidad.html    /terminos.html?para=privacidad   301
+/cookies            /terminos.html?para=cookies      301
+/reembolsos         /terminos.html?para=reembolsos   301
+/terminos           /terminos.html?para=pasajeros    301
+/arrepentimiento    /baja.html?tipo=arrepentimiento  301
+/eliminar-cuenta    /baja.html?tipo=datos_supresion  301
