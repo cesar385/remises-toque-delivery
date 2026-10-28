@@ -7,6 +7,7 @@ ruta('dashboard', {
     const dest = nov.filter(n => n.seccion === 'destacado'), sem = nov.filter(n => n.seccion === 'semana'), arc = nov.filter(n => n.seccion === 'archivo');
     main.innerHTML = `<div class="hero"><div><div class="sup">${esc(e.nombre || 'Remises TOQUE!')} · Central de movilidad</div><h1>Novedades</h1><div style="color:var(--suave)">Hola <b>${esc(R.yo.nombre)}</b>. Lo destacado arriba, lo de esta semana al medio y el historial abajo.</div></div>
       <div class="fila">${tiene('admin') ? '<button class="btn sec" id="nuevaNov">+ Nueva novedad</button>' : ''}${tiene('operador') ? '<button class="btn" onclick="window.open(\'panel.html#/mapa\',\'rodar_mapa\')">Abrir mapa</button><button class="btn naranja" onclick="window.open(\'panel.html#/telefonia\',\'rodar_telefonia\')">Telefonía</button>' : ''}</div></div>
+      ${tiene('admin', 'gestion', 'operador') ? '<div id="accesos"></div>' : ''}
       <div id="kpis"></div>
       <div class="card"><div class="head"><h3>📢 Destacados</h3><span class="pill" id="pos"></span><button class="btn-icono" id="prev">‹</button><button class="btn-icono" id="next">›</button></div><div class="body" id="dest"></div></div>
       <div class="card"><div class="head"><h3>Esta semana</h3></div><div class="body">${sem.map(nh).join('') || '<p style="color:var(--suave)">Sin novedades esta semana.</p>'}</div></div>
@@ -29,6 +30,7 @@ ruta('dashboard', {
       });
     }
     mostrar(); enlazar();
+    if ($('#accesos')) pintarAccesos($('#accesos'));
     const nb = $('#nuevaNov'); if (nb) nb.onclick = () => editarNovedad({});
     if (tiene('operador', 'gestion')) {
       const s = await api('/api/estado');
@@ -36,6 +38,38 @@ ruta('dashboard', {
     }
   }
 });
+// ---------- Accesos directos del inicio (se pueden personalizar; se guardan en este navegador por usuario) ----------
+const ACC_ICO = { 'Mapa': '🗺️', 'Viajes': '🚕', 'Viajes reservas': '📅', 'Chat & Telefonía': '💬', 'Telefonía': '📞', 'Mensaje a flota': '📣', 'Soporte': '🎧',
+  'Móviles': '🚗', 'Penalizados': '⛔', 'Solicitudes conductor': '📝', 'Zonas & Paradas': '🅿️', 'Zonas peligrosas': '⚠️',
+  'Cuentas': '💼', 'Cuenta corriente empresas': '🏢', 'Pagos de base MP': '💳', 'Saldos Mercado Pago': '🏦', 'Viajes Mercado Pago': '🧾', 'Medios de pago': '💵', 'Módulos de la plataforma': '🧩', 'Planes': '📋',
+  'Tarifas': '💲', 'Usuarios': '👥', 'Clientes corporativos': '🏢', 'Días feriados': '🎉', 'Documentación reguladora': '📂', 'Configuración y demo': '⚙️',
+  'Acciones usuarios': '🕵️', 'Clientes bloqueados': '🚫', 'Clientes en baja': '📉', 'Conductores': '🧑‍✈️', 'Conectados': '🟢', 'Estadísticas móviles': '📊', 'Eventos móviles': '📍',
+  'Facturación del mes': '💰', 'Histórico recorrido': '🛣️', 'Horas por conductor': '⏱️', 'Informe mensual': '📈', 'Informe operadores': '🎧', 'Mapa de demanda': '🔥',
+  'Mapa calor conductores': '🌡️', 'Movimientos de móviles': '🔁', 'Negativos por móvil': '➖', 'Top 10': '🏆', 'Viajes por móvil': '📑', 'Página principal': '🌐', 'Canales de solicitud': '📡', 'Apps y enlaces (QR)': '📱', 'Mi cuenta': '👛', 'Mis viajes': '🧾', 'Pagar base': '💲', 'Mis vehículos': '🚙', 'Mi rendimiento': '📈', 'Recorrido de mis móviles': '🛣️', 'App de conductores': '📲', 'Pedido web de pasajeros': '🙋' };
+const ACC_COL = ['#215181', '#278449', '#e8892b', '#7a4fb0', '#d43d3d', '#0f8b8d', '#2a86e8', '#b5651d'];
+const ACC_DEF = ['Mapa', 'Viajes', 'Viajes reservas', 'Chat & Telefonía', 'Móviles', 'Cuentas', 'Pagos de base MP', 'Viajes Mercado Pago', 'Tarifas', 'Zonas & Paradas', 'Usuarios', 'Medios de pago', 'Informe mensual', 'Facturación del mes', 'Top 10', 'Configuración y demo'];
+function accesosGuardados() { try { const x = JSON.parse(localStorage.getItem('rodar_accesos_' + R.yo.id) || 'null'); return Array.isArray(x) ? x : null; } catch { return null; } }
+function pintarAccesos(cont) {
+  const todos = (R.atajos || []).filter(x => x.t && x.t !== 'Inicio');
+  const unico = new Map(); todos.forEach(x => { if (!unico.has(x.t)) unico.set(x.t, x); });
+  const elegidos = (accesosGuardados() || ACC_DEF).map(t => unico.get(t)).filter(Boolean);
+  const col = t => ACC_COL[[...t].reduce((a, c) => a + c.charCodeAt(0), 0) % ACC_COL.length];
+  cont.innerHTML = `<div class="card accesos"><div class="head"><h3>⚡ Accesos directos</h3><button class="btn sec chico" id="accEd">✎ Personalizar</button></div>
+    <div class="body"><div class="acc-grid">${elegidos.map((x, i) => `<button class="acc-t" data-i="${i}" style="--c:${col(x.t)}" title="${esc((x.g ? x.g + ' › ' : '') + x.t)}"><span class="ic">${ACC_ICO[x.t] || '⭐'}</span><b>${esc(x.t)}</b>${x.g ? `<small>${esc(x.g)}</small>` : ''}</button>`).join('')
+      || '<p style="color:var(--suave);margin:0">No elegiste accesos. Tocá <b>Personalizar</b>.</p>'}</div></div></div>`;
+  $$('.acc-t', cont).forEach(b => b.onclick = () => elegidos[+b.dataset.i].go());
+  $('#accEd', cont).onclick = () => {
+    const sel = new Set(elegidos.map(x => x.t)), grupos = {};
+    unico.forEach(x => (grupos[x.g || 'General'] = grupos[x.g || 'General'] || []).push(x));
+    const cuerpo = h(`<div class="acc-ed"><p style="margin:0 0 10px;color:var(--suave)">Marcá las pantallas que querés tener a mano en el inicio.</p>
+      ${Object.entries(grupos).map(([g, xs]) => `<div class="acc-g"><div class="acc-gt">${esc(g)}</div><div class="acc-op">${xs.map(x => `<label><input type="checkbox" value="${esc(x.t)}" ${sel.has(x.t) ? 'checked' : ''}><span>${ACC_ICO[x.t] || '⭐'}</span> ${esc(x.t)}</label>`).join('')}</div></div>`).join('')}</div>`);
+    modal({ titulo: 'Personalizar accesos directos', cuerpo, ancho: true, botones: [
+      { texto: 'Restablecer', clase: 'sec', accion: () => { try { localStorage.removeItem('rodar_accesos_' + R.yo.id); } catch { } pintarAccesos(cont); } },
+      { texto: 'Guardar', accion: mb => { const orden = [...(accesosGuardados() || ACC_DEF)], marc = $$('input:checked', mb).map(i => i.value);
+          const lista = orden.filter(t => marc.includes(t)).concat(marc.filter(t => !orden.includes(t)));
+          try { localStorage.setItem('rodar_accesos_' + R.yo.id, JSON.stringify(lista)); } catch { } pintarAccesos(cont); } }] });
+  };
+}
 async function editarNovedad(n) {
   const r = await pedir(n.id ? 'Editar novedad' : 'Nueva novedad', [
     { k: 'seccion', l: 'Sección', t: 'select', op: [['destacado', 'Destacado'], ['semana', 'Esta semana'], ['archivo', 'Archivo']] }, { k: 'etiqueta', l: 'Etiqueta', ph: 'NUEVO, AVISO…' },
@@ -49,7 +83,7 @@ ruta('perfil', {
     const u = await api('/api/me');
     main.innerHTML = cabecera('Mi perfil', 'Tus datos personales y de contacto. La contraseña se cambia desde el menú de usuario.') + '<div class="card"><div class="body" id="f"></div><div class="mf" style="padding:12px 14px;display:flex;justify-content:flex-end"><button class="btn" id="g">Guardar</button></div></div>';
     const f = formulario([
-      { t: 'html', html: `<div class="fila" style="align-items:center">${u.foto ? `<img src="${esc(u.foto)}" style="width:72px;height:72px;border-radius:50%;object-fit:cover">` : '<span class="avatar" style="width:72px;height:72px;font-size:24px">' + esc(u.nombre[0]) + '</span>'}<div class="campo"><label>Foto</label><input type="file" id="foto" accept="image/*"></div></div>` },
+      { t: 'html', html: `<div class="fila" style="align-items:center">${u.foto ? `<img src="${esc(u.foto)}" alt="Foto de perfil" style="width:72px;height:72px;border-radius:50%;object-fit:cover">` : '<span class="avatar" style="width:72px;height:72px;font-size:24px">' + esc(u.nombre[0]) + '</span>'}<div class="campo"><label>Foto</label><input type="file" id="foto" accept="image/*"></div></div>` },
       { k: 'documento', l: 'Documento', ro: true }, { k: 'usuario', l: 'Usuario de ingreso', ayuda: 'Podés ingresar con este usuario o con tu documento' },
       { k: 'nombre', l: 'Nombre' }, { k: 'apellido', l: 'Apellido' }, { k: 'email', l: 'Email', t: 'email' }, { k: 'telefono', l: 'Teléfono' },
       { t: 'titulo', l: 'Recupero de cuenta' }, { k: 'email_recupero', l: 'Email de recupero' }, { k: 'tel_recupero', l: 'Teléfono de recupero' },
@@ -109,6 +143,33 @@ ruta('ayuda', {
   }
 });
 
+// Bot de Telegram: los mensajes llegan a Chat & Telefonía y el operador responde desde el panel
+async function telegramCard() {
+  const b = $('#tgB'); if (!b) return;
+  const tk = localStorage.getItem('rodar_token');
+  const pintar = async accion => {
+    b.innerHTML = '<p style="color:var(--suave)">' + (accion === 'estado' ? 'Consultando…' : 'Aplicando…') + '</p>';
+    let e; try { e = await RODAR.telegramAdmin(tk, accion); } catch (x) { b.innerHTML = `<p style="color:var(--rojo)">${esc(x.message)}</p><button class="btn sec chico" id="tgR">⟳ Reintentar</button>`; $('#tgR').onclick = () => pintar('estado'); return; }
+    const pasos = `<ol style="margin:6px 0 10px;padding-left:20px;line-height:1.6">
+      <li>En Telegram, hablale a <b>@BotFather</b> y copiá el <b>token</b> de tu bot (o creá uno con <code>/newbot</code>).</li>
+      <li>En <b>Supabase → Edge Functions → Secrets</b> agregá <code>TG_BOT_TOKEN</code> con ese token. <small>(el token es secreto: no lo pegues en el panel ni lo compartas)</small></li>
+      <li>Volvé acá y tocá <b>Conectar el bot</b>.</li></ol>`;
+    if (!e.instalada) { b.innerHTML = `<p>La función <code>telegram</code> todavía no está instalada en Supabase.</p>`; return; }
+    if (!e.configurado) { b.innerHTML = `<p>Conectá tu bot para que los mensajes lleguen a <b>Operador → Chat &amp; Telefonía</b> y se respondan desde ahí.</p>${pasos}<button class="btn sec chico" id="tgR">⟳ Ya cargué el token</button>`; $('#tgR').onclick = () => pintar('estado'); return; }
+    if (e.error) { b.innerHTML = `<p style="color:var(--rojo)">${esc(e.error)}</p><p style="color:var(--suave)">Revisá que el secreto <code>TG_BOT_TOKEN</code> sea el token correcto del bot.</p><button class="btn sec chico" id="tgR">⟳ Reintentar</button>`; $('#tgR').onclick = () => pintar('estado'); return; }
+    b.innerHTML = `<div class="fila" style="align-items:center;gap:10px;flex-wrap:wrap"><span class="pill" style="background:${e.conectado ? '#e3f6e8;color:#1b6e31' : '#fff1e3;color:#8a4300'};font-weight:700">${e.conectado ? '✅ Conectado' : '⏸ Sin conectar'}</span>
+        <b>@${esc(e.bot)}</b><a href="https://t.me/${esc(e.bot)}" target="_blank" rel="noopener" class="btn sec chico">Abrir en Telegram</a></div>
+      <p style="margin:10px 0">${e.conectado ? 'Los mensajes que le escriban al bot aparecen en <b>Operador → Chat &amp; Telefonía</b> (✈️) y lo que respondas ahí le llega al cliente por Telegram. El bot le pide al cliente que comparta su número para cargarle el viaje.' : 'El bot está configurado pero no recibe mensajes. Tocá <b>Conectar el bot</b>.'}</p>
+      ${e.otra_url ? `<p style="color:#8a4300">⚠️ El bot está conectado a otra dirección (${esc(e.otra_url)}). Al conectarlo acá deja de mandar mensajes allá.</p>` : ''}
+      ${e.ultimo_error ? `<p style="color:var(--rojo)">Último error de Telegram: ${esc(e.ultimo_error)}</p>` : ''}
+      ${e.pendientes ? `<p style="color:var(--suave)">${e.pendientes} mensaje(s) esperando ser entregados.</p>` : ''}
+      <div class="fila" style="gap:6px"><button class="btn ${e.conectado ? 'sec' : 'verde'} chico" id="tgC">${e.conectado ? '↻ Volver a conectar' : '🔌 Conectar el bot'}</button>${e.conectado ? '<button class="btn sec chico" id="tgD">Desconectar</button>' : ''}<button class="btn sec chico" id="tgR">⟳ Actualizar</button></div>`;
+    $('#tgC').onclick = () => pintar('conectar'); $('#tgR').onclick = () => pintar('estado');
+    if ($('#tgD')) $('#tgD').onclick = async () => { if (await confirmar('¿Desconectar el bot? Los mensajes que le escriban dejan de llegar al panel.')) pintar('desconectar'); };
+    if (accion === 'conectar' && e.conectado) toast('Bot de Telegram conectado', 'ok');
+  };
+  pintar('estado');
+}
 ruta('configuracion', {
   titulo: 'Configuración', roles: ['admin'], async render(main) {
     const [simu, disp, wh] = await Promise.all([api('/api/simulador'), api('/api/config/dispatch'), api('/api/config/webhook')]);
@@ -119,6 +180,9 @@ ruta('configuracion', {
       <div class="card"><div class="head"><h3>Integraciones (webhooks)</h3></div><div class="body"><p>Para conectar WhatsApp/Telegram/Instagram (vía tu proveedor o bot) y el identificador de llamadas de la centralita, enviá POST JSON a:</p>
       <pre style="background:#f4f8f8;padding:10px;border-radius:8px;overflow:auto">POST ${esc(RODAR_CONFIG.supabaseUrl)}/rest/v1/rpc/webhook_chat\nHeaders: apikey: (tu clave anon) · Content-Type: application/json\n  {"token":"${esc(wh.token)}","canal":"whatsapp","telefono":"3454123456","alias":"Ana","texto":"Hola"}\n\nPOST ${esc(RODAR_CONFIG.supabaseUrl)}/rest/v1/rpc/webhook_llamada\n  {"token":"${esc(wh.token)}","linea":1,"interno":"101","telefono":"3454123456"}</pre>
       <button class="btn sec" id="sl">Simular llamada entrante en Telefonía</button></div></div>
+      <div class="card" id="tgCard"><div class="head"><h3>✈️ Bot de Telegram</h3></div><div class="body" id="tgB"><p style="color:var(--suave)">Cargando…</p></div></div>
+      <div class="card" id="resCard" style="grid-column:1/-1"><div class="head"><h3>🚫 Cancelaciones de pasajeros (viajes y reservas)</h3></div><div class="body" id="resB"><p style="color:var(--suave)">Cargando…</p></div></div>
+      <div class="card" id="segCard"><div class="head"><h3>🔒 Seguridad</h3></div><div class="body" id="segB"><p style="color:var(--suave)">Cargando…</p></div></div>
       <div class="card" style="border:2px solid var(--rojo)"><div class="head"><h3 style="color:var(--rojo)">⚠ Zona de peligro</h3></div><div class="body"><p><b>Borrar todo el sistema y dejarlo en cero.</b> Se eliminan viajes, clientes, móviles, usuarios (menos el tuyo), cuentas y movimientos, chats, soporte, reportes, informes, empresas y direcciones aprendidas. Se conservan las zonas y paradas (salvo que pidas borrarlas al confirmar), los datos de tu empresa, tarifas, planes, módulos, canales, medios de pago, feriados y tu usuario. No se puede deshacer: hacé antes una copia de seguridad desde Supabase.</p><button class="btn" id="reset" style="background:var(--rojo)">🗑 Borrar todo y dejar en cero</button></div></div>`;
     $('#reset').onclick = () => {
       const cuerpo = h(`<div><p>Vas a borrar <b>todos los datos</b> del sistema. Para confirmar, escribí <b>BORRAR TODO</b> y tu contraseña de administrador.</p><div class="campo" style="margin-bottom:10px"><label>Confirmación</label><input name="confirmacion" autocomplete="off" placeholder="BORRAR TODO"></div><div class="campo"><label>Tu contraseña</label><input name="password" type="password" autocomplete="current-password"></div><label class="check" style="margin-top:12px"><input type="checkbox" name="borrar_zonas"> Borrar también las zonas y paradas</label></div>`);
@@ -129,12 +193,68 @@ ruta('configuracion', {
       } }] });
     };
     $('#sl').onclick = async () => { const r = await pedir('Simular llamada', [{ k: 'linea', l: 'Línea (F1–F9)', t: 'number', def: 1 }, { k: 'telefono', l: 'Teléfono', def: '3454400037' }]); if (r) { await api('/api/llamada-simular', { body: r }); toast('Llamada enviada a Telefonía', 'ok'); } };
-    const fd = formulario([{ k: 'timeout_oferta_seg', l: 'Segundos para aceptar una oferta', t: 'number' }, { k: 'radio_busqueda_m', l: 'Radio de búsqueda (metros)', t: 'number' }, { k: 'max_intentos', l: 'Ofertas antes de dejarlo para asignación manual', t: 'number' }, { k: 'deuda_bloqueo', l: 'Saldo que bloquea por deuda ($, negativo)', t: 'number' }], disp);
+    const fd = formulario([{ k: 'timeout_oferta_seg', l: 'Segundos para aceptar una oferta', t: 'number' }, { k: 'radio_busqueda_m', l: 'Radio de búsqueda (metros)', t: 'number' }, { k: 'max_intentos', l: 'Ofertas antes de dejarlo para asignación manual', t: 'number' }, { k: 'deuda_bloqueo', l: 'Saldo que bloquea por deuda ($, negativo)', t: 'number' }, { k: 'cancelar_minutos', l: 'Minutos que tiene el pasajero para cancelar (0 = sin límite)', t: 'number' }], { cancelar_minutos: 2.5, ...disp });
     $('#fd').append(fd);
     $('#gd').onclick = async () => { const d = leer(fd); Object.keys(d).forEach(k => d[k] = +d[k]); await api('/api/config/dispatch', { body: d }); toast('Guardado', 'ok'); };
+    seguridadCard(); reservasCard(); telegramCard();
     $('#gs').onclick = async () => { await api('/api/simulador', { body: { flota: $('#sf').checked, demanda: $('#sd').checked } }); toast('Simulador actualizado', 'ok'); };
   }
 });
+
+// Política de cancelación de reservas (app de pasajeros), cargos pendientes y clientes penalizados
+async function reservasCard() {
+  const b = $('#resB'); if (!b) return;
+  let d; try { d = await api('/api/reservas'); } catch (e) { b.innerHTML = `<p>${esc(e.message)}</p>`; return; }
+  const c = d.cfg, n = (k, l, ayuda, max) => `<div class="campo"><label>${l}</label><input type="number" id="rs_${k}" min="0" ${max ? `max="${max}"` : ''} value="${esc(c[k])}" style="max-width:130px">${ayuda ? `<small style="color:var(--suave)">${ayuda}</small>` : ''}</div>`;
+  const EST = { pendiente: '<span class="cta-tipo" style="background:#fff4e5;color:#8a5300">Pendiente</span>', aplicado: '<span class="cta-tipo verde">Cobrado</span>', perdonado: '<span class="cta-tipo">Perdonado</span>' };
+  b.innerHTML = `<p class="ayuda" style="margin-top:0">El pasajero ve estas condiciones al pedir, <b>antes de reservar</b> y al cancelar. El cargo se calcula sobre el precio estimado y <b>se suma a su próximo viaje</b>.</p>
+    <h4 style="margin:4px 0 8px">🚕 Viajes para ahora</h4>
+    <div class="grid g3" style="align-items:start;margin-bottom:10px">
+      <div class="nota" style="background:#eaf7ee;border-color:#bfe3c9">✅ <b>Sin cargo</b> mientras se busca móvil (ningún chofer lo aceptó todavía).</div>
+      <div class="nota" style="background:#fff6e5;border-color:#f3d39b">⚠️ <b>Chofer asignado y en camino</b>:${n('pct_asignado', 'Se cobra (%)', '0 = sin cargo', 100)}</div><div></div>
+    </div>
+    <h4 style="margin:4px 0 8px">📅 Reservas</h4>
+    <div class="grid g3" style="align-items:start">
+      <div class="nota" style="background:#eaf7ee;border-color:#bfe3c9">✅ <b>Sin cargo</b> si cancela con al menos:${n('sin_cargo_min', 'Minutos de anticipación', '', 1440)}</div>
+      <div class="nota" style="background:#fff6e5;border-color:#f3d39b">⚠️ <b>Cancelación tardía</b> (entre el límite anterior y este):${n('tardio_min', 'Minutos de anticipación', '', 1440)}${n('pct_tardio', 'Se cobra (%)', '', 100)}</div>
+      <div class="nota" style="background:#fdeeee;border-color:#f3c0c0">⛔ <b>Último momento</b> (menos del límite anterior):
+        <div class="campo"><label>Qué pasa</label><select id="rs_ultimo_modo"><option value="cargo">Se cobra un porcentaje</option><option value="penalizacion">Se penaliza (sin reservas por unos días)</option><option value="ambos">Se cobra y se penaliza</option></select></div>
+        ${n('pct_ultimo', 'Se cobra (%)', '', 100)}${n('dias_penalizacion', 'Días sin poder reservar', '', 365)}</div>
+    </div>
+    <div style="text-align:right;margin:4px 0 14px"><button class="btn" id="rsG">Guardar política</button></div>
+    <div class="grid g2" style="align-items:start">
+      <div><h4 style="margin:0 0 6px">Cargos por cancelación</h4>${d.cargos.length ? `<table class="tabla-simple" style="width:100%"><tr><th>Fecha</th><th>Cliente</th><th class="r">Monto</th><th>Estado</th><th></th></tr>${d.cargos.slice(0, 30).map(x => `<tr><td>${fechaLarga(x.creado)}</td><td>${esc(x.cliente || '')}<br><small style="color:var(--suave)">${esc(x.telefono || '')}</small></td><td class="r"><b>${pesos(x.monto)}</b></td><td>${EST[x.estado] || esc(x.estado)}${x.aplicado_viaje_id ? `<br><small>Viaje #${x.aplicado_viaje_id}</small>` : ''}</td><td>${x.estado === 'pendiente' ? `<button class="btn chico sec" data-perd="${x.id}">Perdonar</button>` : ''}</td></tr>`).join('')}</table>` : '<p style="color:var(--suave)">Todavía no hay cargos.</p>'}</div>
+      <div><h4 style="margin:0 0 6px">Clientes sin poder reservar</h4>${d.penalizados.length ? `<table class="tabla-simple" style="width:100%"><tr><th>Cliente</th><th>Hasta</th><th></th></tr>${d.penalizados.map(x => `<tr><td>${esc(x.cliente || '')}<br><small style="color:var(--suave)">${esc(x.telefono || '')}</small></td><td>${fechaLarga(x.hasta)}</td><td><button class="btn chico sec" data-desp="${x.id}">Quitar penalización</button></td></tr>`).join('')}</table>` : '<p style="color:var(--suave)">Ninguno.</p>'}</div>
+    </div>`;
+  $('#rs_ultimo_modo').value = c.ultimo_modo || 'cargo';
+  const modo = () => { const m = $('#rs_ultimo_modo').value; $('#rs_pct_ultimo').closest('.campo').style.display = m === 'penalizacion' ? 'none' : ''; $('#rs_dias_penalizacion').closest('.campo').style.display = m === 'cargo' ? 'none' : ''; };
+  $('#rs_ultimo_modo').onchange = modo; modo();
+  $('#rsG').onclick = async () => {
+    const body = { ultimo_modo: $('#rs_ultimo_modo').value }; ['sin_cargo_min', 'tardio_min', 'pct_tardio', 'pct_ultimo', 'dias_penalizacion', 'pct_asignado'].forEach(k => body[k] = +$('#rs_' + k).value);
+    try { await api('/api/reservas/cfg', { body }); toast('Política de cancelación guardada', 'ok'); reservasCard(); } catch (e) { fallo(e); }
+  };
+  $$('[data-perd]', b).forEach(x => x.onclick = async () => { if (!(await confirmar('¿Perdonar este cargo? No se va a sumar al próximo viaje del cliente.', 'Perdonar cargo'))) return; try { await api('/api/reservas/perdonar', { body: { id: +x.dataset.perd } }); toast('Cargo perdonado', 'ok'); reservasCard(); } catch (e) { fallo(e); } });
+  $$('[data-desp]', b).forEach(x => x.onclick = async () => { try { await api('/api/reservas/despenalizar', { body: { id: +x.dataset.desp } }); toast('El cliente ya puede reservar', 'ok'); reservasCard(); } catch (e) { fallo(e); } });
+}
+// Tarjeta de seguridad: inactividad del panel y captcha (Cloudflare Turnstile)
+async function seguridadCard() {
+  const b = $('#segB'); if (!b) return;
+  let c; try { c = await api('/api/seguridad'); } catch (e) { b.innerHTML = `<p>${esc(e.message)}</p>`; return; }
+  let secreto = null; try { const r = await fetch(RODAR_CONFIG.supabaseUrl + '/functions/v1/captcha', { headers: { apikey: RODAR_CONFIG.supabaseKey, Authorization: 'Bearer ' + RODAR_CONFIG.supabaseKey } }); secreto = r.ok ? !!(await r.json()).secreto : null; } catch { }
+  b.innerHTML = `<div class="campo"><label>Cerrar la sesión del panel después de (horas sin uso)</label><input type="number" id="sgH" min="1" max="72" value="${+c.panel_horas || 8}" style="max-width:120px"></div>
+    <p class="ayuda" style="margin:4px 0 14px">Si nadie toca el panel durante ese tiempo, se cierra la sesión y hay que volver a ingresar. Las apps de conductores y de empresas no se cierran solas.</p>
+    <h4 style="margin:6px 0">Captcha invisible (Cloudflare Turnstile)</h4>
+    <p class="ayuda" style="margin:0 0 8px">Frena robots en el <b>registro de pasajeros</b> y en el <b>pedido web sin cuenta</b>. Casi nadie ve el desafío: se resuelve solo.</p>
+    <div class="campo"><label>Clave de sitio (Site Key)</label><input id="sgK" value="${esc(c.captcha_site_key || '')}" placeholder="0x4AAAAAAA…" autocomplete="off"></div>
+    <div style="margin:6px 0 10px;font-size:13.5px">Clave secreta en Supabase (TURNSTILE_SECRET): ${secreto === true ? '<b style="color:var(--verde)">✔ cargada</b>' : secreto === false ? '<b style="color:var(--rojo)">✖ falta cargarla</b>' : '<span style="color:var(--suave)">no se pudo comprobar (¿falta desplegar la función captcha?)</span>'}</div>
+    <label class="check"><input type="checkbox" id="sgA" ${c.captcha_activo ? 'checked' : ''}> Activar el captcha</label>
+    <div style="text-align:right;margin-top:12px"><button class="btn" id="sgG">Guardar</button></div>`;
+  $('#sgG').onclick = async () => {
+    const act = $('#sgA').checked;
+    if (act && secreto === false && !(await confirmar('Falta cargar la clave secreta TURNSTILE_SECRET en Supabase: con el captcha activado, el registro y el pedido web sin cuenta van a fallar. ¿Activarlo igual?', 'Activar captcha'))) return;
+    try { await api('/api/seguridad', { body: { panel_horas: +$('#sgH').value, captcha_site_key: $('#sgK').value.trim(), captcha_activo: act } }); toast('Seguridad guardada', 'ok'); } catch (e) { fallo(e); }
+  };
+}
 
 // ---------- Menú titular / conductor ----------
 ruta('mi-cuenta', {

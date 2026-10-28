@@ -56,7 +56,7 @@ ruta('conductores', {
     const p = () => ({ desde: $('#fd').value, hasta: $('#fh').value });
     let cache = null;
     const t = tabla($('#tb'), {
-      porPagina: 50, cols: [{ t: 'Foto', f: x => x.foto ? `<img class="avatar" src="${esc(x.foto)}">` : `<span class="avatar">${esc(x.nombre[0])}</span>` }, { t: 'Documento', k: 'documento' }, { t: 'Nombre', k: 'nombre' }, { t: 'Viajes realizados', c: 'r', k: 'viajes' }, { t: 'Ingresos generados', c: 'r', f: x => pesos(x.ingresos) }, { t: 'Horas trabajadas', c: 'r', k: 'horas' }, { t: 'Calificación promedio', c: 'r', f: x => x.calificacion ? '⭐ ' + x.calificacion : '—' }, { t: 'No respondidos', c: 'r', k: 'no_respondidos' }],
+      porPagina: 50, cols: [{ t: 'Foto', f: x => x.foto ? `<img class="avatar" src="${esc(x.foto)}" alt="">` : `<span class="avatar">${esc(x.nombre[0])}</span>` }, { t: 'Documento', k: 'documento' }, { t: 'Nombre', k: 'nombre' }, { t: 'Viajes realizados', c: 'r', k: 'viajes' }, { t: 'Ingresos generados', c: 'r', f: x => pesos(x.ingresos) }, { t: 'Horas trabajadas', c: 'r', k: 'horas' }, { t: 'Calificación promedio', c: 'r', f: x => x.calificacion ? '⭐ ' + x.calificacion : '—' }, { t: 'No respondidos', c: 'r', k: 'no_respondidos' }],
       cargar: async () => { if (!cache) cache = await api('/api/informes/conductores?' + qs(p())); const q = $('#bq').value.toLowerCase(); return cache.filter(x => !q || (x.nombre + x.documento).toLowerCase().includes(q)); },
     });
     $('#g').onclick = () => { cache = null; t.refrescar(true); }; $('#bq').oninput = () => t.refrescar(true);
@@ -199,3 +199,94 @@ function vistaViajesMovil(main, titulo, desc, moviles) {
   $('#csv').onclick = () => descargar('/api/informes/viajes-movil?' + qs({ ...p(), formato: 'csv' }));
 }
 ruta('viajes-por-movil', { titulo: 'Viajes por móvil', roles: ['gestion'], render: main => vistaViajesMovil(main, 'Viajes por móvil', 'Informe de viajes finalizados con filtros de fecha, móvil y tipo.', R.cat.moviles) });
+
+// ---------- Informe de clientes corporativos (con hoja membretada) ----------
+ruta('informe-corporativos', {
+  titulo: 'Clientes corporativos', roles: ['gestion'], render(main) {
+    const hoy = new Date(), ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1), iso = d => d.toISOString().slice(0, 10);
+    main.innerHTML = cabecera('Informe de clientes corporativos', 'Viajes, facturación, pagos y saldo de cada empresa en el período. Elegí una empresa para ver el detalle de sus viajes.') +
+      `<div class="card"><div class="body fila" style="flex-wrap:wrap;align-items:flex-end">
+        <div class="campo"><label>Desde</label><input type="date" id="cd" value="${iso(ini)}"></div><div class="campo"><label>Hasta</label><input type="date" id="ch" value="${iso(hoy)}"></div>
+        <div class="campo"><label>Empresa</label><select id="ce"><option value="">Todas las empresas</option></select></div>
+        <div class="seg-t" style="margin:0">${[['mes', 'Este mes'], ['ant', 'Mes anterior'], ['anio', 'Este año']].map(([k, t]) => `<button type="button" data-p="${k}">${t}</button>`).join('')}</div>
+        <button class="btn" id="cv">Ver informe</button><span style="flex:1"></span>
+        <button class="btn sec" id="cpdf">🖨 Informe PDF</button><button class="btn sec" id="ccsv">⬇ CSV</button></div></div><div id="cr"></div>`;
+    let d = null, empresas = null;
+    const f10 = x => { const m = String(x || '').match(/(\d{4})-(\d\d)-(\d\d)/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+    const enCurso = v => !['finalizado', 'anulado'].includes(v.estado), EN_CURSO = { reserva: 'Reserva', pendiente: 'Pendiente', ofrecido: 'Buscando móvil', confirmado: 'Móvil asignado', en_curso: 'En viaje' };
+    $$('[data-p]', main).forEach(b => b.onclick = () => {
+      const h = new Date(); let a, z;
+      if (b.dataset.p === 'mes') { a = new Date(h.getFullYear(), h.getMonth(), 1); z = h; } else if (b.dataset.p === 'ant') { a = new Date(h.getFullYear(), h.getMonth() - 1, 1); z = new Date(h.getFullYear(), h.getMonth(), 0); } else { a = new Date(h.getFullYear(), 0, 1); z = h; }
+      $('#cd').value = iso(a); $('#ch').value = iso(z); ver();
+    });
+    async function ver() {
+      $('#cr').innerHTML = '<div class="card"><div class="body" style="color:var(--suave)">Cargando…</div></div>';
+      try { d = await api('/api/informes/corporativos?' + qs({ desde: $('#cd').value, hasta: $('#ch').value, empresa: $('#ce').value })); } catch (e) { $('#cr').innerHTML = ''; return fallo(e); }
+      if (!empresas) { empresas = d.empresas.slice().sort((a, b) => a.nombre.localeCompare(b.nombre)); $('#ce').innerHTML = '<option value="">Todas las empresas</option>' + empresas.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join(''); }
+      const t = d.empresas.reduce((a, e) => ({ viajes: a.viajes + e.viajes, monto: a.monto + +e.monto, pagos: a.pagos + +e.pagos, saldo: a.saldo + +e.saldo, canc: a.canc + e.cancelados, km: a.km + +e.km, curso: a.curso + +(e.en_curso || 0) }), { viajes: 0, monto: 0, pagos: 0, saldo: 0, canc: 0, km: 0, curso: 0 });
+      const EST = { activa: '', suspendida: ' <span class="cta-tipo" style="background:#fff4e5;color:#8a5300">Suspendida</span>', baja: ' <span class="cta-tipo rojo">De baja</span>' };
+      const uno = $('#ce').value ? d.empresas[0] : null;
+      $('#cr').innerHTML = `${d.sin_empresa ? `<div class="card" style="border-left:4px solid #e67e22"><div class="body">⚠️ Hay <b>${d.sin_empresa}</b> viaje(s) cobrados a cuenta corriente <b>sin empresa</b>, que no entran en este informe. <a href="#/cuentas-empresas">Asignalos desde Cuenta corriente empresas</a>.</div></div>` : ''}
+        <div class="grid g4" style="margin-bottom:14px">${[['Viajes', t.viajes, `${t.canc} cancelado(s) · ${num(t.km, 1)} km${t.curso ? ` · <b>${t.curso} en curso/reservados</b>` : ''}`], ['Facturado', pesos(t.monto), 'Viajes finalizados del período'], ['Cobrado en el período', pesos(t.pagos), 'Pagos registrados'], ['Saldo actual', pesos(t.saldo), t.saldo > 0 ? 'A cobrar' : 'Al día']].map(([l, v, s]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><small style="color:var(--suave)">${s}</small></div>`).join('')}</div>
+        ${uno ? '' : `<div class="card"><div class="head"><h3>Empresas</h3><small style="color:var(--suave)">Tocá una para ver el detalle</small></div>${tablaSimple(d.empresas, [
+          { t: 'Empresa', f: e => `<a href="#" data-emp="${e.id}"><b>${esc(e.nombre)}</b></a>${EST[e.estado] || ''}${e.cuit ? `<br><small style="color:var(--suave)">CUIT ${esc(e.cuit)}</small>` : ''}` },
+          { t: 'Viajes', c: 'r', k: 'viajes' }, { t: 'En curso', c: 'r', f: e => e.en_curso ? `<b style="color:#0b4f8a">${e.en_curso}</b>` : '—' }, { t: 'Cancel.', c: 'r', k: 'cancelados' }, { t: 'Pasajeros', c: 'r', k: 'pasajeros' }, { t: 'Km', c: 'r', f: e => num(e.km, 1) },
+          { t: 'Facturado', c: 'r', f: e => `<b>${pesos(e.monto)}</b>` }, { t: 'Pagos', c: 'r', f: e => pesos(e.pagos) }, { t: 'Saldo actual', c: 'r', f: e => `<b style="color:${e.saldo > 0 ? 'var(--rojo)' : 'var(--verde)'}">${pesos(e.saldo)}</b>` }], 'No hay empresas.')}</div>`}
+        ${uno ? `<div class="grid g2" style="align-items:start">
+          <div class="card"><div class="head"><h3>${esc(uno.nombre)}</h3></div><div class="body">${uno.cuit ? `CUIT ${esc(uno.cuit)}<br>` : ''}${uno.contacto ? esc(uno.contacto) + ' · ' : ''}${esc(uno.telefono || '')}<br>${uno.pasajeros} pasajero(s) distintos · ${num(uno.km, 1)} km</div></div>
+          <div class="card"><div class="head"><h3>Por centro de costo</h3></div>${tablaSimple(d.por_centro || [], [{ t: 'Centro de costo', k: 'centro' }, { t: 'Viajes', c: 'r', k: 'viajes' }, { t: 'Importe', c: 'r', f: x => pesos(x.monto) }], 'Sin viajes.')}</div></div>
+          <div class="card"><div class="head"><h3>Viajes del período</h3><span class="pill">${(d.viajes || []).length}</span>${(d.viajes || []).some(enCurso) ? `<small style="color:var(--suave)">incluye ${(d.viajes || []).filter(enCurso).length} en curso / reservado(s), todavía sin facturar</small>` : ''}</div>${tablaSimple(d.viajes || [], [
+            { t: 'Fecha', f: v => fechaLarga(v.fecha) }, { t: 'N°', f: v => '#' + v.id }, { t: 'Pasajero', f: v => esc(v.pasajero || '') + (v.estado === 'anulado' ? ' <span class="cta-tipo rojo">Cancelado</span>' : enCurso(v) ? ` <span class="cta-tipo" style="background:#e6f1fb;color:#0b4f8a">${EN_CURSO[v.estado] || v.estado}</span>` : '') },
+            { t: 'Centro', f: v => esc(v.centro_costo || '—') }, { t: 'Recorrido', f: v => `${esc(v.origen || '')}${v.destino ? ' → ' + esc(v.destino) : ''}` }, { t: 'Móvil', k: 'movil' },
+            { t: 'Km', c: 'r', f: v => v.km != null ? num(v.km, 1) : '—' }, { t: 'Importe', c: 'r', f: v => v.estado === 'anulado' ? '—' : enCurso(v) ? (v.estimado != null ? `<span style="color:var(--suave)" title="Estimado">≈ ${pesos(v.estimado)}</span>` : '—') : `<b>${pesos(v.monto)}</b>` }], 'Sin viajes en el período.')}</div>` : ''}`;
+      $$('[data-emp]', main).forEach(a => a.onclick = e => { e.preventDefault(); $('#ce').value = a.dataset.emp; ver(); });
+    }
+    $('#cv').onclick = ver; $('#ce').onchange = ver;
+    $('#ccsv').onclick = () => {
+      if (!d) return; const uno = $('#ce').value;
+      const filas = uno ? [['Fecha', 'N°', 'Pasajero', 'Estado', 'Centro de costo', 'Origen', 'Destino', 'Móvil', 'Km', 'Importe'], ...(d.viajes || []).map(v => [v.fecha, v.id, v.pasajero, v.estado, v.centro_costo, v.origen, v.destino, v.movil, v.km, v.estado === 'anulado' ? '' : enCurso(v) ? (v.estimado ?? '') : v.monto])]
+        : [['Empresa', 'CUIT', 'Estado', 'Viajes', 'En curso', 'Cancelados', 'Pasajeros', 'Km', 'Facturado', 'Pagos', 'Saldo actual'], ...d.empresas.map(e => [e.nombre, e.cuit, e.estado, e.viajes, e.en_curso || 0, e.cancelados, e.pasajeros, e.km, e.monto, e.pagos, e.saldo])];
+      const x = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + filas.map(r => r.map(x).join(';')).join('\n')], { type: 'text/csv' }));
+      a.download = `corporativos-${$('#cd').value}-al-${$('#ch').value}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    };
+    $('#cpdf').onclick = async () => {
+      if (!d) return; const b = $('#cpdf'), tx = b.textContent; b.disabled = true; b.textContent = '⏳ Generando PDF…';
+      try {
+        const uno = $('#ce').value ? d.empresas[0] : null, per = `Del ${f10(d.desde)} al ${f10(d.hasta)}`, emitido = 'Emitido el ' + new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+        const t = d.empresas.reduce((a, e) => ({ viajes: a.viajes + e.viajes, monto: a.monto + +e.monto, pagos: a.pagos + +e.pagos, saldo: a.saldo + +e.saldo }), { viajes: 0, monto: 0, pagos: 0, saldo: 0 });
+        const cajas = [['VIAJES', String(t.viajes), ''], ['FACTURADO', pesos(t.monto), 'azul'], ['COBRADO EN EL PERÍODO', pesos(t.pagos), 'verde'], ['SALDO ACTUAL', pesos(t.saldo), t.saldo > 0 ? 'rojo' : 'verde']];
+        const pdf = uno ? await pdfMembretado({
+          titulo: 'INFORME DE CLIENTE CORPORATIVO', derecha: ['VIAJES', String(uno.viajes)],
+          sub: [uno.nombre, uno.cuit ? 'CUIT ' + uno.cuit : '', per, emitido].filter(Boolean).join('  ·  '), cajas,
+          cols: [{ t: 'Fecha', w: 28 }, { t: 'Pasajero', w: 34 }, { t: 'Centro', w: 22 }, { t: 'Recorrido', w: 62 }, { t: 'Móvil', w: 12, r: 1 }, { t: 'Km', w: 12, r: 1 }, { t: 'Importe', w: 22, r: 1 }],
+          filas: (d.viajes || []).map(v => ({ v: [fechaLarga(v.fecha), (v.pasajero || '') + (v.estado === 'anulado' ? ' (cancelado)' : enCurso(v) ? ' (' + (EN_CURSO[v.estado] || v.estado).toLowerCase() + ')' : ''), v.centro_costo || '—', [v.origen, v.destino].filter(Boolean).join(' – '), v.movil || '—', v.km != null ? num(v.km, 1) : '—', v.estado === 'anulado' ? '—' : enCurso(v) ? (v.estimado != null ? '~ ' + pesos(v.estimado) : '—') : pesos(v.monto)], col: [null, v.estado === 'anulado' ? 'rojo' : enCurso(v) ? 'azul' : null, null, null, null, null, null] })),
+          vacio: 'Sin viajes en el período.',
+          pie: `${(d.viajes || []).filter(v => v.estado === 'finalizado').length} viaje(s) · Facturado ${pesos(uno.monto)}${(d.por_centro || []).length > 1 ? '  ·  ' + d.por_centro.map(c => `${c.centro}: ${pesos(c.monto)}`).join('  ·  ') : ''}`,
+        }) : await pdfMembretado({
+          titulo: 'INFORME DE CLIENTES CORPORATIVOS', derecha: ['EMPRESAS', String(d.empresas.length)],
+          sub: [per, emitido].join('  ·  '), cajas,
+          cols: [{ t: 'Empresa', w: 48 }, { t: 'Viajes', w: 14, r: 1 }, { t: 'Cancel.', w: 14, r: 1 }, { t: 'Km', w: 16, r: 1 }, { t: 'Facturado', w: 26, r: 1 }, { t: 'Pagos', w: 24, r: 1 }, { t: 'Saldo', w: 26, r: 1 }],
+          filas: d.empresas.map(e => ({ v: [e.nombre + (e.cuit ? '\nCUIT ' + e.cuit : '') + (e.estado !== 'activa' ? ' · ' + e.estado : ''), String(e.viajes), String(e.cancelados), num(e.km, 1), pesos(e.monto), pesos(e.pagos), pesos(e.saldo)], col: [null, null, null, null, 'azul', 'verde', +e.saldo > 0 ? 'rojo' : 'verde'] })),
+          vacio: 'No hay empresas.', pie: `Total facturado ${pesos(t.monto)}  ·  Cobrado ${pesos(t.pagos)}  ·  Saldo a cobrar ${pesos(t.saldo)}`,
+        });
+        verPdf(pdf, uno ? `informe-${uno.nombre.replace(/\W+/g, '-').toLowerCase()}-${d.desde}.pdf` : `informe-corporativos-${d.desde}.pdf`, uno ? 'Informe · ' + uno.nombre : 'Informe de clientes corporativos');
+      } catch (e) { fallo(e); } finally { b.disabled = false; b.textContent = tx; }
+    };
+    ver();
+  }
+});
+
+// ---------- Alertas SOS de pasajeros ----------
+ruta('alertas-sos', {
+  titulo: 'Alertas SOS', roles: ['operador'], async render(main) {
+    main.innerHTML = cabecera('Alertas SOS de pasajeros', 'Emergencias enviadas desde la app de pasajeros (últimos 60 días). Las abiertas también aparecen en un aviso rojo en todas las pantallas.') + '<div class="card" id="sl"><div class="body">Cargando…</div></div>';
+    let ls; try { ls = await api('/api/sos'); } catch (e) { return fallo(e); }
+    $('#sl').innerHTML = tablaSimple(ls, [
+      { t: 'Fecha', f: a => fechaLarga(a.creado) }, { t: 'Estado', f: a => a.estado === 'abierta' ? '<span class="cta-tipo rojo">Abierta</span>' : `<span class="cta-tipo verde">Atendida</span>${a.atendida_por_nombre ? `<br><small>${esc(a.atendida_por_nombre)}</small>` : ''}` },
+      { t: 'Pasajero', f: a => `<b>${esc(a.nombre || '')}</b><br><small>${esc(a.telefono || '')}</small>` },
+      { t: 'Viaje', f: a => a.viaje ? `#${a.viaje.id} · Móvil ${esc(a.viaje.movil || '—')}<br><small>${esc(a.viaje.conductor || '')}</small>` : '—' },
+      { t: 'Ubicación', f: a => a.lat ? `<a target="_blank" rel="noopener" href="https://maps.google.com/?q=${a.lat},${a.lng}">📍 Ver mapa</a>` : '—' },
+      { t: 'Nota', f: a => esc(a.nota || '') }], 'No hubo alertas.');
+  }
+});

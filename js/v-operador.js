@@ -34,24 +34,26 @@ function formViaje(cont, opts = {}) {
   <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
     <div class="bloque"><div class="tt">Total del viaje</div><div class="in"><div class="fila">
       <div class="campo flex"><select id="medio">${R.cat.medios.filter(m => m.habilitado).map(m => `<option value="${m.codigo}">${esc(m.nombre)}</option>`).join('')}</select>
-      <div id="ajuste" style="color:var(--suave);font-size:12px;margin-top:4px">Precio normal</div></div>
+      <div id="ajuste" style="color:var(--suave);font-size:12px;margin-top:4px">Precio normal</div>
+      <div id="ccBox" style="display:none;margin-top:6px"><select id="ccEmp"><option value="">— Elegí la empresa —</option>${(R.cat.corporativos || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}</select>
+      <input id="ccCentro" placeholder="Centro de costo (opcional)" style="margin-top:4px"></div></div>
       <div class="campo flex"><div style="border:1px solid var(--borde);border-radius:8px;padding:8px"><div class="fila" style="justify-content:space-between"><span>Total</span><b id="total" style="font-size:18px">—</b></div><small id="detalle" style="color:var(--suave)">Ingresá origen y destino para calcular</small>
       <div class="fila" style="margin-top:6px"><input id="fijo" type="number" placeholder="Precio fijo (opcional)"></div></div></div></div></div></div>
     <div class="bloque"><div class="tt naranja" style="display:flex;justify-content:space-between;padding:5px 10px"><span>Anotaciones internas</span><span style="cursor:pointer" id="gNotas" title="Guardar anotaciones sin ingresar viaje">💾</span></div><div class="in"><textarea id="notas" placeholder="Información interna del cliente / anotaciones del operador"></textarea></div></div>
     <div class="bloque" style="flex:1;min-height:320px;display:flex;flex-direction:column"><div class="tt">Mapa del viaje <small style="font-weight:400">(clic: origen · clic derecho: destino)</small></div><div id="mapaViaje" style="flex:1;min-height:300px"></div></div>
   </div>`;
   const q = s => $(s, cont);
-  const mapa = mapaBase(q('#mapaViaje'), { zoom: 14 });
+  const mapa = mapaBase(q('#mapaViaje'), { zoom: 14, dobleClicAcerca: true });
   setTimeout(() => mapa.invalidateSize(), 300);
   R.cat.zonas.forEach(z => z.poligono.length > 2 && L.polygon(z.poligono, { color: z.color, weight: 1, fillOpacity: .05, interactive: false }).addTo(mapa));
-  R.cat.peligrosas.forEach(z => L.polygon(z.poligono, { color: '#d00', weight: 1, fillOpacity: .15, dashArray: '4' }).addTo(mapa).bindTooltip('Zona peligrosa: ' + (z.nombre || '')));
+  R.cat.peligrosas.forEach(z => L.polygon(z.poligono, { color: '#d00', weight: 1, fillOpacity: .15, dashArray: '4' }).addTo(mapa).bindTooltip('Zona peligrosa: ' + esc(z.nombre || '')));
   let mO = null, mD = null, linea = null;
   function ponerMarcadores() {
     mO && mO.remove(); mD && mD.remove(); linea && linea.remove(); mO = mD = linea = null;
     // al arrastrar el marcador: si la dirección ya tiene altura escrita se conserva el texto y sólo se corrige la ubicación
     const arrastre = cual => async e => { const p = e.target.getLatLng(); const txt = q(cual === 'o' ? '#oDir' : '#dDir').value.trim();
       if (RODAR.partirDir(txt).altura) { st[cual === 'o' ? 'origen' : 'destino'] = { lat: p.lat, lng: p.lng, calle: RODAR.partirDir(txt).calle.toLowerCase() }; ponerMarcadores(); } else await fijar(cual, p.lat, p.lng, true); };
-    if (st.origen) { mO = L.marker([st.origen.lat, st.origen.lng], { draggable: true, icon: iconoPunto('#2f9e57') }).addTo(mapa); mO.on('dragend', arrastre('o')); }
+    if (st.origen) { mO = L.marker([st.origen.lat, st.origen.lng], { draggable: true, icon: iconoPunto('#278449') }).addTo(mapa); mO.on('dragend', arrastre('o')); }
     if (st.destino) { mD = L.marker([st.destino.lat, st.destino.lng], { draggable: true, icon: iconoPunto('#2a86e8') }).addTo(mapa); mD.on('dragend', arrastre('d')); }
     st.rutaM = null;
     if (st.origen && st.destino) {
@@ -143,10 +145,11 @@ function formViaje(cont, opts = {}) {
     st.est = r;
     if (!r) return;
     q('#total').textContent = r.monto != null ? pesos(r.monto) : 'Bajada ' + pesos(r.bajada);
-    q('#detalle').textContent = `${r.tarifa}${r.indice > 1 ? ' · índice ×' + r.indice : ''}${r.km ? ' · ' + km1(r.km) + ' km aprox.' : ' · sin destino'} · ${r.cobro}`;
+    q('#detalle').textContent = `${r.tarifa}${r.indice > 1 ? ' · índice ×' + r.indice : ''}${r.km ? ' · ' + km1(r.km) + ' km aprox.' : ' · sin destino'} · ${r.cobro}${+r.cargo_plataforma > 0 ? ` · incl. ${pesos(r.cargo_plataforma)} cargos de la plataforma` : ''}`;
     q('#ajuste').textContent = r.ajuste ? `Ajuste ${r.ajuste > 0 ? '+' : ''}${r.ajuste}%` : 'Precio normal';
   }
-  q('#medio').onchange = estimar; q('#canal').onchange = estimar;
+  const verCC = () => { q('#ccBox').style.display = q('#medio').value === 'cuenta_corriente' ? '' : 'none'; };
+  q('#medio').onchange = () => { verCC(); estimar(); }; q('#canal').onchange = estimar; verCC();
 
   function limpiar() {
     Object.assign(st, { cliente: null, origen: null, destino: null, programado: null, repetir: null, est: null });
@@ -212,6 +215,8 @@ function formViaje(cont, opts = {}) {
   };
   async function ingresar(confirmarPeligrosa) {
     if (!q('#oDir').value.trim()) return toast('Ingresá la dirección de origen', 'error');
+    const esCC = q('#medio').value === 'cuenta_corriente';
+    if (esCC && !q('#ccEmp').value) { q('#ccEmp').focus(); return toast('Para cobrar a cuenta corriente elegí la empresa', 'error'); }
     if (!st.origen) { const r = await api('/api/geocodificar?q=' + encodeURIComponent(q('#oDir').value + (q('#oDir').value.includes(',') ? '' : [q('#oLoc').value, q('#oProv').value].filter(Boolean).map(x => ', ' + x.trim()).join('')))); if (r[0]) st.origen = { lat: r[0].lat, lng: r[0].lng }; }
     if (q('#dDir').value.trim() && !st.destino) { const r = await api('/api/geocodificar?q=' + encodeURIComponent(q('#dDir').value + (q('#dDir').value.includes(',') ? '' : [q('#dLoc').value, q('#dProv').value].filter(Boolean).map(x => ', ' + x.trim()).join('')))); if (r[0]) st.destino = { lat: r[0].lat, lng: r[0].lng }; }
     const body = {
@@ -220,6 +225,7 @@ function formViaje(cont, opts = {}) {
       destino_dir: RODAR.enTexto(q('#dDir').value).dir || null, destino_loc: q('#dLoc').value, destino_prov: q('#dProv').value, destino_lat: st.destino && st.destino.lat, destino_lng: st.destino && st.destino.lng, metros_ruta: st.rutaM || undefined,
       datos_movil: q('#datosMovil').value, canal: q('#canal').value, medio_pago: q('#medio').value, a_oferta: q('#oferta').checked, pin_requerido: q('#pin').checked || null,
       cantidad_moviles: +q('#cant').value, programado: st.programado, repetir: st.repetir, monto_fijo: q('#fijo').value ? +q('#fijo').value : undefined, confirmar_peligrosa: confirmarPeligrosa, conv_id: opts.convId && opts.convId(),
+      corporativo_id: esCC ? +q('#ccEmp').value : undefined, centro_costo: esCC ? (q('#ccCentro').value.trim() || undefined) : undefined,
     };
     try {
       if (q('#notas').value && body.telefono) await api('/api/clientes/anotacion', { body: { telefono: body.telefono, alias: body.alias, notas: q('#notas').value } });
@@ -257,12 +263,12 @@ ruta('telefonia', {
 // Envía una respuesta del chat. En conversaciones de WhatsApp sale por la función de Supabase; si no está instalada,
 // el mensaje queda guardado en el panel y marcado como "no enviado".
 async function enviarChat(conv, texto) {
-  if (conv.canal !== 'whatsapp') return api('/api/chat/' + conv.id, { body: { texto } });
-  try { await RODAR.whatsappEnviar(localStorage.getItem('rodar_token'), conv.id, texto); }
+  if (!['whatsapp', 'telegram'].includes(conv.canal) || (conv.canal === 'telegram' && !conv.ext_id)) return api('/api/chat/' + conv.id, { body: { texto } });
+  try { await RODAR.whatsappEnviar(localStorage.getItem('rodar_token'), conv.id, texto, conv.canal); }
   catch (er) {
     if (!er.noConectado) throw er;
     const p = await api('/api/whatsapp/preparar', { body: { conv_id: conv.id, texto } });
-    await api('/api/whatsapp/resultado', { body: { msg_id: p.msg_id, ok: false, error: 'WhatsApp no está conectado' } });
+    await api('/api/whatsapp/resultado', { body: { msg_id: p.msg_id, ok: false, error: (conv.canal === 'telegram' ? 'Telegram' : 'WhatsApp') + ' no está conectado' } });
     toast(er.message, 'error');
   }
 }

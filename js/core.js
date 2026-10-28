@@ -13,7 +13,7 @@ const fechaLarga = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice
 const hoyISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const diasAtras = n => { const d = new Date(Date.now() - n * 86400000); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const ESTADOS_MOVIL = { disponible: ['Disponible', '#2f9e57'], confirmado: ['Confirmado', '#e8892b'], con_pasajero: ['Con pasajero', '#d64545'], en_parada: ['En parada', '#2f6fd6'], desconectado: ['Desconectado', '#8b9899'], fuera_servicio: ['Fuera de servicio', '#4b5556'], emergencia: ['EMERGENCIA', '#b0003a'] };
+const ESTADOS_MOVIL = { disponible: ['Disponible', '#278449'], confirmado: ['Confirmado', '#e8892b'], con_pasajero: ['Con pasajero', '#d43d3d'], en_parada: ['En parada', '#2f6fd6'], desconectado: ['Desconectado', '#8b9899'], fuera_servicio: ['Fuera de servicio', '#4b5556'], emergencia: ['EMERGENCIA', '#b0003a'] };
 const ESTADO_VIAJE = { reserva: 'Reserva', pendiente: 'Pendiente', ofrecido: 'Ofrecido', confirmado: 'Confirmado', en_curso: 'En curso', finalizado: 'Finalizado', anulado: 'Anulado' };
 const CANALES_ICO = { whatsapp: '🟢', instagram: '📷', facebook: '📘', telegram: '✈️', aplicacion: '📱', web: '🌐', operador: '🎧', movil: '🚕', centralita: '☎️' };
 const estadoViaje = e => `<span class="estado e-${e}">${ESTADO_VIAJE[e] || e}</span>`;
@@ -23,7 +23,7 @@ async function api(url, opts = {}) {
   const metodo = opts.method || (opts.body ? 'POST' : 'GET');
   try { return await RODAR.llamar(url, metodo, opts.body, localStorage.getItem('rodar_token')); }
   catch (e) {
-    if (e.status === 401 && !url.includes('/api/login')) { localStorage.removeItem('rodar_token'); R.yo = null; location.hash = '#/login'; }
+    if (e.status === 401 && !url.includes('/api/login')) { localStorage.removeItem('rodar_token'); try { sessionStorage.setItem('rodar_vencida', '1'); } catch { } R.yo = null; location.hash = '#/login'; }
     throw e;
   }
 }
@@ -151,7 +151,7 @@ function tablaSimple(filas, cols, vacio = 'Sin registros') {
 function menuAcciones(e, items, titulo) {
   e.stopPropagation();
   let m = $('#menuAcc'); if (!m) { m = h('<div class="menu-acciones" id="menuAcc"></div>'); document.body.append(m); document.addEventListener('click', () => m.style.display = 'none'); }
-  m.innerHTML = (titulo ? `<div class="tit">${esc(titulo)}</div>` : '') + items.filter(Boolean).map((it, i) => `<a data-i="${i}">${it.ico || ''} ${esc(it.t)}</a>`).join('');
+  m.innerHTML = (titulo ? `<div class="tit">${esc(titulo)}</div>` : '') + (items.filter(Boolean).map((it, i) => `<a data-i="${i}">${it.ico || ''} ${esc(it.t)}</a>`).join('') || '<div style="padding:8px 12px;color:var(--suave)">Sin acciones disponibles</div>');
   const lista = items.filter(Boolean);
   $$('a', m).forEach(a => a.onclick = () => { m.style.display = 'none'; lista[+a.dataset.i].a(); });
   m.style.display = 'block';
@@ -183,7 +183,7 @@ function construirNav() {
     {
       id: 'operador', t: 'Operador', ico: ICO.operador, roles: ['operador'], items: [
         { t: 'Chat & Telefonía', a: ventana('chat') }, { t: 'Mapa', a: ventana('mapa') }, { t: 'Mensaje a flota', a: () => mensajeFlota() },
-        { t: 'Telefonía', a: ventana('telefonia') }, { t: 'Viajes', r: 'viajes' }, { t: 'Viajes reservas', r: 'viajes-reservas' },
+        { t: 'Telefonía', a: ventana('telefonia') }, { t: 'Viajes', r: 'viajes' }, { t: 'Viajes reservas', r: 'viajes-reservas' }, { t: 'Alertas SOS', r: 'alertas-sos' },
       ]
     },
     {
@@ -195,8 +195,8 @@ function construirNav() {
     },
     {
       id: 'finanzas', t: 'Finanzas', ico: ICO.finanzas, roles: ['admin', 'gestion'], items: [
-        { tit: '📒 Cuentas' }, { t: 'Cuentas', r: 'cuentas' }, { t: 'Planes', r: 'planes' },
-        { tit: '💳 Cobros' }, { t: 'Pagos de base', r: 'mp-recargas' }, { t: 'Saldos Mercado Pago', r: 'saldos-mercadopago' }, { t: 'Viajes Mercado Pago', r: 'mp-viajes' }, { t: 'Medios de pago', r: 'medios-pago', roles: ['admin'] },
+        { tit: '📒 Cuentas' }, { t: 'Cuentas', r: 'cuentas' }, { t: 'Cuenta corriente empresas', r: 'cuentas-empresas' }, { t: 'Planes', r: 'planes' },
+        { tit: '💳 Cobros' }, { t: 'Pagos de base MP', r: 'mp-recargas' }, { t: 'Saldos Mercado Pago', r: 'saldos-mercadopago' }, { t: 'Viajes Mercado Pago', r: 'mp-viajes' }, { t: 'Medios de pago', r: 'medios-pago', roles: ['admin'] },
       ]
     },
     {
@@ -209,7 +209,7 @@ function construirNav() {
     },
     {
       id: 'informes', t: 'Informes', ico: ICO.informes, roles: ['gestion', 'operador'], items: [
-        { t: 'Acciones usuarios', r: 'acciones-usuarios', roles: ['gestion'] }, { t: 'Clientes bloqueados', r: 'clientes-bloqueados' }, { t: 'Clientes en baja', r: 'clientes-baja' },
+        { t: 'Acciones usuarios', r: 'acciones-usuarios', roles: ['gestion'] }, { t: 'Clientes corporativos', r: 'informe-corporativos', roles: ['gestion'] }, { t: 'Clientes bloqueados', r: 'clientes-bloqueados' }, { t: 'Clientes en baja', r: 'clientes-baja' },
         { t: 'Conductores', r: 'conductores', roles: ['gestion'] }, { t: 'Conectados', r: 'conectados', roles: ['admin'] }, { t: 'Estadísticas móviles', r: 'estadisticas-moviles', roles: ['gestion'] },
         { t: 'Eventos móviles', r: 'eventos-moviles', roles: ['gestion'] }, { t: 'Facturación del mes', r: 'facturacion-mes', roles: ['gestion'] }, { t: 'Histórico recorrido', r: 'recorrido' },
         { t: 'Horas por conductor', r: 'horas-conductores', roles: ['gestion'] }, { t: 'Informe mensual', r: 'informe-mensual', roles: ['gestion'] }, { t: 'Informe operadores', r: 'informe-operadores', roles: ['gestion'] },
@@ -240,18 +240,20 @@ function construirNav() {
         inp.oninput = () => { const q = inp.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); $$('a', dd).forEach(a => a.style.display = !q || a.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q) ? '' : 'none'); $$('.dd-tit', dd).forEach(t => t.style.display = q ? 'none' : ''); };
         inp.onkeydown = e => { if (e.key === 'Enter') { const a = $$('a', dd).find(x => x.style.display !== 'none'); if (a) a.click(); } }; }
       const cols = h('<div class="dd-cols"></div>'); dd.append(cols);
+      // con títulos de sección: una columna por sección (así el menú entra entero en pantallas bajas)
+      let dest = cols; if (cant > 9 && lista.some(x => x.tit)) { cols.classList.add('secs'); dd.classList.add('secs'); }
       lista.forEach(x => {
-        if (x.sep) return cols.append(h('<div class="sep"></div>'));
-        if (x.tit) return cols.append(h(`<div class="dd-tit">${esc(x.tit)}</div>`));
+        if (x.sep) return dest.append(h('<div class="sep"></div>'));
+        if (x.tit) { if (cols.classList.contains('secs')) { dest = h('<div class="dd-sec"></div>'); cols.append(dest); } return dest.append(h(`<div class="dd-tit">${esc(x.tit)}</div>`)); }
         const a = h(`<a>${esc(x.t)}${x.r ? '' : '<span class="ext" title="Se abre en otra ventana">↗</span>'}</a>`);
         if (x.r) { a.dataset.r = x.r; R.grupoDe[x.r] = g.t; }
         const go = () => { cerrarMenus(); document.body.classList.remove('menu-abierto'); x.r ? ir(x.r) : x.a(); };
         a.onclick = go; R.atajos.push({ t: x.t, g: g.t, go });
-        cols.append(a);
+        dest.append(a);
       });
       if (!cant) return;
       it.append(dd);
-      $('button', it).onclick = e => { e.stopPropagation(); const ab = it.classList.contains('abierto'); cerrarMenus(); if (!ab) { it.classList.add('abierto'); const i = $('.dd-busca input', it); if (i && innerWidth > 980) { i.value = ''; i.oninput(); setTimeout(() => i.focus(), 30); } } };
+      $('button', it).onclick = e => { e.stopPropagation(); const ab = it.classList.contains('abierto'); cerrarMenus(); if (!ab) { it.classList.add('abierto'); dd.style.left = ''; const rr = dd.getBoundingClientRect(); if (innerWidth > 980 && rr.right > innerWidth - 8) dd.style.left = Math.min(0, innerWidth - 8 - rr.right) + 'px'; const i = $('.dd-busca input', it); if (i && innerWidth > 980) { i.value = ''; i.oninput(); setTimeout(() => i.focus(), 30); } } };
     } else { R.atajos.push({ t: g.t, g: '', go: () => ir(g.ir) }); }
     if (g.ir) $('button', it).onclick = () => { document.body.classList.remove('menu-abierto'); ir(g.ir); };
     nav.append(it);
@@ -259,13 +261,59 @@ function construirNav() {
   // usuario
   const u = R.yo;
   const ini = (u.nombre[0] + (u.apellido || ' ')[0]).toUpperCase();
-  const us = h(`<div class="item" style="margin-left:auto"><button class="usuario-btn">${u.foto ? `<img src="${esc(u.foto)}">` : `<span class="avatar">${ini}</span>`}<span>${esc(u.nombre + ' ' + (u.apellido || ''))}</span></button>
+  const us = h(`<div class="item" style="margin-left:auto"><button class="usuario-btn">${u.foto ? `<img src="${esc(u.foto)}" alt="Foto de perfil">` : `<span class="avatar">${ini}</span>`}<span>${esc(u.nombre + ' ' + (u.apellido || ''))}</span></button>
     <div class="dropdown" style="left:auto;right:0"><a data-r="ayuda">Centro de ayuda</a><a data-r="mis-reportes">Mis reportes <span class="badge ${u.reportesAbiertos ? '' : 'gris'}">${u.reportesAbiertos || 0}</span></a><a data-x="pass">Cambiar contraseña</a><a data-r="perfil">Editar perfil</a><div class="sep"></div><a data-x="salir">Salir</a></div></div>`);
   $('button', us).onclick = e => { e.stopPropagation(); const ab = us.classList.contains('abierto'); cerrarMenus(); if (!ab) us.classList.add('abierto'); };
   $$('a[data-r]', us).forEach(a => a.onclick = () => { cerrarMenus(); ir(a.dataset.r); });
   $('a[data-x=pass]', us).onclick = () => { cerrarMenus(); cambiarPassword(); };
   $('a[data-x=salir]', us).onclick = async () => { try { await api('/api/logout', { body: {} }); } catch { } localStorage.removeItem('rodar_token'); R.yo = null; location.hash = '#/login'; location.reload(); };
   nav.append(us);
+}
+// ---------- Cierre de sesión por inactividad del panel ----------
+// Cuenta el tiempo sin tocar el mouse ni el teclado (compartido entre pestañas). Al pasar las horas configuradas
+// en Configuración → Seguridad, cierra la sesión. El servidor además vence las sesiones del panel sin uso.
+function vigilarInactividad() {
+  if (R.vigila) return; R.vigila = true;
+  let horas = 8; api('/api/seguridad').then(x => { if (x && x.panel_horas) horas = +x.panel_horas; }).catch(() => { });
+  const K = 'rodar_actividad', marcar = () => { try { const t = Date.now(); if (t - (+localStorage.getItem(K) || 0) > 30000) localStorage.setItem(K, String(t)); } catch { } };
+  try { localStorage.setItem(K, String(Date.now())); } catch { }
+  ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove'].forEach(ev => addEventListener(ev, marcar, { passive: true }));
+  setInterval(async () => {
+    let ult = Date.now(); try { ult = +localStorage.getItem(K) || ult; } catch { }
+    if (!localStorage.getItem('rodar_token') || Date.now() - ult < horas * 3600e3) return;
+    try { await api('/api/logout', { body: {} }); } catch { }
+    localStorage.removeItem('rodar_token'); try { sessionStorage.setItem('rodar_vencida', 'inactivo'); } catch { }
+    R.yo = null; history.replaceState(null, '', '#/login'); location.reload();
+  }, 60000);
+}
+// ---------- Alertas SOS de pasajeros ----------
+// Ventana roja que no se cierra sola y alarma sonora hasta que un operador la marca como atendida (o la silencia).
+function alertaSOS(a, alCargar) {
+  R.sos = R.sos || {}; R.sos[a.id] = a; R.sosSilencio = false; pintarSOS();
+  if (!alCargar) toast('🚨 SOS de un pasajero: ' + (a.nombre || a.telefono || ''), 'error');
+  try { if (Notification && Notification.permission === 'granted') new Notification('🚨 SOS de un pasajero', { body: (a.nombre || '') + ' ' + (a.telefono || ''), requireInteraction: true }); } catch { }
+  if (!R.sosAlarma) R.sosAlarma = setInterval(() => {
+    if (R.sosSilencio || !R.sos || !Object.keys(R.sos).length) return;
+    try { const c = new AudioContext(); [0, .35].forEach(t => { const o = c.createOscillator(), g = c.createGain(); o.type = 'square'; o.frequency.value = 1050; g.gain.value = .25; o.connect(g); g.connect(c.destination); o.start(c.currentTime + t); o.stop(c.currentTime + t + .22); }); setTimeout(() => c.close(), 900); } catch { }
+  }, 2500);
+}
+function pintarSOS() {
+  let el = document.getElementById('sosPanel'); const ls = Object.values(R.sos || {});
+  if (!ls.length) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'sosPanel'; el.className = 'sos-panel'; document.body.append(el); }
+  const fh = t => t ? new Date(String(t).replace(' ', 'T')).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+  el.innerHTML = `<div class="sos-pc"><div class="sos-ph"><b>🚨 ${ls.length === 1 ? 'Alerta SOS de un pasajero' : ls.length + ' alertas SOS de pasajeros'}</b><button class="btn chico sec" id="sosSil">${R.sosSilencio ? '🔈 Sonido' : '🔇 Silenciar'}</button></div>
+    ${ls.map(a => { const v = a.viaje; return `<div class="sos-it"><div class="sos-q"><b>${esc(a.nombre || 'Pasajero')}</b>${a.telefono ? ` · <a href="tel:${esc(a.telefono)}">📞 ${esc(a.telefono)}</a>` : ''}<small>Enviada a las ${fh(a.creado)}${a.ultima_pos ? ' · ubicación ' + fh(a.ultima_pos) : ''}</small></div>
+      ${v ? `<div class="sos-v">Viaje <b>#${v.id}</b> (${esc(v.estado)}) · ${esc(v.origen || '')}${v.destino ? ' → ' + esc(v.destino) : ''}<br>🚕 Móvil <b>${esc(v.movil || '—')}</b> ${esc(v.patente || '')} ${esc(v.vehiculo || '')} · Conductor: <b>${esc(v.conductor || '—')}</b>${v.conductor_tel ? ` <a href="tel:${esc(v.conductor_tel)}">📞</a>` : ''}</div>` : '<div class="sos-v">Sin viaje en curso.</div>'}
+      ${a.mensaje ? `<div class="sos-v">💬 ${esc(a.mensaje)}</div>` : ''}
+      <div class="sos-acc">${a.lat ? `<a class="btn chico" target="_blank" rel="noopener" href="https://maps.google.com/?q=${a.lat},${a.lng}">📍 Ver ubicación${a.precision_m ? ' (±' + Math.round(a.precision_m) + ' m)' : ''}</a>` : '<span style="color:#9b1c1c;font-size:13px">Sin ubicación del pasajero</span>'}
+        ${v && v.movil_lat ? `<a class="btn chico sec" target="_blank" rel="noopener" href="https://maps.google.com/?q=${v.movil_lat},${v.movil_lng}">🚕 Ubicación del móvil</a>` : ''}
+        <button class="btn chico verde" data-sos-ok="${a.id}">✅ Atendida</button></div></div>`; }).join('')}</div>`;
+  $('#sosSil', el).onclick = () => { R.sosSilencio = !R.sosSilencio; pintarSOS(); };
+  $$('[data-sos-ok]', el).forEach(b => b.onclick = async () => {
+    const r = await pedir('Alerta SOS atendida', [{ k: 'nota', l: 'Qué se hizo (opcional)', ph: 'Ej.: se llamó al pasajero, todo bien' }]); if (!r) return;
+    try { await api(`/api/sos/${b.dataset.sosOk}/atender`, { body: r }); delete R.sos[b.dataset.sosOk]; pintarSOS(); toast('Alerta marcada como atendida', 'ok'); } catch (e) { fallo(e); }
+  });
 }
 function cerrarMenus() { $$('.nav .item.abierto').forEach(x => x.classList.remove('abierto')); }
 document.addEventListener('click', cerrarMenus);
@@ -283,13 +331,13 @@ const PANTALLA_COMPLETA = ['mapa', 'telefonia', 'chat'];
 async function render() {
   let ruta = rutaActual();
   if (!RODAR.listo) return pantallaConfig();
-  if (ruta === 'login') return pantallaLogin();
+  if (ruta === 'login') { if (R.yo && localStorage.getItem('rodar_token')) return ir('dashboard', true); return pantallaLogin(); } // con la sesión abierta, "atrás" no vuelve al ingreso
   if (!localStorage.getItem('rodar_token')) return ir('login', true);
   if (R.rutaRender && R.rutaRender !== ruta && (PANTALLA_COMPLETA.includes(ruta) || PANTALLA_COMPLETA.includes(R.rutaRender))) { location.reload(); return; }
   R.rutaRender = ruta;
   if (!R.yo) {
     try { R.yo = await api('/api/me'); R.cat = await api('/api/catalogos'); } catch (e) { if (e.status !== 401) { document.body.innerHTML = `<div class="login"><div class="caja"><h2>No se pudo conectar</h2><p>${esc(e.message)}</p><button class="btn" onclick="location.reload()">Reintentar</button></div></div>`; } return; }
-    conectarSocket();
+    conectarSocket(); vigilarInactividad();
   }
   const def = R.rutas[ruta];
   if (PANTALLA_COMPLETA.includes(ruta)) { document.body.innerHTML = ''; return def.render(document.body); }
@@ -343,6 +391,10 @@ function cabecera(titulo, desc, botones = '') {
 function conectarSocket() {
   R.socket = RODAR.tiempoReal(R.yo.canal, ['panel', 'radio']);
   R.socket.on('aviso', d => toast(d.texto));
+  R.socket.on('sos_pasajero', d => alertaSOS(d));
+  R.socket.on('sos_pos', d => { const m = R.sos && R.sos[d.id]; if (m) { m.lat = d.lat; m.lng = d.lng; pintarSOS(); } });
+  R.socket.on('sos_atendida', d => { if (R.sos && R.sos[d.id]) { delete R.sos[d.id]; pintarSOS(); toast(`Alerta SOS #${d.id} atendida por ${d.por}`, 'ok'); } });
+  if (tiene('operador')) api('/api/sos?abiertas=1').then(ls => (ls || []).forEach(a => alertaSOS(a, true))).catch(() => { });
   R.socket.on('emergencia', d => { toast(`🚨 EMERGENCIA móvil ${d.movil} (${d.conductor})`, 'error'); try { const a = new AudioContext(); const o = a.createOscillator(); o.frequency.value = 900; o.connect(a.destination); o.start(); setTimeout(() => { o.stop(); a.close(); }, 1200); } catch { } });
   // latido: mantiene el despacho, el simulador y las horas de conexión aunque no haya pg_cron
   setInterval(() => { if (document.visibilityState !== 'hidden' || PANTALLA_COMPLETA.includes(rutaActual())) api('/api/tick', { body: {} }).catch(() => { }); }, 5000);
@@ -403,11 +455,22 @@ function pantallaLogin() {
   document.body.innerHTML = `<div class="login login-op"><form class="caja"><div style="text-align:center"><img src="img/logo.png" alt="Remises TOQUE!" style="width:220px;max-width:80%"></div>
     <div class="rol-etiqueta">🎧 Operadores y administración</div>
     <p style="color:var(--suave);margin:6px 0 16px;text-align:center">Ingresá con tu usuario de la central.</p>
+    ${(() => { let v = null; try { v = sessionStorage.getItem('rodar_vencida'); sessionStorage.removeItem('rodar_vencida'); } catch { } return v ? `<div class="login-err" style="display:block;background:#fff4e5;color:#7a4a00;border-color:#f0c27a">🔒 ${v === 'inactivo' ? 'Cerramos tu sesión por inactividad.' : 'Tu sesión venció.'} Volvé a ingresar.</div>` : ''; })()}
     <div class="campo" style="margin-bottom:10px"><label>Usuario o documento</label><input name="usuario" autocomplete="username" autocapitalize="none" required></div>
     <div class="campo" style="margin-bottom:12px"><label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required></div>
     <div class="login-err" id="lerr"></div>
     <button class="btn" style="width:100%;justify-content:center">Ingresar</button>
-    <div class="otros-ingresos"><span>¿No sos de la central?</span><a href="conductor.html">🚕 Soy conductor</a><a href="pasajero.html">🙂 Soy pasajero</a><a href="index.html">🏠 Página principal</a></div></form></div>`;
+    <div class="ing-pie">
+      <div class="ing-tit">¿No sos de la central?</div>
+      <div class="ing-grid">
+        <a href="pasajero.html"><span class="ic">🙂</span><b>Pasajeros</b><small>Pedí tu remís</small></a>
+        <a href="conductor.html"><span class="ic">🚕</span><b>Conductores</b><small>App del móvil</small></a>
+        <a href="empresa.html"><span class="ic">🏢</span><b>Empresas</b><small>Viajes a cuenta</small></a>
+        <a href="index.html"><span class="ic">🏠</span><b>Inicio</b><small>Página web</small></a>
+      </div>
+      <div class="ing-tit">Ayuda</div>
+      <div class="ing-legal"><a href="ayuda.html">💬 Centro de ayuda</a><a href="terminos.html?para=privacidad">🔒 Privacidad</a></div>
+    </div></form></div>`;
   const err = m => { const e = $('#lerr'); e.textContent = m || ''; e.style.display = m ? 'block' : 'none'; };
   $('form').onsubmit = async e => {
     e.preventDefault(); err('');
@@ -428,11 +491,22 @@ function pantallaLogin() {
 function mapaBase(el, opts = {}) {
   const e = (R.cat && R.cat.empresa) || { lat: -34.6, lng: -58.4 };
   const m = L.map(el, { zoomControl: true, ...opts }).setView([e.lat, e.lng], opts.zoom || 14);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+  capaBase(m);
   return m;
 }
-function iconoMovil(numero, color) {
-  return L.divIcon({ className: '', html: `<div class="marcador-movil" style="background:${color}">${numero}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+// Marcador de un móvil: número grande en el color de su estado. Opcional (o): rumbo y velocidad (flecha de hacia dónde va),
+// sinSenal (sin GPS hace rato: se ve apagado) y emergencia (pulsa en rojo).
+function iconoMovil(numero, color, o = {}) {
+  const mueve = o.rumbo != null && +o.velocidad > 3;
+  const cls = ['mm', o.sinSenal ? 'mm-off' : '', o.emergencia ? 'mm-sos' : ''].filter(Boolean).join(' ');
+  return L.divIcon({ className: '', iconSize: [46, 46], iconAnchor: [23, 23],
+    html: `<div class="${cls}" style="--c:${color}">${mueve ? `<i class="mm-dir" style="transform:rotate(${Math.round(+o.rumbo)}deg)"></i>` : ''}<b>${numero}</b>${o.sinSenal ? '<em title="Sin señal de GPS">!</em>' : ''}</div>` });
+}
+// ¿Hace cuánto no llega la ubicación del móvil? (las fechas vienen en hora local "AAAA-MM-DD HH:MM:SS")
+function movilSinSenal(m, minutos = 3) {
+  if (!m || m.simulado || !m.ultima_senal || ['desconectado', 'fuera_servicio'].includes(m.estado)) return false;
+  const t = new Date(String(m.ultima_senal).replace(' ', 'T')).getTime();
+  return isFinite(t) && Date.now() - t > minutos * 60000;
 }
 function iconoPunto(color) { return L.divIcon({ className: '', html: `<div class="marcador-viaje" style="background:${color}"></div>`, iconSize: [22, 22], iconAnchor: [11, 22] }); }
 
@@ -442,6 +516,7 @@ function editorPoligono(mapa, puntos = [], color = '#215181') {
   function dibujar() {
     st.capa && st.capa.remove(); st.marcadores.forEach(x => x.remove()); st.marcadores = [];
     if (st.puntos.length) st.capa = L.polygon(st.puntos, { color, weight: 2, fillOpacity: .25 }).addTo(mapa);
+    if (st.bloq) return; // bloqueado: solo se ve el dibujo, sin vértices para mover
     st.puntos.forEach((p, i) => {
       const mk = L.marker(p, { draggable: true, icon: L.divIcon({ className: '', html: '<div style="width:12px;height:12px;background:#fff;border:2px solid ' + color + ';border-radius:2px"></div>', iconSize: [12, 12], iconAnchor: [6, 6] }) }).addTo(mapa);
       mk.on('drag', ev => { st.puntos[i] = [ev.latlng.lat, ev.latlng.lng]; st.capa.setLatLngs(st.puntos); });
@@ -453,7 +528,7 @@ function editorPoligono(mapa, puntos = [], color = '#215181') {
   const clic = ev => { if (st.activo && !st.goma) { st.puntos.push([ev.latlng.lat, ev.latlng.lng]); dibujar(); } };
   mapa.on('click', clic);
   dibujar();
-  return { get puntos() { return st.puntos; }, goma(v) { st.goma = v; }, limpiar() { st.puntos = []; dibujar(); }, quitar() { mapa.off('click', clic); st.capa && st.capa.remove(); st.marcadores.forEach(x => x.remove()); } };
+  return { get puntos() { return st.puntos; }, goma(v) { st.goma = v; }, redibujar: dibujar, bloquear(v) { st.bloq = !!v; st.activo = !v; dibujar(); }, get bloqueado() { return !!st.bloq; }, limpiar() { st.puntos = []; dibujar(); }, quitar() { mapa.off('click', clic); st.capa && st.capa.remove(); st.marcadores.forEach(x => x.remove()); } };
 }
 
 // ---------- asistente (búsqueda en guías) ----------
@@ -480,5 +555,7 @@ function buscarAyuda(q) {
     return { ...g, score: pal.reduce((s, p) => s + (txt.includes(p) ? (norm(g.titulo).includes(p) ? 3 : 1) : 0), 0) };
   }).filter(g => g.score > 0).sort((a, b) => b.score - a.score);
 }
+
+// pdfMembretado() y verPdf() están en js/pdf/ (compartidos con la app de empresas)
 
 document.addEventListener('DOMContentLoaded', render);

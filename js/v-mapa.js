@@ -9,17 +9,32 @@ ruta('mapa', {
         <span style="background:#7a4fb0" data-x="deuda">Con deuda</span><span style="background:#a33" data-x="sinsaldo">Sin saldo</span>
         <span style="margin-left:auto;background:transparent" id="act">Sin actividad</span><button class="btn chico naranja" id="audio">🔊 Activar audio</button></div>
       <div class="mapa-area"><div id="mapa"></div>
-        <div class="flotante panel-moviles"><div class="fh">Móviles <span id="cntM"></span></div><div style="display:flex;gap:4px;padding:8px 8px 0"><input id="bm" placeholder="Nro móvil" type="number"><button class="btn chico" id="bmb">🔍</button></div><div class="chips" id="chips"></div></div>
-        <div class="flotante panel-paradas"><div class="fh">Paradas</div><div class="lista" id="paradas"></div></div>
+        <div class="flotante panel-moviles"><div class="fh"><span>🚕 Móviles</span><span class="tot" id="cntM" title="Conectados / total"></span><button class="vista" id="vistaM" title="Ver como fichas o como lista">☰</button><button class="min" title="Minimizar / mostrar" aria-label="Minimizar">–</button></div>
+          <div class="pm-cuerpo"><div class="pm-busca"><input id="bm" placeholder="Nº de móvil o conductor…" autocomplete="off"><button class="btn chico" id="bmb" title="Ubicar en el mapa">📍</button></div>
+          <div class="pm-est" id="pmEst"></div><div class="chips" id="chips"></div></div></div>
+        <div class="flotante panel-paradas"><div class="fh"><span>🅿️ Paradas</span><span class="tot"></span><button class="min" title="Minimizar / mostrar" aria-label="Minimizar">–</button></div><div class="lista" id="paradas"></div></div>
         <div class="flotante panel-viajes" id="pv"><div class="fh"><span>Viajes en proceso <span class="badge" id="cntV">0</span></span><span class="fila" style="gap:6px"><input id="bv" placeholder="Buscar…" style="min-height:26px;width:160px;color:#000"><select id="fv" style="min-height:26px;width:auto;color:#000"><option value="">Todos</option><option value="central">Central</option><option value="calle">Calle</option></select><button class="btn-icono" style="color:#fff" id="minv">▁</button></span></div>
           <div class="tabla-wrap"><table class="t"><thead><tr><th>N°</th><th>Canal</th><th>Cliente</th><th>Pedido</th><th>Estado</th><th>Tiempo</th><th>Móvil N°</th><th class="r">Monto</th><th>Dirección</th><th>Zona</th><th></th></tr></thead><tbody id="tv"></tbody></table></div></div>
         <button class="ptt" id="ptt" title="Mantener apretado para hablar">🎙</button><div class="radio-ind" id="radioInd"></div>
       </div>
       <div class="pie" id="pie"></div></div>`;
     const mapa = mapaBase($('#mapa'), { zoom: 14 });
+    // panel de paradas: minimizar/mostrar (se recuerda) y refresco de los minutos de espera
+    { const pp = $('.panel-paradas'), bm = $('.panel-paradas .min'); try { if (localStorage.getItem('rodar_paradas_min') === '1') pp.classList.add('mini'); } catch { }
+      bm.onclick = e => { e.stopPropagation(); pp.classList.toggle('mini'); bm.textContent = pp.classList.contains('mini') ? '+' : '–'; try { localStorage.setItem('rodar_paradas_min', pp.classList.contains('mini') ? '1' : ''); } catch { } };
+      bm.textContent = pp.classList.contains('mini') ? '+' : '–'; setInterval(() => { try { pintarParadas(); } catch { } }, 30000); }
+    // panel de móviles: minimizar, vista fichas/lista, filtro por estado, turnos plegables (se recuerda en este navegador)
+    const PM = { filtro: '', vista: 'fichas', plegados: {} };
+    try { Object.assign(PM, JSON.parse(localStorage.getItem('rodar_moviles_panel') || '{}')); } catch { }
+    const guardarPM = () => { try { localStorage.setItem('rodar_moviles_panel', JSON.stringify({ vista: PM.vista, plegados: PM.plegados, mini: PM.mini })); } catch { } };
+    { const pm = $('.panel-moviles'), bmin = $('.panel-moviles .min'), bv = $('#vistaM');
+      const pint = () => { pm.classList.toggle('mini', !!PM.mini); bmin.textContent = PM.mini ? '+' : '–'; bv.textContent = PM.vista === 'lista' ? '▦' : '☰'; bv.title = PM.vista === 'lista' ? 'Ver como fichas' : 'Ver como lista'; };
+      bmin.onclick = e => { e.stopPropagation(); PM.mini = !PM.mini; pint(); guardarPM(); };
+      bv.onclick = e => { e.stopPropagation(); PM.vista = PM.vista === 'lista' ? 'fichas' : 'lista'; pint(); guardarPM(); pintarChips(); };
+      pint(); setInterval(() => { try { pintarChips(); } catch { } }, 60000); }
     const capaZonas = L.layerGroup().addTo(mapa), capaPel = L.layerGroup().addTo(mapa), capaViajes = L.layerGroup().addTo(mapa);
-    R.cat.zonas.forEach(z => { if (z.poligono.length > 2) L.polygon(z.poligono, { color: z.color, weight: 1.5, fillOpacity: .06 }).addTo(capaZonas).bindTooltip(z.nombre, { sticky: true }); if (z.parada_lat) L.circleMarker([z.parada_lat, z.parada_lng], { radius: 6, color: z.color, fillOpacity: .9 }).addTo(capaZonas).bindTooltip('Parada ' + z.nombre); });
-    R.cat.peligrosas.forEach(z => L.polygon(z.poligono, { color: '#d00', weight: 1, fillOpacity: .18, dashArray: '4' }).addTo(capaPel).bindTooltip('⚠ ' + (z.nombre || 'Zona peligrosa')));
+    R.cat.zonas.forEach(z => { if (z.poligono.length > 2) L.polygon(z.poligono, { color: z.color, weight: 1.5, fillOpacity: .06 }).addTo(capaZonas).bindTooltip(esc(z.nombre), { sticky: true }); if (z.parada_lat) L.circleMarker([z.parada_lat, z.parada_lng], { radius: 6, color: z.color, fillOpacity: .9 }).addTo(capaZonas).bindTooltip('Parada ' + esc(z.nombre)); });
+    R.cat.peligrosas.forEach(z => L.polygon(z.poligono, { color: '#d00', weight: 1, fillOpacity: .18, dashArray: '4' }).addTo(capaPel).bindTooltip('⚠ ' + esc(z.nombre || 'Zona peligrosa')));
     const marcadores = {}, moviles = {}, viajes = {};
     const colorMovil = m => m.estado === 'disponible' && m.bloqueado ? '#7a4fb0' : m.estado === 'disponible' && m.sin_saldo ? '#a33' : (ESTADOS_MOVIL[m.estado] || [, '#888'])[1];
     function popupMovil(m) {
@@ -34,37 +49,83 @@ ruta('mapa', {
       else if (en) circEm[m.numero].setLatLng([m.lat, m.lng]);
       else if (circEm[m.numero]) { circEm[m.numero].remove(); delete circEm[m.numero]; }
     }
+    // Desplaza el marcador de su posición anterior a la nueva en ~1 segundo (si el salto es corto y la pestaña está a la vista)
+    function moverSuave(mk, lat, lng) {
+      const a = mk.getLatLng(); if (!a) return mk.setLatLng([lat, lng]);
+      const dLat = lat - a.lat, dLng = lng - a.lng;
+      if ((!dLat && !dLng) || document.hidden || Math.abs(dLat) + Math.abs(dLng) > 0.02) { cancelAnimationFrame(mk._anim); return mk.setLatLng([lat, lng]); }
+      cancelAnimationFrame(mk._anim); const t0 = performance.now(), D = 900;
+      const paso = t => { const k = Math.min(1, (t - t0) / D), e = k * (2 - k); mk.setLatLng([a.lat + dLat * e, a.lng + dLng * e]); if (k < 1) mk._anim = requestAnimationFrame(paso); };
+      mk._anim = requestAnimationFrame(paso);
+    }
     function pintarMovil(m) {
       moviles[m.id] = m; circuloEmergencia(m);
       const visible = m.lat != null && filtrosEstado.has(m.estado) && m.estado !== 'desconectado';
       if (!visible) { if (marcadores[m.id]) { marcadores[m.id].remove(); delete marcadores[m.id]; } }
-      else if (marcadores[m.id]) { marcadores[m.id].setLatLng([m.lat, m.lng]).setIcon(iconoMovil(m.numero, colorMovil(m))); marcadores[m.id].getPopup().setContent(popupMovil(m)); }
-      else { marcadores[m.id] = L.marker([m.lat, m.lng], { icon: iconoMovil(m.numero, colorMovil(m)), zIndexOffset: 500 }).addTo(mapa).bindPopup(popupMovil(m)); }
+      else {
+        // el ícono se rehace solo si cambió algo que se ve (así no parpadea en cada posición)
+        const op = { rumbo: m.rumbo, velocidad: m.velocidad, sinSenal: movilSinSenal(m), emergencia: m.estado === 'emergencia' };
+        const clave = [m.numero, colorMovil(m), op.velocidad > 3 ? Math.round((+m.rumbo || 0) / 15) : '-', op.sinSenal, op.emergencia].join('|');
+        const tt = `<b>Móvil ${m.numero}</b> · ${(ESTADOS_MOVIL[m.estado] || [m.estado])[0]}${m.conductor ? '<br>' + esc(m.conductor) : ''}${op.sinSenal ? '<br>⚠ Sin señal de GPS' : m.velocidad > 3 ? `<br>${Math.round(m.velocidad)} km/h` : ''}`;
+        let mk = marcadores[m.id];
+        if (!mk) { mk = marcadores[m.id] = L.marker([m.lat, m.lng], { icon: iconoMovil(m.numero, colorMovil(m), op), zIndexOffset: m.estado === 'emergencia' ? 2000 : 500 }).addTo(mapa).bindPopup(popupMovil(m)).bindTooltip(tt, { direction: 'top', offset: [0, -18] }); mk._clave = clave; }
+        else {
+          moverSuave(mk, m.lat, m.lng);
+          if (mk._clave !== clave) { mk.setIcon(iconoMovil(m.numero, colorMovil(m), op)); mk._clave = clave; }
+          mk.setPopupContent(popupMovil(m)); if (mk.setTooltipContent) mk.setTooltipContent(tt);
+        }
+      }
       pintarChips(); pintarParadas();
     }
     let tChips;
+    // grupos de estado para el resumen/filtro del panel
+    const GRUPOS_EST = [['libre', 'Libres', '#278449', m => m.estado === 'disponible'], ['parada', 'En parada', '#2f6fd6', m => m.estado === 'en_parada'],
+      ['ocupado', 'Ocupados', '#d43d3d', m => m.estado === 'confirmado' || m.estado === 'con_pasajero'], ['emerg', 'Emergencia', '#b0003a', m => m.estado === 'emergencia'],
+      ['desc', 'Desconect.', '#8b9899', m => m.estado === 'desconectado'], ['fuera', 'Fuera', '#4b5556', m => m.estado === 'fuera_servicio']];
+    const dur = t => { if (!t) return ''; const d = new Date(String(t).replace(' ', 'T')); if (isNaN(d)) return ''; const mi = Math.max(0, Math.round((Date.now() - d) / 60000)); return mi < 60 ? mi + "'" : Math.floor(mi / 60) + 'h' + String(mi % 60).padStart(2, '0'); };
     function pintarChips() {
       clearTimeout(tChips); tChips = setTimeout(() => {
-        const ms = Object.values(moviles).sort((a, b) => a.numero - b.numero);
+        const todos = Object.values(moviles).sort((a, b) => a.numero - b.numero);
+        // resumen por estado (clic = filtrar; otro clic = quitar filtro)
+        $('#pmEst').innerHTML = GRUPOS_EST.map(([k, t, c, f]) => { const n = todos.filter(f).length; return n || PM.filtro === k ? `<button data-f="${k}" class="${PM.filtro === k ? 'on' : ''}" style="--c:${c}" title="${PM.filtro === k ? 'Quitar filtro' : 'Mostrar solo ' + t.toLowerCase()}"><i></i>${t} <b>${n}</b></button>` : ''; }).join('');
+        $$('#pmEst button').forEach(b => b.onclick = () => { PM.filtro = PM.filtro === b.dataset.f ? '' : b.dataset.f; pintarChips(); });
+        const q = ($('#bm').value || '').trim().toLowerCase(), fg = GRUPOS_EST.find(g => g[0] === PM.filtro);
+        const ms = todos.filter(m => (!fg || fg[3](m)) && (!q || String(m.numero).startsWith(q) || String(m.conductor || '').toLowerCase().includes(q)));
         const hora = t => +String(t).replace('T', ' ').slice(11, 13);
         const turnoDe = t => { const h = hora(t); return h >= 5 && h < 13 ? 'manana' : h >= 13 && h < 21 ? 'tarde' : 'noche'; };
-        const TURNOS = [['manana', '🌅 Mañana · 05 a 13'], ['tarde', '☀️ Tarde · 13 a 21'], ['noche', '🌙 Noche · 21 a 05']];
+        const TURNOS = [['manana', '🌅 Mañana', '05 a 13'], ['tarde', '☀️ Tarde', '13 a 21'], ['noche', '🌙 Noche', '21 a 05'], ['fuera', '⏸ Sin turno', 'fuera de servicio']];
         const ahoraT = turnoDe(new Date().toLocaleString('sv', { timeZone: 'America/Argentina/Buenos_Aires' }));
         const grupos = { manana: [], tarde: [], noche: [], fuera: [] };
         ms.forEach(m => (m.en_servicio_desde ? grupos[turnoDe(m.en_servicio_desde)] : grupos.fuera).push(m));
         ['manana', 'tarde', 'noche'].forEach(k => grupos[k].sort((a, b) => String(a.en_servicio_desde).localeCompare(String(b.en_servicio_desde))));
-        const chip = m => `<span class="chip-movil" data-id="${m.id}" title="${esc((ESTADOS_MOVIL[m.estado] || [m.estado])[0] + ' · ' + (m.conductor || '') + (m.en_servicio_desde ? ' · en servicio ' + String(m.en_servicio_desde).replace('T', ' ').slice(11, 16) : ''))}" style="background:${colorMovil(m)};${m.penalizado ? 'border-color:#000' : ''}">${m.numero}</span>`;
-        $('#chips').innerHTML = TURNOS.map(([k, t]) => grupos[k].length ? `<div class="turno-t${k === ahoraT ? ' actual' : ''}">${t} <b>${grupos[k].length}</b></div><div class="turno-c">${grupos[k].map(chip).join('')}</div>` : '').join('')
-          + (grupos.fuera.length ? `<div class="turno-t fuera">Fuera de servicio <b>${grupos.fuera.length}</b></div><div class="turno-c">${grupos.fuera.map(chip).join('')}</div>` : '');
-        $('#cntM').textContent = ms.filter(m => m.estado !== 'desconectado').length + '/' + ms.length;
-        $$('.chip-movil', $('#chips')).forEach(c => { c.onclick = () => centrar(+c.dataset.id); c.oncontextmenu = e => { e.preventDefault(); menuMovil(e, moviles[+c.dataset.id]); }; });
+        const estT = m => (ESTADOS_MOVIL[m.estado] || [m.estado])[0] + (m.estado === 'disponible' && m.bloqueado ? ' · con deuda' : m.estado === 'disponible' && m.sin_saldo ? ' · sin saldo' : '');
+        const marcas = m => (m.penalizado ? '<em class="pen" title="Penalizado">⛔</em>' : '') + (m.sin_saldo || m.bloqueado ? '<em class="sal" title="Sin saldo / con deuda">$</em>' : '') + (m.lat == null ? '<em class="gps" title="Sin ubicación">⌀</em>' : '');
+        const tip = m => esc(`Móvil ${m.numero} · ${estT(m)}\n${m.conductor || 'Sin conductor'}${m.zona ? '\nZona: ' + m.zona : ''}${m.en_servicio_desde ? '\nEn servicio desde ' + String(m.en_servicio_desde).replace('T', ' ').slice(11, 16) + ' (' + dur(m.en_servicio_desde) + ')' : ''}${m.penalizado ? '\nPenalizado hasta ' + String(m.penalizado.hasta || '').slice(11, 16) : ''}\nClic: ver en el mapa · Clic derecho: acciones`);
+        const ficha = m => `<span class="chip-movil${m.estado === 'emergencia' ? ' emerg' : ''}${m.estado === 'desconectado' ? ' off' : ''}" data-id="${m.id}" title="${tip(m)}" style="--c:${colorMovil(m)}">${m.numero}${marcas(m)}</span>`;
+        const fila = m => `<div class="pm-fila${m.estado === 'emergencia' ? ' emerg' : ''}" data-id="${m.id}" title="${tip(m)}" style="--c:${colorMovil(m)}"><span class="n">${m.numero}</span><span class="d"><b>${esc(m.conductor || 'Sin conductor')}</b><small>${esc(estT(m))}${m.zona ? ' · ' + esc(m.zona) : ''}${movilSinSenal(m) ? ' · <span style="color:#a15c00;font-weight:700">⚠ sin señal</span>' : ''}</small></span><span class="t">${m.estado === 'en_parada' ? dur(m.parada_ingreso) : m.velocidad ? Math.round(m.velocidad) + ' km/h' : ''}</span>${marcas(m)}</div>`;
+        const html = TURNOS.map(([k, t, h]) => { const g = grupos[k]; if (!g.length) return ''; const pleg = PM.plegados[k] && !q;
+          const libres = g.filter(m => m.estado === 'disponible' || m.estado === 'en_parada').length;
+          return `<div class="turno"><div class="turno-t${k === ahoraT ? ' actual' : ''}${k === 'fuera' ? ' fuera' : ''}${pleg ? ' plegado' : ''}" data-t="${k}" title="${pleg ? 'Mostrar' : 'Ocultar'} · ${h}"><span class="fl">▾</span>${t}${k === ahoraT ? '<span class="ya">ahora</span>' : ''}<span class="ct">${k !== 'fuera' ? `<i title="Libres o en parada">${libres} libres</i>` : ''}<b>${g.length}</b></span></div>${pleg ? '' : PM.vista === 'lista' ? `<div class="pm-lista">${g.map(fila).join('')}</div>` : `<div class="turno-c">${g.map(ficha).join('')}</div>`}</div>`; }).join('');
+        $('#chips').innerHTML = html || `<div class="pvac">${todos.length ? 'Ningún móvil coincide.' : 'No hay móviles cargados.'}</div>`;
+        const con = todos.filter(m => m.estado !== 'desconectado' && m.estado !== 'fuera_servicio').length;
+        $('#cntM').textContent = con + '/' + todos.length;
+        $$('.turno-t', $('#chips')).forEach(h => h.onclick = () => { PM.plegados[h.dataset.t] = !PM.plegados[h.dataset.t]; guardarPM(); pintarChips(); });
+        $$('[data-id]', $('#chips')).forEach(c => { c.onclick = () => centrar(+c.dataset.id); c.oncontextmenu = e => { e.preventDefault(); menuMovil(e, moviles[+c.dataset.id]); }; });
       }, 150);
     }
+    // Paradas: cada una con su cola en orden de llegada (1º es el próximo en salir) y cuánto hace que espera cada móvil
     function pintarParadas() {
-      $('#paradas').innerHTML = R.cat.zonas.filter(z => z.es_parada).map(z => {
+      const minutos = t => { if (!t) return null; const d = new Date(String(t).replace(' ', 'T')); return isNaN(d) ? null : Math.max(0, Math.round((Date.now() - d) / 60000)); };
+      const ps = R.cat.zonas.filter(z => z.es_parada);
+      let total = 0;
+      const filas = ps.map(z => {
         const cola = Object.values(moviles).filter(m => m.estado === 'en_parada' && m.parada_id === z.id).sort((a, b) => (a.parada_ingreso || '').localeCompare(b.parada_ingreso || ''));
-        return `<div class="parada-fila"><span class="nom" data-z="${z.id}" style="background:${cola.length ? 'var(--verde)' : '#2f6fd6'}" title="${esc(z.nombre)}">${esc(z.nombre.slice(0, 8).toUpperCase())}</span><div class="cola">${cola.map(m => `<b data-id="${m.id}" style="cursor:pointer">${m.numero}</b>`).join('')}</div></div>`;
-      }).join('');
+        total += cola.length;
+        const chips = cola.map((m, i) => { const mi = minutos(m.parada_ingreso); return `<b data-id="${m.id}" class="${i === 0 ? 'pri' : ''}" title="Móvil ${m.numero} · ${i + 1}º en la cola${mi != null ? ' · espera ' + mi + ' min' : ''}"><i>${i + 1}º</i>${m.numero}${mi != null ? `<small>${mi}'</small>` : ''}</b>`; }).join('');
+        return `<div class="parada-fila${cola.length ? '' : ' vacia'}"><div class="pf1"><span class="nom" data-z="${z.id}" title="Ver ${esc(z.nombre)} en el mapa"><i class="pd" style="background:${esc(z.color || '#2f6fd6')}"></i>${esc(z.nombre)}</span><span class="cnt">${cola.length ? cola.length + ' en cola' : 'Vacía'}</span></div>${cola.length ? `<div class="cola">${chips}</div>` : ''}</div>`;
+      });
+      $('#paradas').innerHTML = ps.length ? filas.join('') : '<div class="pvac">No hay paradas cargadas. Se crean en Administración → Zonas & Paradas.</div>';
+      const t = $('.panel-paradas .fh .tot'); if (t) t.textContent = total ? total + ' en cola' : '';
       $$('#paradas .nom').forEach(n => n.onclick = () => { const z = R.cat.zonas.find(x => x.id === +n.dataset.z); if (z.parada_lat) mapa.setView([z.parada_lat, z.parada_lng], 16); });
       $$('#paradas b[data-id]').forEach(b => b.onclick = e => menuMovil(e, moviles[+b.dataset.id]));
     }
@@ -80,7 +141,8 @@ ruta('mapa', {
         { t: 'Recorrido histórico', ico: '🛣', a: () => window.open('panel.html#/recorrido?movil=' + m.id) },
       ], 'Móvil ' + m.numero);
     }
-    async function estadoMovil(m, estado) { try { await api(`/api/moviles/${m.id}/estado`, { body: { estado } }); } catch (e) { fallo(e); } }
+    // El cambio se ve enseguida en el mapa y en la lista (no espera la próxima actualización)
+    async function estadoMovil(m, estado) { try { const r = await api(`/api/moviles/${m.id}/estado`, { body: { estado } }); if (r && r.movil) pintarMovil(r.movil); else pintarMovil({ ...m, estado }); } catch (e) { fallo(e); } }
     async function mensajeMovil(m) { const r = await pedir('Mensaje al móvil ' + m.numero, [{ k: 'texto', l: 'Mensaje', t: 'textarea', w: 'full' }]); if (r && r.texto) { await api(`/api/moviles/${m.id}/mensaje`, { body: r }); toast('Enviado', 'ok'); } }
     mapa.on('popupopen', e => { $$('[data-mm]', e.popup.getElement()).forEach(b => b.onclick = ev => { const m = moviles[+b.dataset.mm]; b.dataset.op === 'msg' ? mensajeMovil(m) : menuMovil(ev, m); }); });
 
@@ -111,8 +173,10 @@ ruta('mapa', {
     setInterval(tiempos, 1000);
     $('#fv').onchange = pintarTabla; $('#bv').oninput = pintarTabla;
     $('#minv').onclick = () => $('#pv').classList.toggle('min');
-    $('#bmb').onclick = () => { const m = Object.values(moviles).find(x => x.numero === +$('#bm').value); m ? centrar(m.id) : toast('No existe ese móvil'); };
-    $('#bm').onkeydown = e => e.key === 'Enter' && $('#bmb').click();
+    $('#bmb').onclick = () => { const q = ($('#bm').value || '').trim().toLowerCase(); if (!q) return $('#bm').focus(); const ms = Object.values(moviles);
+      const m = ms.find(x => String(x.numero) === q) || ms.find(x => String(x.conductor || '').toLowerCase().includes(q)); m ? centrar(m.id) : toast('No existe ese móvil'); };
+    $('#bm').onkeydown = e => { if (e.key === 'Enter') $('#bmb').click(); if (e.key === 'Escape') { $('#bm').value = ''; pintarChips(); } };
+    $('#bm').oninput = () => pintarChips();
 
     // leyenda: filtros
     $$('.leyenda span[data-e]').forEach(s => s.onclick = () => { const e = s.dataset.e; filtrosEstado.has(e) ? filtrosEstado.delete(e) : filtrosEstado.add(e); s.classList.toggle('off'); Object.values(moviles).forEach(pintarMovil); });
@@ -137,7 +201,28 @@ ruta('mapa', {
     pie(); setInterval(pie, 15000);
     let ultAct = Date.now();
     // respaldo por si el tiempo real no está disponible: refresca cada 8 segundos
-    setInterval(async () => { if (document.visibilityState === 'hidden') return; try { const d3 = await api('/api/mapa'); d3.moviles.forEach(pintarMovil); Object.keys(viajes).forEach(id => { if (!d3.viajes.find(v => v.id === +id)) pintarViaje({ ...viajes[id], estado: 'finalizado' }); }); d3.viajes.forEach(pintarViaje); } catch { } }, 5000);
+    setInterval(async () => { if (document.visibilityState === 'hidden') return; try { const d3 = await api('/api/mapa'); d3.moviles.forEach(pintarMovil); Object.keys(viajes).forEach(id => { if (!d3.viajes.find(v => v.id === +id)) pintarViaje({ ...viajes[id], estado: 'finalizado' }); }); d3.viajes.forEach(pintarViaje); } catch { } }, 6000);
+    // Cada 2,5 s: ubicación, estado, conductor y parada de cada móvil (consulta liviana). Mueve los marcadores y
+    // mantiene al día el panel de Móviles y las paradas; si cambió el estado o el conductor, repinta ese móvil completo.
+    setInterval(async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const ps = await api('/api/mapa/pos'); let cambios = false;
+        ps.forEach(p => {
+          const m = moviles[p.id]; if (!m) return;   // los móviles nuevos llegan con la carga completa
+          if (m.estado !== p.estado || m.conductor_id !== p.conductor_id || m.parada_id !== p.parada_id || (m.lat == null) !== (p.lat == null)) { cambios = true; return pintarMovil({ ...m, ...p }); }
+          if (m.lat === p.lat && m.lng === p.lng && m.rumbo === p.rumbo && m.velocidad === p.velocidad && m.ultima_senal === p.ultima_senal) return;
+          cambios = true; Object.assign(m, p);
+          const mk = marcadores[p.id]; if (!mk || p.lat == null) return;
+          moverSuave(mk, p.lat, p.lng);
+          const op = { rumbo: p.rumbo, velocidad: p.velocidad, sinSenal: movilSinSenal(m), emergencia: m.estado === 'emergencia' };
+          const clave = [m.numero, colorMovil(m), op.velocidad > 3 ? Math.round((+p.rumbo || 0) / 15) : '-', op.sinSenal, op.emergencia].join('|');
+          if (mk._clave !== clave) { mk.setIcon(iconoMovil(m.numero, colorMovil(m), op)); mk._clave = clave; }
+        });
+        if (cambios) pintarChips();   // velocidad, "sin señal" y contadores del panel de Móviles
+        ultAct = Date.now();
+      } catch { }
+    }, 2500);
     R.socket.on('movil', m => { pintarMovil(m); ultAct = Date.now(); });
     R.socket.on('viaje', v => { pintarViaje(v); ultAct = Date.now(); });
     R.socket.on('viaje_baja', d => { delete viajes[d.id]; if (marcV[d.id]) { marcV[d.id].remove(); delete marcV[d.id]; } pintarTabla(); });
@@ -185,35 +270,74 @@ async function enviarRadio(audio, mime, de) {
 ruta('zonas-paradas', {
   titulo: 'Zonas & Paradas', roles: ['admin'], async render(main) {
     main.innerHTML = cabecera('Zonas & Paradas', 'Paradas y zonas de espera en el mapa. Al editar una zona, las demás se muestran en gris para ver solapamientos.', '<button class="btn" id="nueva">+ Nueva zona</button>') +
-      `<div class="grid" style="grid-template-columns:260px 1fr"><div class="card"><div class="head"><h3>Zonas</h3></div><div id="lz"></div></div><div class="card" style="height:72vh;position:relative"><div id="mz" style="position:absolute;inset:0;border-radius:10px"></div><div id="ed" class="flotante oculto" style="right:10px;top:10px;width:280px;padding:10px"></div></div></div>`;
+      `<div class="zp"><div class="card zp-lista"><div class="head"><h3>Zonas</h3><span class="zp-res" id="res"></span></div>
+        <div class="zp-busca"><input type="search" id="bzq" placeholder="Buscar zona…"></div><div id="lz"></div></div>
+        <div class="card zp-mapa"><div id="mz"></div><div id="ed" class="flotante zp-ed oculto"></div>
+        <div class="zp-ley"><span><i class="lz"></i>Zona</span><span><i class="lp">P</i>Parada (cola de móviles)</span><span>Tocá una zona en el mapa o en la lista para editarla</span></div></div></div>`;
     const mapa = mapaBase($('#mz'));
-    let zonas = await api('/api/zonas'), capas = L.layerGroup().addTo(mapa), editor = null, paradaMk = null;
+    let zonas = await api('/api/zonas'), capas = L.layerGroup().addTo(mapa), editor = null, paradaMk = null, actual = null;
+    const iconoP = color => L.divIcon({ className: '', html: `<div class="zp-p" style="background:${color}">P</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+    // superficie aproximada del polígono (km²)
+    const km2 = pts => { if (!pts || pts.length < 3) return 0; const lat0 = pts[0][0] * Math.PI / 180, kx = 111.32 * Math.cos(lat0), ky = 110.57; let a = 0; pts.forEach((p, i) => { const q = pts[(i + 1) % pts.length]; a += (p[1] * kx) * (q[0] * ky) - (q[1] * kx) * (p[0] * ky); }); return Math.abs(a / 2); };
+    const fmtA = a => a >= 1 ? a.toFixed(1).replace('.', ',') + ' km²' : Math.round(a * 100) + ' ha';
     function pintar(editId) {
       capas.clearLayers();
-      zonas.forEach(z => { if (z.id === editId || z.poligono.length < 3) return; L.polygon(z.poligono, { color: editId ? '#333' : z.color, weight: 1.5, fillOpacity: editId ? .15 : .12 }).addTo(capas).bindTooltip(z.nombre); });
-      $('#lz').innerHTML = zonas.map(z => `<div class="conv" style="padding:9px 12px;border-bottom:1px solid #eef2f2;cursor:pointer;display:flex;gap:8px;align-items:center" data-id="${z.id}"><span class="dot" style="background:${z.color}"></span><span style="flex:1">${esc(z.nombre)}</span>${z.es_parada ? '<span class="pill">parada</span>' : ''}</div>`).join('');
-      $$('#lz [data-id]').forEach(d => d.onclick = () => editar(zonas.find(z => z.id === +d.dataset.id)));
+      zonas.forEach(z => {
+        if (z.id === editId) return;
+        if (z.poligono.length > 2) {
+          const pg = L.polygon(z.poligono, { color: editId ? '#7b8a8b' : z.color, weight: editId ? 1 : 2, fillOpacity: editId ? .1 : .14, dashArray: editId ? '4 4' : null }).addTo(capas);
+          if (!editId) { pg.bindTooltip(esc(z.nombre), { permanent: true, direction: 'center', className: 'zp-etq' }); pg.on('click', () => editar(z)); pg.on('mouseover', () => pg.setStyle({ fillOpacity: .3 })); pg.on('mouseout', () => pg.setStyle({ fillOpacity: .14 })); z._pg = pg; }
+        }
+        if (z.es_parada && z.parada_lat && !editId) L.marker([z.parada_lat, z.parada_lng], { icon: iconoP(z.color || '#2f6fd6') }).addTo(capas).bindTooltip('Parada ' + esc(z.nombre)).on('click', () => editar(z));
+      });
+      const q = ($('#bzq').value || '').trim().toLowerCase();
+      const lista = zonas.filter(z => !q || z.nombre.toLowerCase().includes(q));
+      $('#res').textContent = `${zonas.length} zona${zonas.length === 1 ? '' : 's'} · ${zonas.filter(z => z.es_parada).length} con parada`;
+      $('#lz').innerHTML = lista.length ? lista.map(z => `<div class="zp-item${z.id === editId ? ' act' : ''}" data-id="${z.id}"><span class="sw" style="background:${esc(z.color || '#215181')}"></span>
+        <div class="zi"><b>${esc(z.nombre)}</b><small>${z.poligono.length > 2 ? `${z.poligono.length} vértices · ${fmtA(km2(z.poligono))}` : '<span style="color:var(--rojo)">Sin dibujar</span>'}</small></div>
+        ${z.es_parada ? `<span class="zp-tag${z.parada_lat ? '' : ' falta'}" title="${z.parada_lat ? 'Tiene parada' : 'Falta ubicar la parada'}">🅿️ Parada</span>` : ''}</div>`).join('') : `<div class="zp-vac">${zonas.length ? 'No hay zonas con ese nombre.' : 'Todavía no hay zonas. Tocá <b>+ Nueva zona</b> y dibujala en el mapa.'}</div>`;
+      $$('#lz [data-id]').forEach(d => { const z = zonas.find(x => x.id === +d.dataset.id); d.onclick = () => editar(z);
+        d.onmouseenter = () => { if (!editor && z._pg) z._pg.setStyle({ fillOpacity: .35, weight: 3 }); }; d.onmouseleave = () => { if (!editor && z._pg) z._pg.setStyle({ fillOpacity: .14, weight: 2 }); }; });
     }
+    $('#bzq').oninput = () => pintar(actual && actual.id);
     function editar(z) {
-      editor && editor.quitar(); paradaMk && paradaMk.remove();
-      pintar(z.id);
+      editor && editor.quitar(); paradaMk && paradaMk.remove(); actual = z;
+      pintar(z.id || -1);
       editor = editorPoligono(mapa, z.poligono || [], z.color || '#215181');
+      // Una zona existente se abre bloqueada: no se agregan ni mueven puntos hasta tocar "Editar dibujo"
+      let bloq = !!(z.id && z.poligono && z.poligono.length > 2); if (bloq) editor.bloquear(true);
       if (z.poligono && z.poligono.length) mapa.fitBounds(L.polygon(z.poligono).getBounds(), { padding: [60, 60] });
       const ed = $('#ed'); ed.classList.remove('oculto');
-      ed.innerHTML = `<b>${z.id ? 'Editar zona' : 'Nueva zona'}</b><p style="font-size:12px;color:var(--suave)">Clic: agrega vértice · arrastrá para mover · clic derecho: borra vértice. Mantené Shift + clic para ubicar la parada.</p>`;
+      ed.innerHTML = `<div class="zp-eh"><span class="sw" id="sw" style="background:${esc(z.color || '#215181')}"></span><b>${z.id ? 'Editar zona' : 'Nueva zona'}</b><button class="x" id="cz" title="Cerrar">×</button></div>
+        <div class="zp-lock" id="lock"></div>
+        <ul class="zp-ayuda" id="ayz"><li>🖱️ <b>Clic</b> en el mapa: agrega un vértice</li><li>✋ <b>Arrastrá</b> un vértice para moverlo</li><li>🗑️ <b>Clic derecho</b> en un vértice: lo borra</li><li>🅿️ <b>Shift + clic</b> o el botón <b>Ubicar parada</b>: marca dónde esperan los móviles</li></ul>
+        <div class="zp-est" id="est"></div>`;
       const f = formulario([{ k: 'nombre', l: 'Nombre', w: 'full' }, { k: 'color', l: 'Color', t: 'color' }, { k: 'orden', l: 'Orden', t: 'number' }, { k: 'es_parada', t: 'check', cl: 'Tiene parada (cola de móviles)', w: 'full' }], { ...z, es_parada: z.id ? z.es_parada : true, color: z.color || '#215181' });
       f.classList.remove('g2'); ed.append(f);
-      ed.append(h('<div class="fila" style="margin-top:8px"><button class="btn" id="gz">Guardar</button><button class="btn sec" id="lz2">Limpiar</button>' + (z.id ? '<button class="btn rojo" id="bz">Eliminar</button>' : '') + '<button class="btn sec" id="cz">Cerrar</button></div>'));
-      let par = z.parada_lat ? [z.parada_lat, z.parada_lng] : null;
-      const ponerPar = () => { paradaMk && paradaMk.remove(); if (par) paradaMk = L.marker(par, { draggable: true, icon: iconoPunto('#2f6fd6') }).addTo(mapa).bindTooltip('Parada'); paradaMk && paradaMk.on('dragend', e => par = [e.target.getLatLng().lat, e.target.getLatLng().lng]); };
-      ponerPar();
-      const shift = e => { if (e.originalEvent.shiftKey) { editor.puntos.pop(); editor.goma(false); par = [e.latlng.lat, e.latlng.lng]; ponerPar(); } };
-      mapa.on('click', shift);
-      const cerrar = () => { mapa.off('click', shift); editor.quitar(); editor = null; paradaMk && paradaMk.remove(); ed.classList.add('oculto'); pintar(); };
+      ed.append(h('<div class="zp-acc"><button class="btn verde" id="gz">💾 Guardar</button><button class="btn sec" id="upz">🅿️ Ubicar parada</button><button class="btn sec" id="lz2">↺ Borrar dibujo</button>' + (z.id ? '<button class="btn rojo" id="bz">🗑 Eliminar</button>' : '') + '</div>'));
+      // modo bloqueado / edición del dibujo
+      const pintarLock = () => {
+        $('#lock').innerHTML = bloq ? '<div class="zl-txt">🔒 <b>Dibujo bloqueado</b><br><small>Podés cambiar nombre, color y orden sin tocar el mapa. Para mover puntos o la parada, tocá Editar dibujo.</small></div><button class="btn" id="edz">✏️ Editar dibujo</button>'
+          : (z.id ? '<div class="zl-txt on">✏️ <b>Editando el dibujo</b><br><small>Los cambios en el mapa se guardan al tocar Guardar.</small></div><button class="btn sec" id="edz">🔒 Bloquear</button>' : '');
+        $('#ayz').style.display = bloq ? 'none' : ''; $('#upz').style.display = $('#lz2').style.display = bloq ? 'none' : '';
+        if (paradaMk && paradaMk.dragging) bloq ? paradaMk.dragging.disable() : paradaMk.dragging.enable();
+        const b = $('#edz'); if (b) b.onclick = () => { bloq = !bloq; editor.bloquear(bloq); if (bloq && modoPar) { modoPar = false; $('#upz').classList.remove('on'); $('#mz').style.cursor = ''; } pintarLock(); };
+      };
+      let par = z.parada_lat ? [z.parada_lat, z.parada_lng] : null, modoPar = false;
+      const estado = () => { const n = editor ? editor.puntos.length : 0; $('#est').innerHTML = `<span class="${n >= 3 ? 'ok' : 'no'}">${n >= 3 ? '✓' : '•'} ${n} vértice${n === 1 ? '' : 's'}${n >= 3 ? ' · ' + fmtA(km2(editor.puntos)) : ' (mínimo 3)'}</span><span class="${par ? 'ok' : 'no'}">${par ? '✓ Parada ubicada' : '• Sin parada ubicada'}</span>`; };
+      const ponerPar = () => { paradaMk && paradaMk.remove(); paradaMk = null; if (par) paradaMk = L.marker(par, { draggable: true, icon: iconoP($('[name=color]', f).value || '#2f6fd6') }).addTo(mapa).bindTooltip('Parada · arrastrala para moverla'); paradaMk && paradaMk.on('dragend', e => { par = [e.target.getLatLng().lat, e.target.getLatLng().lng]; estado(); }); if (paradaMk && typeof bloq !== 'undefined' && bloq) paradaMk.dragging.disable(); estado(); };
+      ponerPar(); pintarLock();
+      const clicMapa = e => { if (bloq) return; if (e.originalEvent.shiftKey || modoPar) { editor.puntos.pop(); editor.goma(false); editor.redibujar && editor.redibujar(); par = [e.latlng.lat, e.latlng.lng]; ponerPar(); if (modoPar) { modoPar = false; $('#upz').classList.remove('on'); $('#mz').style.cursor = ''; } } setTimeout(estado, 0); };
+      mapa.on('click', clicMapa);
+      const obs = setInterval(() => { if (!editor) return clearInterval(obs); estado(); }, 700);
+      $('[name=color]', f).oninput = e => { $('#sw').style.background = e.target.value; ponerPar(); };
+      const cerrar = () => { clearInterval(obs); mapa.off('click', clicMapa); editor.quitar(); editor = null; actual = null; paradaMk && paradaMk.remove(); ed.classList.add('oculto'); $('#mz').style.cursor = ''; pintar(); };
       $('#cz').onclick = cerrar;
-      $('#lz2').onclick = () => editor.limpiar();
+      $('#upz').onclick = () => { modoPar = !modoPar; $('#upz').classList.toggle('on', modoPar); $('#mz').style.cursor = modoPar ? 'crosshair' : ''; if (modoPar) toast('Tocá en el mapa dónde esperan los móviles'); };
+      $('#lz2').onclick = () => { editor.limpiar(); estado(); };
       $('#gz').onclick = async () => {
         const d = leer(f);
+        if (!(d.nombre || '').trim()) return toast('Poné un nombre a la zona', 'error');
         if (editor.puntos.length < 3) return toast('Dibujá al menos 3 vértices', 'error');
         if (!par) { const b = L.polygon(editor.puntos).getBounds().getCenter(); par = [b.lat, b.lng]; }
         await api('/api/zonas', { body: { ...d, id: z.id, poligono: editor.puntos, parada_lat: par[0], parada_lng: par[1] } });
@@ -236,7 +360,7 @@ ruta('zonas-peligrosas', {
     let zs = await api('/api/zonas-peligrosas'), capas = L.layerGroup().addTo(mapa), ed = null, actual = null;
     function pintar() {
       capas.clearLayers();
-      zs.forEach(z => { if (actual && actual.id === z.id) return; const p = L.polygon(z.poligono, { color: '#d00', fillOpacity: .2 }).addTo(capas); p.bindTooltip(z.nombre || 'Zona peligrosa'); p.on('click', () => { if (modo === 'editar') iniciar(z); else if (modo === 'borrar') borrar(z); }); });
+      zs.forEach(z => { if (actual && actual.id === z.id) return; const p = L.polygon(z.poligono, { color: '#d00', fillOpacity: .2 }).addTo(capas); p.bindTooltip(esc(z.nombre || 'Zona peligrosa')); p.on('click', () => { if (modo === 'editar') iniciar(z); else if (modo === 'borrar') borrar(z); }); });
       $('#msg').textContent = zs.length ? `${zs.length} zona(s) cargadas` : 'No hay zonas cargadas.';
     }
     let modo = '';

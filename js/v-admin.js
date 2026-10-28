@@ -81,7 +81,7 @@ ruta('usuarios', {
     main.innerHTML = cabecera('Usuarios', 'Usuarios del sistema. Usá el botón de acciones en cada fila para modificar datos o resetear la contraseña.', '<button class="btn" id="nuevo">+ Nuevo</button><button class="btn sec" id="ac">⟳ Actualizar</button>') +
       `<div class="card"><div class="head"><input type="search" id="b" placeholder="Buscar por documento, nombre o usuario" style="max-width:320px"><select id="p" style="width:auto"><option value="">Todos</option>${ROLES.map(r => `<option value="${r[0]}">${r[1]}</option>`).join('')}</select><button class="btn sec chico" id="rf">Restablecer filtros</button></div><div id="tb"></div></div>`;
     const t = tabla($('#tb'), {
-      cols: [{ t: 'Foto', f: u => u.foto ? `<img src="${esc(u.foto)}" class="avatar">` : `<span class="avatar">${esc(u.nombre[0])}</span>` }, { t: 'Documento', k: 'documento' }, { t: 'Nombre y apellido', f: u => `${esc(u.nombre)} ${esc(u.apellido)}${u.usuario ? `<br><small>@${esc(u.usuario)}</small>` : ''}` }, { t: 'Móviles', f: u => u.moviles.join(', ') || '—' }, { t: 'Permisos', f: u => u.roles.split(',').map(r => `<span class="pill">${(ROLES.find(x => x[0] === r) || [, r])[1]}</span>`).join(' ') }, { t: 'Hab', f: u => u.habilitado ? '<b style="color:var(--verde)">SI</b>' : '<b style="color:var(--rojo)">NO</b>' }],
+      cols: [{ t: 'Foto', f: u => u.foto ? `<img src="${esc(u.foto)}" alt="Foto de ${esc(u.nombre || 'usuario')}" class="avatar">` : `<span class="avatar">${esc(u.nombre[0])}</span>` }, { t: 'Documento', k: 'documento' }, { t: 'Nombre y apellido', f: u => `${esc(u.nombre)} ${esc(u.apellido)}${u.usuario ? `<br><small>@${esc(u.usuario)}</small>` : ''}` }, { t: 'Móviles', f: u => u.moviles.join(', ') || '—' }, { t: 'Permisos', f: u => u.roles.split(',').map(r => `<span class="pill">${(ROLES.find(x => x[0] === r) || [, r])[1]}</span>`).join(' ') }, { t: 'Hab', f: u => u.habilitado ? '<b style="color:var(--verde)">SI</b>' : '<b style="color:var(--rojo)">NO</b>' }],
       cargar: p => api('/api/usuarios?' + qs({ ...p, buscar: $('#b').value, permiso: $('#p').value })),
       acciones: u => [{ t: 'Modificar', ico: '✎', a: () => editarUsuario(u, () => t.refrescar()) }, { t: 'Resetear contraseña', ico: '🔑', a: async () => { const r = await pedir('Resetear contraseña de ' + u.nombre, [{ k: 'password', l: 'Nueva contraseña (vacío = documento)', t: 'text' }]); if (r) { await api(`/api/usuarios/${u.id}/reset`, { body: r }); toast('Contraseña reseteada', 'ok'); } } }],
     });
@@ -104,11 +104,44 @@ async function editarUsuario(u, listo) {
 
 ruta('corporativos', {
   titulo: 'Clientes corporativos', roles: ['admin'], render(main) {
-    main.innerHTML = cabecera('Clientes corporativos', 'Empresas con cuenta corriente. Sus usuarios (rol Corporativo) piden viajes desde el pedido web y los viajes quedan a cuenta de la empresa.', '<button class="btn" id="n">+ Nueva empresa</button>') + '<div class="card" id="tb"></div>';
-    const campos = [{ k: 'nombre', l: 'Nombre' }, { k: 'cuit', l: 'CUIT' }, { k: 'centro_costo', l: 'Centro de costo' }, { k: 'contacto', l: 'Contacto' }, { k: 'telefono', l: 'Teléfono' }, { k: 'activo', t: 'check', cl: 'Activa' }];
-    const ed = async c => { const r = await pedir(c.id ? 'Modificar empresa' : 'Nueva empresa', campos, c); if (r) { await api('/api/corporativos', { body: { ...r, id: c.id } }); t.refrescar(); } };
-    const t = tabla($('#tb'), { cols: [{ t: 'Empresa', k: 'nombre' }, { t: 'CUIT', k: 'cuit' }, { t: 'Centro de costo', k: 'centro_costo' }, { t: 'Contacto', f: c => esc((c.contacto || '') + ' ' + (c.telefono || '')) }, { t: 'Activa', f: c => c.activo ? 'SI' : 'NO' }], cargar: () => api('/api/corporativos'), acciones: c => [{ t: 'Modificar', a: () => ed(c) }, { t: 'Ver viajes', a: () => ir('viajes-por-movil') }] });
-    $('#n').onclick = () => ed({ activo: 1 });
+    main.innerHTML = cabecera('Clientes corporativos', 'Empresas con cuenta corriente. Sus usuarios (rol Corporativo) piden viajes desde la app para empresas y los viajes quedan a cuenta de la empresa.', '<a class="btn sec" href="empresa.html" target="_blank" rel="noopener">🏢 Abrir app de empresas</a><button class="btn" id="n">+ Nueva empresa</button>') +
+      '<div class="card" id="tb"></div>';
+    const campos = [{ k: 'nombre', l: 'Nombre' }, { k: 'cuit', l: 'CUIT' }, { k: 'centro_costo', l: 'Centro de costo' }, { k: 'contacto', l: 'Contacto' }, { k: 'telefono', l: 'Teléfono' }];
+    const ed = async c => { const r = await pedir(c.id ? 'Modificar empresa' : 'Nueva empresa', campos, c); if (r) { try { await api('/api/corporativos', { body: { ...r, id: c.id } }); toast('Guardado', 'ok'); t.refrescar(); } catch (e) { fallo(e); } } };
+    const EST = { activa: ['✅ Activa', '#1b6e31', '#e3f6e8'], suspendida: ['⏸ Suspendida', '#8a4300', '#fff1e3'], baja: ['⛔ De baja', '#9b1c1c', '#fdecec'] };
+    const chip = c => { const [t, col, bg] = EST[c.estado] || EST.activa; return `<span class="pill" style="background:${bg};color:${col};font-weight:700" title="${esc(c.motivo ? 'Motivo: ' + c.motivo : '')}${c.estado_at ? ' · ' + esc(fechaLarga(c.estado_at)) : ''}${c.estado_por_nombre ? ' · ' + esc(c.estado_por_nombre) : ''}">${t}</span>`; };
+    // Suspender / dar de baja / eliminar / reactivar con confirmación y motivo
+    const cambiar = async (c, op) => {
+      const TXT = {
+        suspender: ['⏸ Suspender empresa', `Los usuarios de <b>${esc(c.nombre)}</b> no van a poder pedir viajes ni entrar a la app de empresas hasta que la reactives. Se cierran sus sesiones y se cancelan las reservas y pedidos que todavía no tienen móvil.`, 'Suspender', 'naranja'],
+        baja: ['⛔ Dar de baja', `<b>${esc(c.nombre)}</b> queda de baja: se deshabilitan sus ${c.usuarios} usuario(s), se cancelan las reservas y pedidos sin móvil, y se conserva el historial de viajes para facturar. Se puede reactivar más adelante.`, 'Dar de baja', 'rojo'],
+        eliminar: ['🗑 Eliminar empresa', c.viajes > 0 ? `<b>${esc(c.nombre)}</b> tiene ${c.viajes} viaje(s) en su historial: no se puede eliminar porque se perderían los datos de facturación. Usá <b>Dar de baja</b>.` : `Se elimina <b>${esc(c.nombre)}</b> con su equipo y sus lugares guardados. Sus usuarios quedan desvinculados y deshabilitados. <b>No se puede deshacer.</b>`, 'Eliminar definitivamente', 'rojo'],
+        reactivar: ['▶️ Reactivar empresa', `<b>${esc(c.nombre)}</b> vuelve a estar activa${c.estado === 'baja' ? ' y se vuelven a habilitar los usuarios que se deshabilitaron con la baja' : ''}. Sus usuarios pueden volver a pedir viajes.`, 'Reactivar', 'verde'] }[op];
+      const sinMotivo = op === 'reactivar' || (op === 'eliminar' && c.viajes > 0);
+      const cuerpo = `<p style="margin:0 0 10px">${TXT[1]}</p>${sinMotivo ? '' : '<div class="campo"><label>Motivo (queda registrado)</label><input id="motC" placeholder="Ej: falta de pago, fin del contrato…"></div>'}${op === 'eliminar' && !c.viajes ? '<div class="campo" style="margin-top:8px"><label>Para confirmar escribí ELIMINAR</label><input id="confC" autocomplete="off"></div>' : ''}`;
+      const bot = op === 'eliminar' && c.viajes > 0 ? [{ texto: 'Dar de baja', clase: 'rojo', accion: () => { setTimeout(() => cambiar(c, 'baja'), 0); } }, { texto: 'Cerrar', clase: 'sec' }]
+        : [{ texto: 'Cancelar', clase: 'sec' }, { texto: TXT[2], clase: TXT[3], accion: async mb => {
+          if (op === 'eliminar' && ($('#confC', mb).value || '').trim().toUpperCase() !== 'ELIMINAR') { toast('Escribí ELIMINAR para confirmar', 'error'); return false; }
+          const r = await api(`/api/corporativos/${c.id}/estado`, { body: { op, motivo: ($('#motC', mb) || {}).value || null } });
+          toast({ suspender: 'Empresa suspendida', baja: 'Empresa dada de baja', eliminar: 'Empresa eliminada', reactivar: 'Empresa reactivada' }[op] + (r.cancelados ? ` · ${r.cancelados} viaje(s) sin móvil cancelado(s)` : ''), 'ok');
+          t.refrescar(); try { R.cat = await api('/api/catalogos'); } catch { } } }];
+      modal({ titulo: TXT[0], cuerpo, botones: bot });
+    };
+    const t = tabla($('#tb'), {
+      vacio: 'Todavía no hay empresas. Creá la primera con "+ Nueva empresa".',
+      cols: [{ t: 'Empresa', f: c => `<b>${esc(c.nombre)}</b>${c.cuit ? `<br><small style="color:var(--suave)">CUIT ${esc(c.cuit)}</small>` : ''}` }, { t: 'Estado', f: chip },
+        { t: 'Centro de costo', k: 'centro_costo' }, { t: 'Contacto', f: c => esc((c.contacto || '') + ' ' + (c.telefono || '')) },
+        { t: 'Usuarios', c: 'r', f: c => +c.usuarios ? c.usuarios : `<a href="#" data-cu="${c.id}" style="color:#b45309;font-weight:700" title="Sin usuario no se puede entrar a la app de empresas">⚠️ Crear usuario</a>` }, { t: 'Viajes del mes', c: 'r', f: c => `${c.viajes_mes} · ${pesos(c.monto_mes)}` }, { t: 'Último viaje', f: c => c.ultimo_viaje ? fechaLarga(c.ultimo_viaje) : '—' }],
+      cargar: () => api('/api/corporativos'),
+      acciones: c => [{ t: 'Crear usuario de acceso', ico: '👤', a: () => editarUsuario({ habilitado: 1, roles: 'corporativo', corporativo_id: c.id }, () => t.refrescar()) }, { t: 'Modificar datos', ico: '✎', a: () => ed(c) }, { t: 'Ver viajes', ico: '🧾', a: () => ir('viajes-por-movil') },
+        { t: 'Cuenta corriente', ico: '💼', a: () => ir('cuentas-empresas?id=' + c.id) },
+        c.estado === 'activa' && { t: 'Suspender', ico: '⏸', a: () => cambiar(c, 'suspender') },
+        c.estado !== 'activa' && { t: 'Reactivar', ico: '▶️', a: () => cambiar(c, 'reactivar') },
+        c.estado !== 'baja' && { t: 'Dar de baja', ico: '⛔', a: () => cambiar(c, 'baja') },
+        { t: 'Eliminar', ico: '🗑', a: () => cambiar(c, 'eliminar') }],
+    });
+    $('#n').onclick = () => ed({});
+    $('#tb').addEventListener('click', e => { const a = e.target.closest('[data-cu]'); if (!a) return; e.preventDefault(); editarUsuario({ habilitado: 1, roles: 'corporativo', corporativo_id: +a.dataset.cu }, () => t.refrescar()); });
   }
 });
 
@@ -153,10 +186,13 @@ function editarTablaTarifa(x, listo) {
     { k: 'extra_m', l: 'Pasado el último km, sumar cada (metros)', t: 'number', def: 400 }, { k: 'extra_monto', l: '… este monto ($)', t: 'number', def: 500 },
     { k: 'esp_min', l: 'Pasado el último tramo de espera, sumar cada (min)', t: 'number', def: 5 }, { k: 'esp_monto', l: '… este monto ($)', t: 'number', def: 500 },
     { t: 'titulo', l: '🛣 Viajes afuera (larga distancia)' },
-    { t: 'html', html: '<div class="nota">Independiente de la tabla de km: cuando el viaje llega a esta distancia, <b>todo el recorrido</b> se cobra al precio por km de abajo (en tramos de 100 m), más la espera. Ej.: 15 km × $1.800 = $27.000. Dejá el precio en 0 para no usarlo.</div>' },
-    { k: 'af_desde', l: 'Desde (km)', t: 'number', def: 15 }, { k: 'af_precio', l: 'Precio por km ($)', t: 'number', def: 1800 },
+    { t: 'html', html: '<div class="nota">Independiente de la tabla de km: cuando el viaje llega a esta distancia, <b>todo el recorrido</b> se cobra al precio por km de abajo (en tramos de 100 m), más la espera. Se cuenta por <b>km entero hacia arriba</b>: 26,1 a 27 km se cobran como 27 km. Ej.: 27 km × $1.800 = $48.600. Dejá el precio en 0 para no usarlo.</div>' },
+    { k: 'af_desde', l: 'Desde (km)', t: 'number', def: 15 }, { k: 'af_precio', l: 'Precio por km entero ($)', t: 'number', def: 1800 },
+    { t: 'titulo', l: '📡 Corrección del GPS' },
+    { t: 'html', html: '<div class="nota">El GPS del celular suele medir un poco menos que el odómetro del auto. Este porcentaje se suma a la distancia medida en cada viaje (y al tarifador del conductor). Ej.: GPS 26,6 km con +4,5% = 27,8 km. Usá 0 para no corregir.</div>' },
+    { k: 'correccion', l: 'Corrección (%)', t: 'number', def: 4.5 },
   ], { km, espera: es, extra_m: tb.extra ? tb.extra.cada_m : 400, extra_monto: tb.extra ? tb.extra.monto : 500, esp_min: tb.espera_extra ? tb.espera_extra.cada_min : 5, esp_monto: tb.espera_extra ? tb.espera_extra.monto : 500,
-    af_desde: tb.afuera ? tb.afuera.desde_km : 15, af_precio: tb.afuera ? tb.afuera.precio_km : 1800 });
+    af_desde: tb.afuera ? tb.afuera.desde_km : 15, af_precio: tb.afuera ? tb.afuera.precio_km : 1800, correccion: tb.correccion_pct != null ? tb.correccion_pct : 4.5 });
   $$('textarea', f).forEach(a => { a.rows = 14; a.style.fontFamily = 'monospace'; });
   const filas = (txt, nombre) => txt.split('\n').map(l => l.trim()).filter(Boolean).map((l, i) => {
     const p = l.replace(/\$/g, '').split(/[\s;\t]+/); const a = parseFloat(p[0].replace(',', '.')); const b = parseFloat((p[1] || '').replace(/\./g, '').replace(',', '.'));
@@ -164,7 +200,7 @@ function editarTablaTarifa(x, listo) {
   }).sort((a, b) => a[0] - b[0]);
   modal({ titulo: 'Tabla de precios · ' + x.nombre, ancho: true, cuerpo: f, botones: [{ texto: 'Cerrar', clase: 'sec' }, { texto: '💾 Guardar tabla', clase: 'verde', accion: async () => {
     const d = leer(f);
-    const tabla = { km: filas(d.km, 'Distancia'), extra: { cada_m: +d.extra_m || 400, monto: +d.extra_monto || 0 }, espera: filas(d.espera, 'Espera'), espera_extra: { cada_min: +d.esp_min || 5, monto: +d.esp_monto || 0 }, afuera: { desde_km: Math.max(0, parseFloat(String(d.af_desde).replace(',', '.')) || 0), precio_km: Math.max(0, parseFloat(String(d.af_precio).replace(',', '.')) || 0) } };
+    const tabla = { km: filas(d.km, 'Distancia'), extra: { cada_m: +d.extra_m || 400, monto: +d.extra_monto || 0 }, espera: filas(d.espera, 'Espera'), espera_extra: { cada_min: +d.esp_min || 5, monto: +d.esp_monto || 0 }, afuera: { desde_km: Math.max(0, parseFloat(String(d.af_desde).replace(',', '.')) || 0), precio_km: Math.max(0, parseFloat(String(d.af_precio).replace(',', '.')) || 0) }, correccion_pct: Math.max(-20, Math.min(30, parseFloat(String(d.correccion).replace(',', '.')) || 0)) };
     await api(`/api/tarifas/${x.id}/tabla`, { body: { tabla } }); toast('Tabla guardada', 'ok'); listo && listo();
   } }] });
 }
@@ -247,17 +283,30 @@ ruta('medios-pago', {
     const d = await api('/api/medios-pago');
     main.innerHTML = cabecera('Medios de pago', 'Habilitá los medios de cobro de tu empresa y configurá cómo te pagan los conductores las cargas de saldo.', '<button class="btn verde" id="g">💾 Guardar</button>') +
       `<div class="card"><div class="head"><h3>Medios habilitados</h3></div>${tablaSimple(d.medios, [{ t: 'Habilitado', f: m => `<input type="checkbox" data-m="${m.codigo}" data-k="habilitado" ${m.habilitado ? 'checked' : ''}>` }, { t: 'Medio', k: 'nombre' }, { t: 'Ajuste %', f: m => `<select data-m="${m.codigo}" data-k="ajuste_pct" style="width:auto">${Array.from({ length: 41 }, (_, i) => -100 + i * 5).map(v => `<option value="${v}" ${v === m.ajuste_pct ? 'selected' : ''}>${v > 0 ? '+' : ''}${v}%</option>`).join('')}</select>` }, { t: 'Aplica promo/ajuste de canal', f: m => `<input type="checkbox" data-m="${m.codigo}" data-k="aplica_promo" ${m.aplica_promo ? 'checked' : ''}>` }])}</div>
+      <div class="card"><div class="head"><h3>💳 Pago de viajes con Mercado Pago (directo al conductor)</h3></div><div class="body" id="mpd"></div></div>
       <div class="grid g2"><div class="card"><div class="head"><h3>Cobro de cargas de saldo</h3></div><div class="body" id="mpf"></div></div>
       <div class="card"><div class="head"><h3>Tasas de procesamiento (referencia)</h3></div>${tablaSimple(Object.entries(d.mp.tasas || {}).map(([k, v]) => ({ k, v })), [{ t: 'Liberación', f: x => ({ inmediata: 'En el momento', d10: '10 días', d18: '18 días', d35: '35 días' }[x.k] || x.k) }, { t: 'Procesamiento', f: x => `<input type="number" step="0.01" data-tasa="${x.k}" value="${x.v}" style="width:90px"> %` }])}<div class="body" style="color:var(--suave);font-size:12.5px">Verificá las tasas vigentes en tu cuenta de Mercado Pago; se usan para calcular el neto de la central.</div></div></div>`;
     const f = formulario([{ t: 'html', html: '<p style="color:var(--suave);margin:0">Sin servidor propio no se guarda el token secreto de Mercado Pago. Las cargas se cobran con tu <b>link de pago</b> (Mercado Pago → Link de pago) o por <b>transferencia al alias</b>, y se acreditan desde <i>Cargas de saldo MP</i>.</p>' }, { k: 'link_pago', l: 'Link de pago (opcional)', w: 'full', ph: 'https://mpago.la/…' }, { k: 'alias_cobro', l: 'Alias / CVU para transferencias', w: 'full' }, { k: 'plazo', l: 'Plazo de liberación elegido', t: 'select', op: [['inmediata', 'En el momento'], ['d10', '10 días'], ['d18', '18 días'], ['d35', '35 días']] }, { k: 'absorbe', l: 'Quién absorbe la comisión', t: 'select', op: [['central', 'La central'], ['movil', 'El móvil (se descuenta al rendir)']] }], d.mp);
     $('#mpf').append(f);
+    const fd = formulario([{ t: 'html', html: `<p style="color:var(--suave);margin:0 0 6px">Al terminar el viaje el pasajero toca <b>Pagar con Mercado Pago</b> y el dinero entra en la cuenta del conductor (si la vinculó desde su app, en <i>Menú → Cobros con Mercado Pago</i>). En el mismo pago la central se cobra lo que el móvil debe de base, con el tope indicado. Si el conductor no vinculó su cuenta, el pago entra a la cuenta de la central y queda a rendir.</p>
+        <p style="color:var(--suave);margin:0;font-size:12.5px">Requiere una aplicación en Mercado Pago Developers (Checkout Pro / Marketplace) con Redirect URL <code>https://zytpxjungbaethgitfwn.supabase.co/functions/v1/mp-oauth</code> y webhook de Pagos a <code>…/functions/v1/mp-webhook</code>. El Client Secret y la clave del webhook se cargan solo como <b>secretos de Supabase</b>, nunca acá.</p>` },
+      { k: 'client_id', l: 'Client ID de la aplicación de Mercado Pago', w: 'full', ph: 'Ej. 1234567890123456' },
+      { k: 'cobrar_base', l: 'Cobrar la base de los pagos con Mercado Pago', t: 'select', op: [['true', 'Sí, descontarla automáticamente'], ['false', 'No']] },
+      { k: 'tope_base_pct', l: 'Tope: % máximo de cada viaje para la base', t: 'number', ph: '90' },
+      { t: 'titulo', l: '🧾 Cargos de la plataforma' },
+      { k: 'cargo_activo', l: 'Sumar «Cargos de la plataforma» a cada viaje', t: 'select', op: [['true', 'Sí, en todos los viajes (efectivo, tarjeta, Mercado Pago…)'], ['false', 'No']] },
+      { k: 'cargo_pct', l: 'Comisión a cubrir (% que descuenta Mercado Pago)', t: 'number', ph: '7.99' },
+      { t: 'html', html: '<div class="nota" style="font-size:12.5px">El cargo se calcula para que, cobrado con Mercado Pago, el conductor reciba el valor del viaje completo: con 7,99 % el cargo es ≈ 8,68 % del viaje (ej. viaje $4.500 → cargo $391 → total $4.891). No se aplica a cuenta corriente de empresas. En el ticket figura como «Cargos de la plataforma».</div>' }],
+      { ...d.mp, cobrar_base: String(d.mp.cobrar_base ?? true), tope_base_pct: d.mp.tope_base_pct ?? 90, cargo_activo: String(d.mp.cargo_activo ?? false), cargo_pct: d.mp.cargo_pct ?? 7.99 });
+    $('#mpd').append(fd);
     // Billeteras para "Pagar base": cuáles ofrece la app del conductor y a qué alias/CVU se transfiere
     let pv = null; try { pv = await api('/api/pagos/config'); } catch { /* falta correr sql/31_pagos_proveedores.sql */ }
     if (pv) main.insertAdjacentHTML('beforeend', `<div class="card"><div class="head"><h3>Billeteras para cargas de saldo</h3></div><div class="body" style="color:var(--suave);font-size:12.5px">Las que tienen ⚡ se acreditan solas cuando instalás la función <b>pagos</b> con las credenciales del proveedor (ver README); si no, funcionan como transferencia. Las demás se cobran por transferencia al alias o CVU que cargues acá y las confirmás en <i>Finanzas → Pagos de base</i>. El conductor elige entre las habilitadas.</div>${tablaSimple(pv.proveedores, [{ t: 'Habilitada', f: p => `<input type="checkbox" data-pv="${p.codigo}" data-k="habilitado" ${p.habilitado ? 'checked' : ''}>` }, { t: 'Billetera', f: p => esc(p.nombre) + (p.api ? ' ⚡' : '') }, { t: 'Alias / CVU de la central', f: p => `<input data-pv="${p.codigo}" data-k="alias" value="${esc(p.alias || '')}" placeholder="alias.o.cvu">` }, { t: 'Link de pago (opcional)', f: p => `<input data-pv="${p.codigo}" data-k="link" value="${esc(p.link || '')}" placeholder="https://…">` }])}</div>`);
     $('#g').onclick = async () => {
       const medios = d.medios.map(m => { const o = { codigo: m.codigo }; $$(`[data-m="${m.codigo}"]`).forEach(i => o[i.dataset.k] = i.type === 'checkbox' ? i.checked : i.value); return o; });
       const tasas = {}; $$('[data-tasa]').forEach(i => tasas[i.dataset.tasa] = +i.value);
-      await api('/api/medios-pago', { body: { medios, mp: { ...leer(f), tasas } } });
+      const dir = leer(fd), tope = Math.max(0, Math.min(100, +dir.tope_base_pct || 90));
+      await api('/api/medios-pago', { body: { medios, mp: { ...leer(f), tasas, client_id: String(dir.client_id || '').trim(), cobrar_base: dir.cobrar_base !== 'false', tope_base_pct: tope, cargo_activo: dir.cargo_activo === 'true', cargo_pct: Math.max(0, Math.min(30, +dir.cargo_pct || 7.99)) } } });
       if (pv) {
         const proveedores = pv.proveedores.map(p => { const o = { codigo: p.codigo }; Array.from($$(`[data-pv="${p.codigo}"]`)).forEach(i => o[i.dataset.k] = i.type === 'checkbox' ? i.checked : i.value); return o; });
         await api('/api/pagos/config', { body: { proveedores } });

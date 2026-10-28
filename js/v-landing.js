@@ -25,6 +25,9 @@
       main.innerHTML = cabecera('Página principal', 'Elegí qué secciones se muestran en la página de inicio, su orden y su contenido. También podés cambiar el WhatsApp.',
         '<a class="btn sec" id="ver" href="index.html" target="_blank" rel="noopener">👁 Ver página</a><button class="btn sec" id="rest">↺ Restaurar original</button><button class="btn verde" id="gua">💾 Guardar cambios</button>') +
         `<div class="card"><div class="head"><h3>💬 Contacto de la página</h3></div><div class="body" id="gen"></div></div>
+         <div class="card" style="margin-top:14px"><div class="head"><h3>📣 Redes sociales</h3></div><div class="body" id="redesF"></div></div>
+         <div class="card" style="margin-top:14px"><div class="head"><h3>ℹ️ Página «Sobre nosotros»</h3><a class="btn sec chico" href="nosotros.html" target="_blank" rel="noopener">👁 Ver página</a></div><div class="body" id="nos"></div></div>
+         <div class="card" style="margin-top:14px"><div class="head"><h3>📜 Términos y condiciones</h3><span class="fila" style="gap:6px"><a class="btn sec chico" href="terminos.html?para=pasajeros" target="_blank" rel="noopener">👁 Pasajeros</a><a class="btn sec chico" href="terminos.html?para=conductores" target="_blank" rel="noopener">👁 Conductores</a></span></div><div class="body"><div class="seg-t" id="tycTabs"><button type="button" data-t="p" class="on">🙂 Pasajeros</button><button type="button" data-t="c">🚕 Conductores</button></div><div id="tyc"></div><div id="tycC" style="display:none"></div></div></div>
          <div class="card" style="margin-top:14px"><div class="head"><h3>🧩 Secciones</h3><button class="btn chico" id="add">+ Agregar sección</button></div><div class="body" id="lst"></div></div>`;
       const gen = formulario([
         { k: 'whatsapp', l: 'Número de WhatsApp (con código de país, sin + ni espacios)', ph: '5493454123456', ayuda: 'Se usa en el botón verde flotante de la página. Vacío = el botón no aparece.' },
@@ -36,6 +39,37 @@
       $('#gen').append(gen);
       const marcar = () => { sucio = true; $('#gua').textContent = '💾 Guardar cambios •'; };
       $$('input,textarea', gen).forEach(i => i.oninput = marcar);
+      // Redes sociales: se muestran como íconos al pie de la página principal y de "Sobre nosotros"
+      const redesF = formulario([{ t: 'html', html: '<div class="nota" style="font-size:12.5px">Pegá el enlace de cada red (o solo el usuario, ej. <b>@remisestoque</b>). Las que dejes vacías no aparecen. Se ven como íconos al pie de la página.</div>' },
+        ...LD.REDES.map(r => ({ k: 'red_' + r.k, l: r.n, ph: r.base + 'remisestoque' }))], Object.fromEntries(LD.REDES.map(r => ['red_' + r.k, (cfg.redes || {})[r.k] || ''])));
+      $('#redesF').append(redesF); $$('input', redesF).forEach(i => i.oninput = marcar);
+      const leerRedes = () => { const d = leer(redesF), out = {}; LD.REDES.forEach(r => { const v = String(d['red_' + r.k] || '').trim(); if (v) out[r.k] = v; }); return out; };
+      // "Sobre nosotros": se abre desde la tarjeta "Sobre nosotros → Saber más" de la página principal
+      const N = cfg.nosotros;
+      const nos = formulario([
+        { t: 'html', html: '<div class="nota" style="font-size:12.5px">Es la página que se abre al tocar <b>Saber más</b> en la tarjeta <b>Sobre nosotros</b>. Contá por qué nació el servicio y qué problema resuelve. Cada bloque se muestra como una tarjeta.</div>' },
+        { k: 'titulo', l: 'Título', w: 'full' }, { k: 'bajada', l: 'Texto debajo del título', t: 'textarea', w: 'full' },
+        { k: 'bloques_txt', l: 'Bloques (uno por línea): emoji | título | texto', t: 'textarea', w: 'full', ph: '🌱 | ¿Por qué nació? | Remises TOQUE! nació en Federal…' },
+        { k: 'cierre', l: 'Frase final (junto al botón «Pedí tu remís»)', w: 'full' },
+      ], { titulo: N.titulo, bajada: N.bajada, cierre: N.cierre, bloques_txt: N.bloques.map(b => [b.emoji, b.titulo, b.texto].map(x => String(x ?? '').replace(/\|/g, '/').replace(/\n/g, ' ')).join(' | ')).join('\n') });
+      $('#nos').append(nos); const bt = $('[name=bloques_txt]', nos); if (bt) bt.rows = 8;
+      $$('input,textarea', nos).forEach(i => i.oninput = marcar);
+      const leerNos = () => { const d = leer(nos); const bloques = String(d.bloques_txt || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [emoji, titulo, ...tx] = l.split('|').map(x => x.trim()); return { emoji: emoji || '', titulo: titulo || '', texto: tx.join(' | ') }; });
+        return { titulo: (d.titulo || '').trim() || 'Sobre nosotros', bajada: (d.bajada || '').trim(), bloques, cierre: (d.cierre || '').trim() }; };
+
+      // Términos y condiciones (terminos.html): enlazados desde el pie de la página, el registro de pasajeros y el ingreso de conductores
+      const LN = LD.normalizar(null);
+      const formTyc = (x, para) => formulario([
+        { t: 'html', html: `<div class="nota" style="font-size:12.5px">Texto para <b>${para}</b>. Cada sección empieza con <b>## Título</b>, las viñetas con <b>- </b> y entre párrafos va una línea en blanco. El texto de ejemplo es una base original: <b>conviene que lo revise un abogado</b> antes de publicarlo. Al cambiarlo, actualizá la fecha.</div>` },
+        { k: 'titulo', l: 'Título' }, { k: 'actualizado', l: 'Fecha de última actualización', t: 'date' },
+        { k: 'texto', l: 'Texto', t: 'textarea', w: 'full' },
+      ], x);
+      const tyc = formTyc(cfg.terminos || LN.terminos, 'pasajeros'), tycC = formTyc(cfg.terminos_cond || LN.terminos_cond, 'conductores');
+      $('#tyc').append(tyc); $('#tycC').append(tycC);
+      [tyc, tycC].forEach(f => { const tt = $('[name=texto]', f); if (tt) { tt.rows = 18; tt.style.fontFamily = 'ui-monospace,Consolas,monospace'; tt.style.fontSize = '13px'; } $$('input,textarea', f).forEach(i => i.oninput = marcar); });
+      $$('#tycTabs button').forEach(b => b.onclick = () => { $$('#tycTabs button').forEach(x => x.classList.toggle('on', x === b)); $('#tyc').style.display = b.dataset.t === 'p' ? '' : 'none'; $('#tycC').style.display = b.dataset.t === 'c' ? '' : 'none'; });
+      const leerT = (f, def) => { const d = leer(f); return { titulo: (d.titulo || '').trim() || def, actualizado: d.actualizado || '', texto: String(d.texto || '').trim() }; };
+      const leerTyc = () => leerT(tyc, 'Términos y condiciones para pasajeros'), leerTycC = () => leerT(tycC, 'Términos y condiciones para conductores');
 
       function lista() {
         $('#lst').innerHTML = cfg.secciones.length ? cfg.secciones.map((s, i) => {
@@ -67,7 +101,10 @@
         if (await editar(s)) { marcar(); lista(); } else cfg.secciones.pop();
       };
       $('#gua').onclick = async () => {
-        Object.assign(cfg, leer(gen));
+        Object.assign(cfg, leer(gen)); cfg.nosotros = leerNos(); cfg.redes = leerRedes(); cfg.terminos = leerTyc(); cfg.terminos_cond = leerTycC();
+        if (!cfg.terminos.texto || !cfg.terminos_cond.texto) return toast('Los Términos y condiciones no pueden quedar vacíos', 'error');
+        const malasR = LD.REDES.filter(r => cfg.redes[r.k] && !LD.redUrl(r, cfg.redes[r.k])); if (malasR.length) return toast('Revisá el enlace de ' + malasR[0].n, 'error');
+        if (!cfg.nosotros.bloques.length) return toast('La página «Sobre nosotros» necesita al menos un bloque', 'error');
         if (cfg.whatsapp && LD.soloDigitos(cfg.whatsapp).length < 8) return toast('El número de WhatsApp parece incompleto. Poné código de país y área, ej. 5493454123456', 'error');
         const malas = cfg.secciones.flatMap(urlsMalas);
         if (malas.length && !(await confirmar('Hay enlaces que no son válidos y no van a funcionar: ' + malas.slice(0, 4).join(', ') + '. Usá páginas del sitio (pasajero.html), anclas (#ayuda) o direcciones https://. ¿Guardar igual?', 'Enlaces inválidos'))) return;
@@ -82,6 +119,19 @@
     }
   });
 
+  // Achica una foto en el navegador (máx. 1400 px, JPEG) para que la página cargue rápido; acepta fotos del celular
+  function achicarFoto(file, max = 1400) {
+    return new Promise((ok, mal) => {
+      if (!/^image\//.test(file.type)) return mal(new Error('Elegí una imagen (JPG, PNG o WEBP)'));
+      if (file.size > 20e6) return mal(new Error('La imagen pesa más de 20 MB'));
+      const url = URL.createObjectURL(file), im = new Image();
+      im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas');
+        c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.82)); };
+      im.onerror = () => { URL.revokeObjectURL(url); mal(new Error('No se pudo leer la imagen')); }; im.src = url;
+    });
+  }
+
   // ---------- editor de una sección ----------
   function editar(s) {
     return new Promise(res => {
@@ -92,10 +142,11 @@
       if (s.tipo === 'hero') campos.push({ k: 'titulo', l: 'Título' }, { k: 'destacado', l: 'Parte destacada (en verde)' }, { k: 'texto', l: 'Texto', t: 'textarea', w: 'full' }, ...bt('boton', 'Botón principal'), ...bt('boton2', 'Botón secundario'));
       if (s.tipo === 'texto') campos.push({ k: 'titulo', l: 'Título', w: 'full' }, { k: 'texto', l: 'Texto', t: 'textarea', w: 'full' }, { k: 'bullets_txt', l: 'Lista con tildes (una por línea)', t: 'textarea', w: 'full' }, ...bt('boton', 'Botón principal'), ...bt('boton2', 'Botón secundario'),
         { t: 'titulo', l: 'Imagen' }, { k: 'visual', l: 'Qué se muestra al costado', t: 'select', op: [['emoji', 'Dibujo (emoji)'], ['imagen', 'Foto propia'], ['video', 'Video (el primero de la lista de videos)'], ['celular', 'Celular de ejemplo'], ['ninguno', 'Nada']] }, { k: 'emoji', l: 'Emoji (si elegiste dibujo)' },
-        { t: 'html', html: '<div class="campo"><label>Foto propia (JPG/PNG, hasta 1,5 MB)</label><input type="file" id="foto" accept="image/*"><div id="fotoPrev" style="margin-top:6px"></div></div>' },
+        { t: 'html', html: '<div class="campo"><label>Foto propia (JPG, PNG o WEBP; se achica sola)</label><small style="color:var(--suave)">Usá fotos tuyas o con licencia de uso comercial (por ejemplo, de bancos de imágenes gratuitos que lo permitan). No uses fotos de internet sin permiso ni con personas que no lo autorizaron.</small><input type="file" id="foto" accept="image/*"><div id="fotoPrev" style="margin-top:6px"></div></div>' },
         { k: 'lado', l: 'Lado de la imagen', t: 'select', op: [['der', 'Derecha'], ['izq', 'Izquierda']] }, { k: 'fondo', l: 'Fondo', t: 'select', op: [['blanco', 'Blanco'], ['gris', 'Gris']] });
       if (s.tipo === 'tarjetas') campos.push({ k: 'titulo', l: 'Título', w: 'full' }, { k: 'texto', l: 'Texto debajo del título (opcional)', w: 'full' }, { k: 'fondo', l: 'Fondo', t: 'select', op: [['blanco', 'Blanco'], ['gris', 'Gris']] },
-        { k: 'items_txt', l: 'Tarjetas (una por línea): emoji | título | texto | texto del enlace | enlace', t: 'textarea', w: 'full', ph: '🚕 | Conductor | Recibí viajes… | Ingresar → | conductor.html' });
+        { k: 'items_txt', l: 'Tarjetas (una por línea): emoji | título | texto | texto del enlace | enlace', t: 'textarea', w: 'full', ph: '🚕 | Conductor | Recibí viajes… | Ingresar → | conductor.html' },
+        { t: 'html', html: '<div class="campo" style="grid-column:1/-1"><label>📷 Foto de cada tarjeta (opcional: reemplaza al emoji)</label><small style="color:var(--suave)">Solo fotos propias o con licencia de uso comercial.</small><div id="fotosTj"></div></div>' });
       if (s.tipo === 'videos') campos.push({ k: 'titulo', l: 'Título', w: 'full' }, { k: 'texto', l: 'Texto debajo del título (opcional)', w: 'full' }, { k: 'fondo', l: 'Fondo', t: 'select', op: [['blanco', 'Blanco'], ['gris', 'Gris']] });
       if (s.tipo === 'banner') campos.push({ k: 'emoji', l: 'Emoji' }, { k: 'titulo', l: 'Título' }, { k: 'texto', l: 'Texto', t: 'textarea', w: 'full' }, ...bt('boton', 'Botón'));
       // Videos: en cualquier sección (en «Videos» son el contenido principal; en las demás se muestran debajo)
@@ -104,10 +155,23 @@
         { t: 'html', html: '<div class="nota" style="font-size:12.5px">Pegá el enlace del video tal como lo copiás del navegador o de la app: <b>YouTube</b> (también Shorts), <b>Facebook</b>, <b>Google Drive</b> (compartido como «Cualquier persona con el enlace»), <b>Vimeo</b> o un archivo <b>.mp4</b> con dirección https. Para subir un video desde la compu o el celular, subilo primero a YouTube (puede ser «No listado») o a Google Drive y pegá acá el enlace.' + (s.tipo === 'texto' ? ' En «Texto con imagen» podés elegir <b>Video</b> en «Qué se muestra al costado» para poner el primero al lado del texto.' : s.tipo === 'videos' ? '' : ' Se muestran debajo del contenido de la sección.') + '</div><div class="campo" style="margin-top:8px"><label>📤 O subí un video desde la compu o el celular (MP4, hasta 50 MB · se reproduce solo y sin sonido)</label><input type="file" id="vidArch" accept="video/mp4,video/webm,video/quicktime"><div id="vidProg" style="font-size:13px;margin-top:6px"></div></div><div id="vidPrev" style="margin-top:8px"></div>' });
       campos.push({ t: 'titulo', l: 'Menú' }, { k: 'menu', l: 'Texto en el menú de arriba (vacío = no aparece)', w: 'full' });
       const f = formulario(campos, base); let imagen = s.imagen || '';
+      const fotosTj = {}; (s.items || []).forEach(i => { if (i.imagen) fotosTj[(i.titulo || '').trim()] = i.imagen; });   // por título de la tarjeta
       const cuerpo = h('<div></div>'); cuerpo.append(f);
       const inp = $('#foto', cuerpo), prev = $('#fotoPrev', cuerpo);
-      const verFoto = () => { if (prev) prev.innerHTML = LD.dataImg(imagen) ? `<img src="${esc(LD.dataImg(imagen))}" style="max-height:90px;border-radius:8px"> <button type="button" class="btn sec chico" id="quitar">Quitar</button>` : ''; const q = $('#quitar', cuerpo); if (q) q.onclick = () => { imagen = ''; verFoto(); }; };
-      if (inp) { verFoto(); inp.onchange = async () => { const fi = inp.files[0]; if (!fi) return; try { imagen = (await subir(fi)).archivo; $('[name=visual]', cuerpo).value = 'imagen'; verFoto(); } catch (e) { fallo(e); inp.value = ''; } }; }
+      const verFoto = () => { if (prev) prev.innerHTML = LD.dataImg(imagen) ? `<img src="${esc(LD.dataImg(imagen))}" alt="Vista previa de la foto" style="max-height:90px;border-radius:8px"> <button type="button" class="btn sec chico" id="quitar">Quitar</button>` : ''; const q = $('#quitar', cuerpo); if (q) q.onclick = () => { imagen = ''; verFoto(); }; };
+      if (inp) { verFoto(); inp.onchange = async () => { const fi = inp.files[0]; if (!fi) return; try { imagen = await achicarFoto(fi); $('[name=visual]', cuerpo).value = 'imagen'; verFoto(); } catch (e) { fallo(e); inp.value = ''; } }; }
+      // Fotos de las tarjetas: una fila por tarjeta (según las líneas escritas), con subir / quitar
+      const it = $('[name=items_txt]', cuerpo), ftj = $('#fotosTj', cuerpo);
+      const titulosTj = () => (it ? it.value : '').split('\n').map(l => l.trim()).filter(Boolean).map(l => (l.split('|')[1] || '').trim());
+      const verFotosTj = () => { if (!ftj) return; const ts = titulosTj();
+        ftj.innerHTML = ts.length ? ts.map((t, n) => `<div class="fila" style="gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--borde)">
+          <span style="width:70px;height:46px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none">${LD.dataImg(fotosTj[t]) ? `<img src="${esc(LD.dataImg(fotosTj[t]))}" alt="Foto de la tarjeta ${esc(t)}" style="width:100%;height:100%;object-fit:cover">` : '<small style="color:var(--suave)">sin foto</small>'}</span>
+          <b style="flex:1;min-width:0">${esc(t || 'Tarjeta ' + (n + 1))}</b>
+          <label class="btn sec chico" style="margin:0">${fotosTj[t] ? 'Cambiar' : 'Subir foto'}<input type="file" accept="image/*" data-ft="${n}" style="display:none"></label>
+          ${fotosTj[t] ? `<button type="button" class="btn sec chico" data-fq="${n}">Quitar</button>` : ''}</div>`).join('') : '<small style="color:var(--suave)">Escribí las tarjetas arriba para poder ponerles foto.</small>';
+        $$('[data-ft]', ftj).forEach(x => x.onchange = async () => { const fi = x.files[0]; if (!fi) return; try { fotosTj[titulosTj()[+x.dataset.ft]] = await achicarFoto(fi, 1000); verFotosTj(); } catch (e) { fallo(e); } });
+        $$('[data-fq]', ftj).forEach(x => x.onclick = () => { delete fotosTj[titulosTj()[+x.dataset.fq]]; verFotosTj(); }); };
+      if (it) { let tt; it.addEventListener('input', () => { clearTimeout(tt); tt = setTimeout(verFotosTj, 400); }); verFotosTj(); }
       const vt = $('[name=videos_txt]', cuerpo), vp = $('#vidPrev', cuerpo);
       const filasVid = () => (vt ? vt.value : '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const i = l.indexOf('|'); return i < 0 ? { url: l, titulo: '' } : { url: l.slice(0, i).trim(), titulo: l.slice(i + 1).trim() }; });
       const verVid = () => { if (!vp) return; const fs = filasVid(); vp.innerHTML = fs.length ? fs.map(v => `<div style="font-size:13px;padding:2px 0">${LD.video(v.url) ? '✅' : '❌'} ${esc(v.titulo || v.url)}${LD.video(v.url) ? '' : ' <small style="color:var(--rojo)">— enlace no reconocido</small>'}</div>`).join('') : ''; };
@@ -143,7 +207,7 @@
         if (d.bullets_txt !== undefined) s.bullets = d.bullets_txt.split('\n').map(x => x.trim()).filter(Boolean);
         if (s.tipo === 'texto') s.imagen = imagen;
         if (d.videos_txt !== undefined) { const fs = filasVid(), malos = fs.filter(v => !LD.video(v.url)); if (!fs.length && s.tipo === 'videos') { toast('Pegá al menos un enlace de video', 'error'); return false; } if (d.visual === 'video' && !fs.length) { toast('Elegiste «Video» al costado: pegá el enlace en Videos', 'error'); return false; } if (malos.length) { toast('Este enlace no es un video reconocido: ' + malos[0].url, 'error'); return false; } s.videos = fs; }
-        if (d.items_txt !== undefined) s.items = d.items_txt.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [emoji, titulo, texto, cta, url] = l.split('|').map(x => x.trim()); return { emoji: emoji || '', titulo: titulo || '', texto: texto || '', cta: cta || '', url: url || '' }; });
+        if (d.items_txt !== undefined) s.items = d.items_txt.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [emoji, titulo, texto, cta, url] = l.split('|').map(x => x.trim()); return { emoji: emoji || '', titulo: titulo || '', texto: texto || '', cta: cta || '', url: url || '', imagen: fotosTj[(titulo || '').trim()] || '' }; });
         s.id = s.id || LD.slug(s.menu || s.titulo);
         hecho = true; res(true);
       } }] });
