@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#215181">
+<title>Bajas, arrepentimiento y datos personales · Remises TOQUE!</title>
+<meta name="description" content="Botón de arrepentimiento, botón de baja de servicio y pedidos sobre tus datos personales. Sin registrarte, con código de seguimiento.">
+<link rel="icon" type="image/png" href="img/pasajero-192.png?v=3">
+<style>
+:root{--pri:#215181;--pri2:#183c62;--verde:#4a8125;--txt:#1d2a2b;--suave:#55666a;--fondo:#f2f5f6;--borde:#cfdadc}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--txt);background:var(--fondo);line-height:1.5}
+a{color:var(--pri)}
+.w{max-width:1120px;margin:0 auto;padding:0 20px}
+header.top{background:#fff;border-bottom:1px solid var(--borde)}header.top .w{display:flex;align-items:center;height:68px}header.top img{height:44px}
+.hero{background:linear-gradient(135deg,#183c62,#215181 62%,#3f7d2a);color:#fff}.hero .w{padding:40px 20px}
+.volver{display:inline-flex;align-items:center;gap:6px;color:#fff;text-decoration:none;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:8px 16px;font-size:14px;margin-bottom:14px}
+.volver[hidden]{display:none}
+.hero h1{font-size:clamp(28px,4.6vw,42px);line-height:1.1;margin:0 0 10px}.hero p{margin:0;color:#e3edf7;max-width:720px;font-size:17px}
+main{padding:28px 0 56px}
+.caja{max-width:720px;margin:0 auto;background:#fff;border:1px solid var(--borde);border-radius:20px;padding:26px 24px;box-shadow:0 6px 20px rgba(20,50,80,.06)}
+fieldset{border:0;padding:0;margin:0 0 18px}legend{font-weight:800;font-size:17px;margin-bottom:10px;color:var(--pri2)}
+.op{display:flex;gap:12px;align-items:flex-start;border:2px solid var(--borde);border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer}
+.op:has(input:checked){border-color:var(--pri);background:#eef4fa}
+.op input{width:20px;height:20px;margin:3px 0 0;flex:none;accent-color:var(--pri)}.op b{display:block}.op small{color:var(--suave);font-size:14px}
+.campo{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}.campo label{font-weight:700;font-size:14.5px}
+.campo input,.campo textarea{font:inherit;font-size:16px;padding:12px 14px;border:2px solid var(--borde);border-radius:12px;background:#fff;color:var(--txt)}
+.campo small{color:var(--suave);font-size:13.5px}
+.btn{display:inline-flex;justify-content:center;align-items:center;border:0;border-radius:999px;padding:14px 26px;font:inherit;font-size:16px;font-weight:800;cursor:pointer;background:var(--verde);color:#fff;width:100%}
+.btn:disabled{opacity:.6;cursor:wait}
+.err{display:none;background:#fdeeee;color:#8b1c1c;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:600}
+.ok{text-align:center}.ok .cod{display:inline-block;font:800 26px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:1px;background:#eef4fa;color:var(--pri2);border:2px dashed var(--pri);border-radius:14px;padding:12px 20px;margin:10px 0}
+.nota{background:#f6f8fa;border-radius:12px;padding:12px 14px;color:#33474a;font-size:14.5px;margin-top:16px}
+footer{background:var(--pri2);color:#c8d9ea;padding:40px 0 30px}footer .w{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}footer img{height:50px}
+footer .enl{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:14px}footer .enl a{color:#e6eef7}footer small{font-size:14px}
+</style>
+</head>
+<body>
+<header class="top"><div class="w"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!"></a></div></header>
+<section class="hero"><div class="w">
+  <a class="volver" id="volver" href="index.html" hidden>← Volver a la app</a>
+  <h1 id="tit">Bajas, arrepentimiento y datos personales</h1>
+  <p>Sin registrarte ni hacer otros trámites. Al enviar el formulario te damos un <b>código de identificación</b> para seguir tu pedido.</p>
+</div></section>
+
+<main id="main"><div class="w"><div class="caja" id="caja">
+  <form id="f" novalidate>
+    <fieldset><legend>¿Qué querés hacer?</legend>
+      <label class="op"><input type="radio" name="tipo" value="baja"><span><b>Botón de baja de servicio</b><small>Dar de baja tu cuenta de pasajero, de conductor o la cuenta corriente de tu empresa.</small></span></label>
+      <label class="op"><input type="radio" name="tipo" value="arrepentimiento"><span><b>Botón de arrepentimiento</b><small>Revocar un servicio contratado que todavía no se prestó (por ejemplo, una reserva), dentro de los 10 días corridos y al menos 24 horas antes del horario.</small></span></label>
+      <label class="op"><input type="radio" name="tipo" value="datos_supresion"><span><b>Eliminar mis datos personales</b><small>Borrar tu cuenta y los datos que nos diste. También podés hacerlo desde la app: Mi perfil → Eliminar mi cuenta.</small></span></label>
+      <label class="op"><input type="radio" name="tipo" value="datos_acceso"><span><b>Saber qué datos tienen de mí</b><small>Te enviamos la información que guardamos sobre vos (gratis, cada 6 meses).</small></span></label>
+      <label class="op"><input type="radio" name="tipo" value="datos_rectificacion"><span><b>Corregir mis datos</b><small>Si algún dato está mal o desactualizado.</small></span></label>
+    </fieldset>
+    <div class="campo"><label for="nom">Nombre y apellido</label><input id="nom" name="nombre" autocomplete="name" required maxlength="120"></div>
+    <div class="campo"><label for="con">Celular o email para responderte</label><input id="con" name="contacto" autocomplete="email" required maxlength="160"><small>Usá el mismo que registraste, así podemos encontrar tu cuenta.</small></div>
+    <div class="campo"><label for="det">Detalle (opcional)</label><textarea id="det" name="detalle" rows="3" maxlength="2000" placeholder="Ej.: número de viaje o reserva, fecha, qué dato hay que corregir…"></textarea></div>
+    <div class="err" id="err" role="alert"></div>
+    <button class="btn" id="env">Enviar solicitud</button>
+    <p class="nota">Usamos estos datos solo para responder tu pedido. Más información en la <a href="terminos.html?para=privacidad">Política de privacidad</a> y en <a href="terminos.html?para=reembolsos">Cancelaciones y reembolsos</a>.</p>
+  </form>
+</div></div></main>
+
+<footer><div class="w">
+  <a href="index.html"><img src="img/logo-blanco.png" alt="Remises TOQUE!"></a>
+  <div class="enl"><a href="nosotros.html">Sobre nosotros</a><a href="ayuda.html">Centro de ayuda</a><a href="terminos.html?para=pasajeros">Términos para pasajeros</a><a href="terminos.html?para=conductores">Términos para conductores</a></div>
+  <small id="pie">© 2026 Remises TOQUE!</small>
+</div></footer>
+
+<script src="config.js?v=2026101621"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/integraciones.js?v=2026102701"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
+<script src="js/pie-legal.js?v=2026102550"></script>
+<script src="js/accesibilidad.js?v=2026102520"></script>
+<script>
+// Solicitudes de baja, arrepentimiento y derechos sobre los datos (Ley 24.240, Disposición 954/2025 y Ley 25.326)
+const $ = s => document.querySelector(s);
+const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const TITULOS = { baja: 'Botón de baja de servicio', arrepentimiento: 'Botón de arrepentimiento', datos_supresion: 'Eliminar mis datos personales', datos_acceso: 'Acceso a mis datos', datos_rectificacion: 'Corregir mis datos' };
+const pedido = new URLSearchParams(location.search).get('tipo');
+// Abierta desde una app (pasajero, conductor o empresas): botón para volver a la pantalla de donde vino
+const DE = (() => { const d = new URLSearchParams(location.search).get('de') || ''; return /^(pasajero|conductor|empresa)\.html([?#][\w\-\/=&%#?.]*)?$/.test(d) ? d : ''; })();
+if (DE) { const v = $('#volver'); v.hidden = false; v.href = DE; }
+const marcar = t => { const r = document.querySelector(`input[name=tipo][value="${t}"]`); if (r) { r.checked = true; $('#tit').textContent = TITULOS[t]; document.title = TITULOS[t] + ' · Remises TOQUE!'; } };
+if (TITULOS[pedido]) marcar(pedido);
+document.querySelectorAll('input[name=tipo]').forEach(r => r.onchange = () => marcar(r.value));
+const PROXIMO = {
+  baja: 'Damos de baja la cuenta y te confirmamos por el mismo medio. Si hay viajes en curso o saldos pendientes, te avisamos antes.',
+  arrepentimiento: 'Revisamos el servicio indicado y, si todavía no se prestó, lo cancelamos sin cargo y te confirmamos.',
+  datos_supresion: 'Verificamos que la cuenta sea tuya y borramos tus datos dentro de los 5 días hábiles.',
+  datos_acceso: 'Te enviamos la información dentro de los 10 días corridos.',
+  datos_rectificacion: 'Corregimos los datos dentro de los 5 días hábiles y te confirmamos.',
+};
+$('#f').onsubmit = async ev => {
+  ev.preventDefault();
+  const d = Object.fromEntries(new FormData(ev.target)), er = $('#err'); er.style.display = 'none';
+  const mal = m => { er.textContent = m; er.style.display = 'block'; };
+  if (!d.tipo) return mal('Elegí qué querés hacer.');
+  if (!d.nombre.trim() || d.contacto.trim().length < 6) return mal('Completá tu nombre y un celular o email para responderte.');
+  $('#env').disabled = true;
+  try {
+    const r = await RODAR.llamar('/api/pub/solicitud', 'POST', d, null);
+    $('#caja').innerHTML = `<div class="ok" role="status"><div style="font-size:46px">✅</div><h2 style="margin:6px 0">Recibimos tu solicitud</h2>
+      <p style="margin:0">Tu código de identificación es:</p><div class="cod">${esc(r.codigo)}</div>
+      <p>${esc(PROXIMO[d.tipo] || '')}</p><p class="nota" style="text-align:left">Guardá el código: te lo vamos a pedir si nos contactás por este tema. Te respondemos a <b>${esc(d.contacto)}</b>.</p>
+      <a href="${DE || 'index.html'}">${DE ? 'Volver a la app' : 'Volver a la página principal'}</a></div>`;
+    $('#caja').scrollIntoView({ block: 'start' });
+  } catch (e) { mal(e.message); $('#env').disabled = false; }
+};
+</script>
+</body>
+</html>

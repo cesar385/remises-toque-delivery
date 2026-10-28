@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="img/pasajero-192.png">
 <link rel="apple-touch-icon" href="img/pasajero-180.png">
 <title>Remises TOQUE! · Delivery</title>
-<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
 <style>
 :root{--az:#215181;--az2:#163a5e;--ve:#2f9e57;--na:#e8892b;--ro:#d64545;--tx:#1d2a2b;--su:#6b7a7b;--bo:#e3e9ec;--fo:#f3f6f8}
 *{box-sizing:border-box}html,body{margin:0;background:var(--fo);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px}
@@ -40,10 +40,16 @@ h1{font-size:22px;margin:4px 0 12px}h2{font-size:18px;margin:18px 0 8px}
 <header><a href="#/"><img src="img/logo-blanco.png" alt="Remises TOQUE!"></a><span class="sp"></span><span id="hsaldo"></span><a class="b" href="#/pedidos">Mis pedidos</a><a class="b" href="pasajero.html" title="Pedir un remís">🚕</a></header>
 <main id="app"><div class="vacio"><div>⏳</div>Cargando…</div></main>
 <div id="toast"></div>
-<script src="config.js"></script>
+<script src="config.js?v=2026102801"></script>
 <script src="vendor/supabase/supabase.js"></script>
-<script src="vendor/leaflet/leaflet.js"></script>
-<script src="js/backend.js"></script>
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="js/mapa-gl.js?v=2026102540"></script>
+<script src="js/mapa-base.js?v=2026102401"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102801"></script>
+<script src="js/rodar/integraciones.js?v=2026102801"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
 <script>
 (function () {
 const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];

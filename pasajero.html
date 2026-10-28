@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#215181">
 <link rel="manifest" href="manifest-pasajero.json">
-<link rel="apple-touch-icon" href="img/pasajero-180.png">
-<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<link rel="apple-touch-icon" href="img/pasajero-180.png?v=3">
+<link rel="icon" type="image/png" href="img/pasajero-192.png?v=3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="TOQUE!">
 <title>Remises TOQUE! · Pedí tu remís</title>
-<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=2026101631">
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="css/app.css?v=2026102560">
 <style>
   body{background:#f2f5f6}
   .wrap{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:#fff;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
@@ -40,6 +40,10 @@
   .login-pas .sub-l{color:var(--suave);margin:0 0 4px;text-align:center;font-size:14px}
   .login-pas .caja-empresa{border:0;padding:0;background:none}
   .login-pas .otros-ingresos{margin-top:8px}
+  .login-pas .caja{max-width:400px}
+  .login-pas input{font-size:16px;min-height:46px}
+  .login-pas .grande{min-height:50px;font-size:15px;border-radius:10px;margin-top:4px}
+  .login-pas .tips{padding:10px 12px;border:1px dashed #c8d6e0;border-radius:12px;font-size:13px;color:var(--suave);line-height:1.5}
   .ventajas{margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.6;color:#33475b}
   .top .yo{background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:16px;padding:6px 12px;font-size:14px;cursor:pointer;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #mapa{height:34vh;min-height:210px}
@@ -49,6 +53,9 @@
   .paso{font-weight:700;font-size:16px;color:var(--pri-2)}
   .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px}
   .chips button{flex:none;border:1px solid var(--borde);background:#f4f8f8;border-radius:18px;padding:7px 12px;font-size:14px;cursor:pointer;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip-r{flex:none;display:inline-flex;align-items:stretch;border:1px solid var(--borde);background:#f4f8f8;border-radius:18px;overflow:hidden;max-width:250px}
+  .chips .chip-r button{border:0;border-radius:0;background:none;max-width:210px}
+  .chips .chip-r .chip-x{padding:0 11px 0 6px;font-size:18px;line-height:1;color:#55666a;min-width:34px}
   .chips button.fav{background:#eef7e6;border-color:#cfe6b8}
   .quien{display:flex;align-items:center;gap:8px;background:#f4f8f8;border-radius:12px;padding:10px 12px;font-size:15px}
   .quien a{margin-left:auto;color:var(--pri-2);cursor:pointer}
@@ -65,14 +72,14 @@
   .seg button.on{background:#fff;color:var(--pri-2);box-shadow:0 1px 3px rgba(0,0,0,.12)}
   .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:600;background:#fff;border-top:1px solid var(--borde);box-shadow:0 -4px 16px rgba(20,50,80,.08);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
   .tabbar .in{display:flex;width:100%;max-width:520px;padding:6px 6px 4px;gap:4px}
-  .tabbar button{flex:1;min-height:56px;border:0;background:none;padding:4px 2px 6px;font-size:12.5px;font-weight:600;color:#6b7c8c;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:14px;-webkit-tap-highlight-color:transparent;transition:color .15s}
+  .tabbar button{flex:1;min-height:56px;border:0;background:none;padding:4px 2px 6px;font-size:12.5px;font-weight:600;color:#627280;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:14px;-webkit-tap-highlight-color:transparent;transition:color .15s}
   .tabbar .ic{display:flex;align-items:center;justify-content:center;width:56px;height:30px;border-radius:999px;transition:background .2s,transform .15s}
   .tabbar svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .tabbar button:active .ic{transform:scale(.92)}
   .tabbar button.on{color:var(--pri-2);font-weight:800}
   .tabbar button.on .ic{background:#e3edf7}
   .tabbar button.on svg{stroke-width:2.4}
-  .tabbar button.pedir.on .ic{background:#7ac143;color:#fff}
+  .tabbar button.pedir.on .ic{background:#64a135;color:#fff}
   .tabbar button.pedir:not(.on) .ic{color:#4e9a1f}
   .tarjeta{border:1px solid var(--borde);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
   .tarjeta .fila1{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -86,6 +93,25 @@
   .pass{position:relative}.pass button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:20px;padding:6px;cursor:pointer}
   .err{background:#fbe9e9;color:#9b2c2c;border-radius:10px;padding:10px 12px;display:none}
   .banner{background:#eef7e6;border:1px solid #cfe6b8;border-radius:12px;padding:10px 12px;font-size:14px}
+  .sos-p{position:fixed;right:12px;top:calc(72px + env(safe-area-inset-top));z-index:900;width:64px;height:64px;border-radius:50%;border:3px solid #fff;background:#d0021b;color:#fff;font:900 18px/1 system-ui,sans-serif;box-shadow:0 4px 16px rgba(208,2,27,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:sosLat 2s infinite;cursor:pointer}
+  .sos-p small{font-size:8.5px;font-weight:700;letter-spacing:.3px;margin-top:2px;text-transform:uppercase}
+  body:not(.con-mapa) .sos-p{display:none}
+  @keyframes sosLat{0%,100%{box-shadow:0 0 0 0 rgba(208,2,27,.55)}50%{box-shadow:0 0 0 10px rgba(208,2,27,0)}}
+  .sos-ov{position:fixed;inset:0;z-index:7500;background:rgba(40,0,6,.7);display:flex;align-items:center;justify-content:center;padding:16px}
+  .sos-c{position:relative;background:#fff;width:100%;max-width:400px;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  .sos-x{position:absolute;right:10px;top:8px;border:0;background:rgba(255,255,255,.2);color:#fff;width:34px;height:34px;border-radius:50%;font-size:22px;cursor:pointer}
+  .sos-h{background:linear-gradient(135deg,#a3001a,#e0102f);color:#fff;text-align:center;padding:20px 16px 16px}.sos-h .e{font-size:40px}.sos-h h3{margin:4px 0 2px;font-size:22px}.sos-h p{margin:0;opacity:.9}
+  .sos-b{padding:16px;display:flex;flex-direction:column;gap:10px}
+  .sos-911,.sos-cen{display:block;text-align:center;background:#d0021b;color:#fff;text-decoration:none;font-weight:900;font-size:19px;border-radius:14px;padding:15px}.sos-cen{background:#215181;font-size:16px}
+  .sos-env{position:relative;overflow:hidden;border:2px solid #d0021b;background:#fff4f5;color:#7a0010;border-radius:14px;padding:14px;font:inherit;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
+  .sos-env .tx{position:relative;display:flex;flex-direction:column;gap:2px}.sos-env b{font-size:15.5px}.sos-env small{color:#9b3a46}
+  .sos-env .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(208,2,27,.18)}.sos-env.carga .fill{width:100%;transition:width 1.8s linear}
+  .sos-op{display:flex;gap:8px}.sos-op>*{flex:1;text-align:center;border:1px solid #d9e1ea;background:#f6f8fa;border-radius:12px;padding:11px 6px;font:inherit;font-weight:700;font-size:14px;color:#33475b;text-decoration:none;cursor:pointer}
+  .sos-ok{text-align:center;color:#1d3b2a}.sos-ok .e{font-size:40px}.sos-ok b{font-size:18px}.sos-ok p{color:#4a5b6c;margin:6px 0 0}
+  .ay-sos{display:flex;align-items:center;gap:12px;width:100%;border:0;border-radius:16px;padding:14px;margin:0 0 12px;background:linear-gradient(135deg,#a3001a,#e0102f);color:#fff;font:inherit;text-align:left;cursor:pointer;box-shadow:0 6px 16px rgba(208,2,27,.3)}
+  .ay-sos>span{font-size:28px}.ay-sos div{flex:1}.ay-sos b{display:block;font-size:17px}.ay-sos small{opacity:.9}.ay-sos i{font-style:normal;font-size:26px;opacity:.8}
+  .banner.aviso{background:#fff6e5;border-color:#f3d39b;color:#6b4300;margin-bottom:8px}
+  .res-pol{font-size:13px;color:#4a5b6c;background:#f1f5f9;border-radius:10px;padding:7px 10px;margin-top:6px}.res-pol a{color:#215181;font-weight:700}
   .banner a{color:var(--pri-2);font-weight:700;cursor:pointer}
   .curso{background:#fff2e2;border:1px solid #f3cf9c;border-radius:12px;padding:10px 12px;font-size:15px;display:flex;align-items:center;gap:8px}
   .curso button{margin-left:auto}
@@ -93,10 +119,80 @@
   /* ===== Mismo estilo visual que la app del conductor ===== */
   #yo{display:flex;gap:8px;align-items:center}
   .vjr{font-size:15px;line-height:1.35}.vjr div{display:flex;gap:10px;align-items:flex-start;position:relative;padding:3px 0}
-  .vjr i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}.vjr i.o{background:#2f9e57}.vjr i.d{background:#d64545}
+  .vjr i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}.vjr i.o{background:#278449}.vjr i.d{background:#d43d3d}
   .vjr div:first-child:not(:last-child)::after{content:"";position:absolute;left:4px;top:17px;bottom:-6px;border-left:2px dotted #c3ccd3}
+  .canc-t{text-align:center;font-size:13px;color:#7a8a96;margin-top:-4px}
+  .mp-card{background:#fff;border:1px solid #d7e6f5;border-radius:16px;padding:14px;margin:10px 0;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,80,160,.08)}
+  .mp-card>b{font-size:16px}.mp-card>span,.mp-card small{color:#5b6b7b;font-size:13.5px}.mp-card small{text-align:center}
+  .mp-card.ok{background:#e9f7ec;border-color:#a9dcb4}.mp-card.ok>b{color:#1b6e31}
+  .mp-card a{color:#0a76c9;font-size:13.5px;text-align:center}
+  .mp-tot{display:flex;justify-content:space-between;align-items:baseline}.mp-tot span{color:#5b6b7b}.mp-tot b{font-size:26px;color:#0f2740}
+  .btn.mp-btn{background:#009ee3!important;color:#fff!important;border-color:#009ee3!important}
+  .acepto{display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--suave);line-height:1.35;cursor:pointer}.acepto input{width:18px;height:18px;min-height:0;margin:1px 0 0;flex:none;accent-color:#215181}.acepto a{color:#215181;font-weight:700;text-decoration:underline}
+  /* Centro de ayuda */
+  .ay-ov{position:fixed;inset:0;z-index:4500;background:#eef2f6;display:flex;flex-direction:column;animation:cpIn .2s ease-out}
+  .ay-bar{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));background:#0f2740;color:#fff}
+  .ay-bar b{flex:1;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ay-vol,.ay-x{width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:24px;line-height:1;cursor:pointer;flex:none}
+  .ay-sc{flex:1;overflow:auto;padding:16px 14px calc(24px + env(safe-area-inset-bottom));max-width:560px;width:100%;margin:0 auto;box-sizing:border-box}.ay-sc.sin{padding:0;max-width:none;display:flex}
+  .ay-hola{text-align:center;padding:6px 0 14px}.ay-hola .e{font-size:44px}.ay-hola h2{margin:4px 0;color:#0f2740;font-size:21px}.ay-hola p{margin:0;color:#5b6b7b}.ay-hola.chico .e{font-size:34px}.ay-hola.chico h2{font-size:18px}
+  .ay-inv{display:flex;gap:10px;align-items:center;background:#fff;border:1.5px dashed #c9d7e4;border-radius:14px;padding:10px 12px;margin:0 0 12px}.ay-inv>span{font-size:26px}.ay-inv div{flex:1;min-width:0}.ay-inv b{display:block;font-size:14.5px}.ay-inv small{color:#627280;font-size:12.5px}.ay-inv .btn{flex:none;margin:0}
+  .ay-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ay-op{--c:#215181;display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:#fff;border:1px solid #e3e9ef;border-top:4px solid var(--c);border-radius:16px;padding:14px 12px;font:inherit;color:#0f2740;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.06)}
+  .ay-op:active{transform:scale(.98)}.ay-op span{font-size:28px}.ay-op b{font-size:15px}.ay-op small{color:#627280;font-size:12.5px;line-height:1.3}
+  .ay-op.roja{--c:#d43d3d}.ay-op.nar{--c:#e8892b}.ay-op.azul{--c:#2a86e8}.ay-op.verde{--c:#278449}
+  .ay-cont{display:flex;gap:8px;margin-top:12px}.ay-cont a{flex:1;text-align:center;border-radius:14px;padding:12px;font-weight:800;text-decoration:none}
+  .ay-wa{background:#25d366;color:#fff}.ay-tel{background:#fff;color:#215181;border:2px solid #215181}
+  .ay-sub{margin:20px 2px 8px;font-size:15px;color:#0f2740}
+  .ay-faq details{background:#fff;border:1px solid #e3e9ef;border-radius:12px;margin-bottom:6px;overflow:hidden}
+  .ay-faq summary{padding:12px 14px;font-weight:700;color:#0f2740;cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:8px}.ay-faq summary::-webkit-details-marker{display:none}
+  .ay-faq summary::after{content:'+';color:#215181;font-size:20px;line-height:1}.ay-faq details[open] summary::after{content:'–'}
+  .ay-faq p{margin:0;padding:0 14px 12px;color:#4a5b6b;font-size:14.5px;line-height:1.5}
+  .ay-pie{text-align:center;margin:16px 0 0}.ay-pie a{color:#215181;font-weight:700}
+  .ay-f{display:flex;flex-direction:column;gap:10px}.ay-l{font-weight:800;color:#0f2740;font-size:14.5px;margin-top:4px}
+  .ay-f textarea{width:100%;box-sizing:border-box;border:1px solid #d5dee6;border-radius:12px;padding:10px;font:inherit;font-size:15px;background:#fff;resize:vertical}
+  .ay-chips{display:flex;flex-wrap:wrap;gap:6px}.ay-chips button{border:1.5px solid #d5dee6;background:#fff;border-radius:999px;padding:8px 12px;font:inherit;font-size:14px;color:#33475b;cursor:pointer}
+  .ay-chips button.on{border-color:#215181;background:#215181;color:#fff}
+  .ay-viajes{display:flex;flex-direction:column;gap:6px}.ay-viajes button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:1.5px solid #e3e9ef;background:#fff;border-radius:12px;padding:9px 12px;font:inherit;cursor:pointer;color:#0f2740}
+  .ay-viajes button span{font-size:13.5px;color:#4a5b6b}.ay-viajes button small{font-size:12px;color:#7a8896}.ay-viajes button.on{border-color:#215181;background:#eef4fa;box-shadow:0 0 0 2px rgba(33,81,129,.15)}
+  .ay-cargando{color:#7a8896;font-size:14px;padding:6px}
+  .dos-c{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media (max-width:420px){.dos-c{grid-template-columns:1fr}}
+  .ay-nota{margin:0;text-align:center;font-size:12.5px;color:#7a8896}
+  .ay-man{flex:1;border:0;width:100%;background:#fff}
+  .ay-ok{text-align:center;padding:30px 10px}.ay-ok .e{font-size:58px}.ay-ok h2{color:#1b6e31;margin:8px 0}.ay-ok p{color:#4a5b6b;margin:0 0 20px}
+  /* Mi perfil */
+  .pf-cab{display:flex;gap:14px;align-items:center;background:linear-gradient(135deg,#0f2740,#215181);color:#fff;border-radius:20px;padding:18px 16px;box-shadow:0 8px 22px rgba(15,39,64,.18)}
+  .pf-cab .av{flex:none;width:62px;height:62px;border-radius:50%;background:#64a135;color:#fff;font-weight:900;font-size:23px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.85)}
+  .pf-cab .dt{flex:1;min-width:0}.pf-cab b{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pf-cab small{display:block;opacity:.85;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pf-ed{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:18px;cursor:pointer}
+  .pf-desde{text-align:center;color:var(--suave);font-size:13.5px;margin:10px 0 2px}
+  .pf-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 4px}
+  .pf-stats div{background:#fff;border-radius:14px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.07)}.pf-stats b{display:block;font-size:22px;color:#0f2740}.pf-stats small{color:var(--suave);font-size:12px}
+  .pf-g{margin-top:16px}.pf-g h3{margin:0 4px 8px;font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:#627280}
+  .pf-g .ay{display:block;color:var(--suave);font-size:12.5px;margin:6px 4px 0}
+  .pf-datos{background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;gap:10px}.pf-datos .ay{margin:4px 0 0}
+  .pf-acc{display:none;gap:8px}.pf-acc.ver{display:flex}.pf-acc .btn{flex:1;margin:0}
+  .pf-medios{display:flex;flex-wrap:wrap;gap:8px}
+  .pf-medios button{display:inline-flex;align-items:center;gap:6px;border:2px solid #e3e9ef;background:#fff;border-radius:14px;padding:10px 14px;font:inherit;font-weight:700;color:#33475b;cursor:pointer}
+  .pf-medios button.on{border-color:#215181;background:#eef4fa;color:#0f2740;box-shadow:0 0 0 3px rgba(33,81,129,.12)}.pf-medios span{font-size:18px}
+  .pf-lista{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .pf-f{display:flex;align-items:center;gap:12px;width:100%;border:0;border-bottom:1px solid #eef2f6;background:#fff;padding:12px 14px;font:inherit;text-align:left;cursor:pointer;color:#0f2740}
+  .pf-f:last-child{border-bottom:0}.pf-f:active{background:#f6f9fb}
+  .pf-f .ic{flex:none;width:38px;height:38px;border-radius:11px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:19px}
+  .pf-f .tx{flex:1;min-width:0}.pf-f b{display:block;font-size:15px}.pf-f small{display:block;color:var(--suave);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pf-f .fl{color:#b0bcc8;font-size:22px}
+  .pf-est{font-size:12px;font-weight:700;border-radius:999px;padding:3px 9px;background:#eef4fa;color:#215181}.pf-est.ok{background:#e3f6e8;color:#1b6e31}.pf-est.mal{background:#fdecec;color:#9b1c1c}
+  .pf-pw[hidden]{display:none!important}
+  .pf-pw{padding:4px 14px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #eef2f6}
+  .pf-salir{display:block;width:100%;margin-top:18px;background:#fff;color:#c0392b;border:2px solid #f3c7c7;border-radius:14px;padding:14px;font:inherit;font-size:16px;font-weight:800;cursor:pointer}
+  .pf-baja{display:block;margin:12px auto 0;color:#55666a!important;font-size:14px;text-decoration:underline}
+  .pf-ver{text-align:center;color:#627280;font-size:12px;margin:10px 0 6px}
+  .canc-fin{background:#fff4e5;border:1px solid #f3cf9c;color:#8a5a00;border-radius:12px;padding:10px 12px;font-size:14px;text-align:center}
+  .pf-cab .av-foto{position:relative;padding:0;cursor:pointer;overflow:visible}.pf-cab .av-foto .cam{position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:50%;background:#fff;color:#000;font-size:13px;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .aviso-not{display:flex;gap:10px;align-items:center;background:#fff7e0;border:1px solid #f1d58a;color:#5a4300;border-radius:14px;padding:10px 12px;margin:8px 0;font-size:14px;line-height:1.35}.aviso-not .btn{flex:none;margin:0;padding:9px 14px}
+  .pf-qf{background:none;border:0;padding:4px 0 0;color:inherit;opacity:.85;font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;text-align:left}
   .perf-h{display:flex;gap:12px;align-items:center;background:#0f1f35;color:#fff;border-radius:16px;padding:14px}.perf-h b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.perf-h small{opacity:.75}
-  .perf-h .av{flex:none;width:50px;height:50px;border-radius:50%;background:#7ac143;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.3)}
+  .perf-h .av{flex:none;width:50px;height:50px;border-radius:50%;background:#64a135;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.3)}
   .caja-blanca{display:flex;flex-direction:column;gap:10px}
   body{background:#0e1a2b}
   .wrap{background:#f6f8fa}
@@ -104,10 +200,18 @@
   .top{background:#0f1f35;gap:8px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
   .top a#ayuda{background:rgba(255,255,255,.12);border-radius:10px;padding:0 12px;height:38px;display:inline-flex;align-items:center;font-size:14px;font-weight:700;text-decoration:none}
   .top .yo{background:var(--pri);border-radius:10px;height:38px;padding:0 12px;font-weight:800;font-size:15px}
-  .top .salir-top{background:#d64545;border:0;border-radius:10px;height:38px;padding:0 14px;font-weight:700;font-size:14px;margin-left:0}
+  .top .salir-top{background:#d43d3d;border:0;border-radius:10px;height:38px;padding:0 14px;font-weight:700;font-size:14px;margin-left:0}
   .top [data-instalar]{border-radius:10px;height:38px;padding:0 12px;font-weight:700}
+  /* celulares angostos: los botones de arriba se achican y el nombre se corta para que todo entre */
+  .top .yo{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media (max-width:380px){
+    .top{gap:5px;padding-left:10px;padding-right:10px}.top .logo-l img{height:34px!important}
+    .top a#ayuda,.top .yo,.top .salir-top,.top [data-instalar]{height:34px;padding:0 9px;font-size:13px}
+    .top .yo{max-width:84px}#yo{gap:5px}
+  }
+  @media (max-width:330px){.top a#ayuda{display:none}}
   body.con-mapa .cont{position:relative;z-index:450;background:#fff;border-radius:18px 18px 0 0;margin-top:-18px;box-shadow:0 -6px 20px rgba(0,0,0,.3);flex:1}
-  body.con-mapa #mapa .leaflet-bottom{bottom:18px}
+  body.con-mapa #mapa .maplibregl-ctrl-bottom-right,body.con-mapa #mapa .maplibregl-ctrl-bottom-left{bottom:18px}
   body:not(.con-mapa):not(.en-login) .cont{padding-top:0}
   body:not(.con-mapa) h2.tit{margin:0 -16px 6px;padding:18px 16px;background:linear-gradient(135deg,#183c62,#215181);color:#fff;font-size:20px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
   body:not(.con-mapa) .sub{color:#5b6b78;margin-top:0}
@@ -124,24 +228,103 @@
 <div class="wrap"><div class="top"><a href="index.html" class="logo-l" title="Ir a la página principal"><img src="img/logo-blanco.png" alt="Remises TOQUE!" style="height:42px;width:auto"></a><span id="empTag"></span><span class="esp"></span><span id="inst"></span><a id="ayuda">Ayuda</a><span id="yo"></span></div>
 <div id="mapa"></div><div class="cont" id="cont"></div></div>
 <nav class="tabbar" id="nav"></nav>
-<script src="config.js?v=2026101631"></script>
+<script src="config.js?v=2026101737"></script>
 <script src="vendor/supabase/supabase.js"></script>
-<script src="vendor/leaflet/leaflet.js"></script>
-<script src="js/backend.js?v=2026101627"></script>
-<script src="js/pwa.js?v=2026101631"></script>
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="js/mapa-gl.js?v=2026102540"></script>
+<script src="js/mapa-base.js?v=2026102401"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/integraciones.js?v=2026102701"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
+<script src="js/tarifa.js?v=2026102701"></script>
+<script src="js/comprobante/estilos.js?v=2026102520"></script>
+<script src="js/comprobante/tarjeta.js?v=2026102701"></script>
+<script src="js/comprobante/compartir.js?v=2026102701"></script>
+<script src="js/comprobante/pantalla.js?v=2026102701"></script>
+<script src="js/pdf/librerias.js?v=2026102701"></script>
+<script src="js/pdf/membretado.js?v=2026102701"></script>
+<script src="js/pdf/visor.js?v=2026102520"></script>
+<script src="js/terminos-aceptacion.js?v=2026102520"></script>
+<script src="js/accesibilidad.js?v=2026102520"></script>
+<script src="js/foto-perfil.js?v=2026102530"></script>
+<script src="js/pwa.js?v=2026102520"></script>
 <script>
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pesos = n => n == null ? '—' : '$ ' + Math.round(n).toLocaleString('es-AR');
 const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } }, del: k => { try { localStorage.removeItem(k); } catch { } } };
 const S = { tk: LS.get('rodar_cli_token'), cli: null, vista: null, timers: [], socket: null };
+window.appOcupada = () => S.vista === 'seguir';   // siguiendo un viaje: no se recarga sola
 // ---------- App Android (Capacitor) y avisos ----------
 const NATIVO = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const plug = n => (NATIVO && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null;
 const ES_ANDROID = /android/i.test(navigator.userAgent);
-const APK_PAS = 'https://github.com/cesar385/remises-toque/releases/latest/download/toque-pasajero.apk';
+const APK_PAS = 'https://remisestoque.com/apk/toque-pasajero.apk';
 const idDeTag = t => { let h = 7; for (const c of String(t || 'rodar')) h = (h * 31 + c.charCodeAt(0)) % 2000000000; return h; };
 function b64aU8(b) { const p = '='.repeat((4 - b.length % 4) % 4), r = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); }
+// ---------- Avisos al pasajero: sonido, vibración y notificaciones ----------
+// Sonido de aviso sin archivos (campanita con Web Audio). El navegador lo habilita después del primer toque en la app.
+let audioCtx = null;
+const audioListo = () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch { } };
+document.addEventListener('pointerdown', audioListo, { passive: true });
+function sonarAviso(veces = 3) {
+  audioListo(); if (!audioCtx) return;
+  const t0 = audioCtx.currentTime + 0.05;
+  for (let i = 0; i < veces; i++) [880, 1320].forEach((f, j) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = t0 + i * 0.75 + j * 0.18;
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + 0.6);
+  });
+}
+const vibrar = p => { try { navigator.vibrate && navigator.vibrate(p); } catch { } };
+// Permiso de notificaciones: en la app Android (avisos del sistema) o en el navegador (push)
+async function estadoAvisos() {
+  const LN = plug('LocalNotifications');
+  if (LN) { try { const r = await LN.checkPermissions(); return r.display === 'granted' ? 'granted' : r.display === 'denied' ? 'denied' : 'default'; } catch { return 'default'; } }
+  return 'Notification' in window ? Notification.permission : 'denied';
+}
+async function pedirAvisos() {
+  const LN = plug('LocalNotifications');
+  if (LN) { try { await LN.requestPermissions(); } catch { } return estadoAvisos(); }
+  if (!('Notification' in window)) return 'denied';
+  if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { } }
+  if (Notification.permission === 'granted') await activarPush(false);
+  return Notification.permission;
+}
+// Aviso de prueba (desde Mi perfil)
+async function probarAviso() {
+  sonarAviso(2); vibrar([400, 150, 400]);
+  const p = await pedirAvisos();
+  const titulo = '📍 Tu remís llegó (prueba)', cuerpo = 'Así te vamos a avisar cuando el conductor llegue a buscarte.';
+  if (p !== 'granted') return toast('Sonó el aviso dentro de la app. Para recibirlo con el celular bloqueado, activá las notificaciones.', 'error');
+  const LN = plug('LocalNotifications');
+  if (LN) { LN.schedule({ notifications: [{ id: idDeTag('prueba'), title: titulo, body: cuerpo, channelId: 'toque-viaje', smallIcon: 'ic_stat_toque', iconColor: '#4a8125', autoCancel: true }] }).catch(() => { }); return; }
+  try { const reg = await navigator.serviceWorker.ready; await reg.showNotification(titulo, { body: cuerpo, tag: 'rodar-prueba', icon: 'img/pasajero-192.png', vibrate: [400, 150, 400] }); }
+  catch { try { new Notification(titulo, { body: cuerpo, icon: 'img/pasajero-192.png' }); } catch { } }
+  toast('Aviso de prueba enviado', 'ok');
+}
+// Llegó el remís: suena, vibra y muestra un cartel grande (con la app abierta). Con la app cerrada llega la notificación.
+function avisoLlegada(id, v) {
+  const clave = 'rodar_llego_' + id;
+  try { if (sessionStorage.getItem(clave)) return; sessionStorage.setItem(clave, '1'); } catch { }
+  sonarAviso(3); vibrar([600, 200, 600, 200, 600]);
+  if (document.hidden) return;
+  cpDialogo({ icono: '📍', titulo: '¡Tu remís llegó!', no: false, si: 'Ya voy',
+    html: `<p style="margin:0 0 8px;text-align:center">Te está esperando en la puerta.</p><ul><li class="v"><span class="t">🚕</span><div><b>Móvil N° ${esc(v.movil_numero || '')}</b>${v.patente ? ' · ' + esc(v.patente) : ''}${v.movil ? '<br>' + esc(v.movil) : ''}${v.conductor ? '<br>Conductor: ' + esc(v.conductor) : ''}</div></li></ul>${v.pin ? `<p class="nota" style="text-align:center">PIN para subir: <b style="font-size:20px;letter-spacing:2px">${esc(v.pin)}</b></p>` : ''}` });
+}
+// En el seguimiento: invita a activar los avisos si todavía no están activados
+async function pintarAvisoNot() {
+  const box = $('#avisoNot'); if (!box) return;
+  const p = await estadoAvisos(); if (!$('#avisoNot')) return;
+  if (p === 'granted') { box.innerHTML = ''; return; }
+  box.innerHTML = p === 'denied'
+    ? `<div class="aviso-not"><span>🔕 Las notificaciones están bloqueadas. ${NATIVO ? 'Habilitalas en Ajustes → Apps → Remises TOQUE! → Notificaciones' : 'Habilitalas tocando el candado 🔒 junto a la dirección'} para enterarte cuando llegue tu remís con el celular bloqueado.</span></div>`
+    : '<div class="aviso-not"><span>🔔 Activá los avisos para enterarte cuando tu remís esté en camino y cuando llegue, aunque tengas el celular bloqueado.</span><button class="btn" id="actNot" type="button">Activar</button></div>';
+  const b = $('#actNot'); if (b) b.onclick = async () => { const r = await pedirAvisos(); if (r === 'granted') { toast('Avisos activados', 'ok'); sonarAviso(1); } pintarAvisoNot(); };
+}
 // Notificaciones push del navegador (llegan con el celular bloqueado): remís en camino, en la puerta y viaje terminado
 async function activarPush(pedir) {
   try {
@@ -158,7 +341,7 @@ async function activarPush(pedir) {
 }
 // Abrir el seguimiento desde una notificación
 function abrirAviso(h) { const m = String(h || '').match(/^#\/seguimiento\/(\d+)\?k=(\w+)/); if (m) { history.replaceState({}, '', h); ir('seguir', +m[1], m[2]); } }
-if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { if (ev.data && ev.data.abrir) abrirAviso(ev.data.abrir); });
+if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', ev => { if (ev.data && ev.data.abrir) abrirAviso(ev.data.abrir); if (ev.data && ev.data.push && S.pintarSeg) S.pintarSeg(); });
 // En la app Android: notificaciones del sistema, tecla Atrás y un servicio que la mantiene activa durante el viaje
 let nativoListo = false;
 function nativoIniciar() {
@@ -172,6 +355,8 @@ function nativoIniciar() {
   if (App) {
     App.addListener('appStateChange', s => { S.enFondo = !s.isActive; if (s.isActive && S.pintarSeg) S.pintarSeg(); });
     App.addListener('backButton', () => {
+      if (cerrarAyuda()) return;
+      if (cerrarComprobante()) return;
       const mo = $$('.modal-fondo'); if (mo.length) return mo.forEach(x => x.remove());
       if (S.cli && S.vista && !['pedir', 'seguir'].includes(S.vista)) return ir('pedir');
       App.minimizeApp();
@@ -180,7 +365,7 @@ function nativoIniciar() {
 }
 function avisarNativo(titulo, cuerpo, tag, abrir) {
   const LN = plug('LocalNotifications'); if (!LN || !(S.enFondo || document.hidden)) return;
-  LN.schedule({ notifications: [{ id: idDeTag(tag), title: titulo, body: cuerpo, largeBody: cuerpo, channelId: 'toque-viaje', smallIcon: 'ic_stat_toque', iconColor: '#5fa52f', autoCancel: true, extra: { abrir: abrir || '' } }] }).catch(() => { });
+  LN.schedule({ notifications: [{ id: idDeTag(tag), title: titulo, body: cuerpo, largeBody: cuerpo, channelId: 'toque-viaje', smallIcon: 'ic_stat_toque', iconColor: '#4a8125', autoCancel: true, extra: { abrir: abrir || '' } }] }).catch(() => { });
 }
 // Mientras hay un viaje activo, la app Android queda "en servicio" (aviso fijo) para poder avisarte aunque bloquees el celular
 function guardiaViaje(activo) {
@@ -215,7 +400,7 @@ function mostrarMapa(si) { document.body.classList.toggle('con-mapa', !!si); $('
 function marcoLogin(html) { document.body.classList.add('en-login'); return `<div class="login login-pas"><div class="caja">${html}</div></div>`; }
 function ir(v, ...args) {
   document.body.classList.remove('en-login');
-  limpiarVista(); S.vista = v; pintarNav(); window.scrollTo(0, 0);
+  limpiarVista(); S.vista = v; pintarNav(); window.scrollTo(0, 0); if (v !== 'seguir') botonSOS(null);
   return ({ pedir: pedido, viajes: misViajes, lugares: misLugares, perfil: miPerfil, ingresar: pantallaIngreso, empresas: pantallaEmpresas, seguir: seguimiento })[v](...args);
 }
 const ICONOS = {
@@ -230,14 +415,14 @@ function pintarNav() {
   const corp = JSON.parse(LS.get('rodar_corp') || 'null');
   document.body.classList.toggle('modo-empresa', !!corp);
   $('#empTag').innerHTML = corp ? '<span class="emp-tag">EMPRESAS</span>' : '';
-  const it = S.cli ? [['pedir', '', 'Pedir'], ['viajes', '', 'Mis viajes'], ['lugares', '', 'Lugares'], ['perfil', '', 'Perfil']] : corp ? [['pedir', '', 'Pedir'], ['empresas', '', 'Mi empresa']] : [['ingresar', '', 'Pasajeros'], ['empresas', '', 'Empresas']];
+  const it = S.cli ? [['pedir', '', 'Pedir'], ['viajes', '', 'Mis viajes'], ['lugares', '', 'Lugares'], ['perfil', '', 'Perfil']] : corp ? [['pedir', '', 'Pedir'], ['empresas', '', 'Mi empresa']] : [['ingresar', '', 'Pasajeros']];
   const act = S.vista === 'seguir' ? (S.cli ? 'viajes' : 'pedir') : S.vista;
   $('#nav').innerHTML = `<div class="in">${it.map(([k, i, t]) => `<button data-v="${k}" class="${k}${k === act ? ' on' : ''}" aria-label="${t}"${k === act ? ' aria-current="page"' : ''}><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONOS[k] || ''}</svg></span>${t}</button>`).join('')}</div>`;
   $$('#nav [data-v]').forEach(b => b.onclick = () => ir(b.dataset.v));
   $('#yo').innerHTML = S.cli ? `<button class="yo" id="yoBtn">${esc((S.cli.nombre || '').split(' ')[0])}</button><button class="salir-top" id="salirBtn">Salir</button>`
     : corp ? `<button class="yo" id="yoEmp">🏢 ${esc(corp.nombre)}</button><button class="salir-top" id="salirEmp">Salir</button>` : '';
   if ($('#yoEmp')) $('#yoEmp').onclick = () => ir('empresas');
-  if ($('#salirEmp')) $('#salirEmp').onclick = () => { if (confirm('¿Salir de la cuenta de empresa?')) { LS.del('rodar_corp'); ir(S.cli ? 'pedir' : 'ingresar'); } };
+  if ($('#salirEmp')) $('#salirEmp').onclick = () => { if (confirm('¿Salir de la cuenta de empresa?')) { LS.del('rodar_corp'); history.replaceState({}, '', location.pathname); ir(S.cli ? 'pedir' : 'ingresar'); } };
   if ($('#yoBtn')) $('#yoBtn').onclick = () => ir('perfil');
   if ($('#salirBtn')) $('#salirBtn').onclick = () => { if (confirm('¿Cerrar sesión en este celular?')) salirCuenta(); };
   if ($('#ent')) $('#ent').onclick = () => ir('ingresar');
@@ -246,16 +431,21 @@ function pintarNav() {
 async function arrancar() {
   st.cfg = await api('/api/pub/config');
   document.title = (st.cfg.nombre || 'Remises TOQUE!') + ' · Pedí tu remís';
-  mapa = L.map('mapa').setView([st.cfg.lat, st.cfg.lng], 14);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(mapa);
+  mapa = L.map('mapa', { dobleClicAcerca: true }).setView([st.cfg.lat, st.cfg.lng], 14);
+  capaBase(mapa);
   if (S.tk) { try { S.cli = await api('/api/cli/perfil'); } catch { S.cli = null; } }
+  if (S.cli) await revisarTyc();
   nativoIniciar(); activarPush(false);
+  { const qs = new URLSearchParams(location.search); // vuelta de Mercado Pago: ?viaje=ID&k=…&pago=ok|pendiente|error
+    if (qs.get('viaje') && qs.get('k')) history.replaceState({}, '', location.pathname + `#/seguimiento/${+qs.get('viaje')}?k=${encodeURIComponent(qs.get('k'))}${qs.get('pago') ? '&pago=' + encodeURIComponent(qs.get('pago')) : ''}`); }
+  if (location.hash === '#/perfil' && S.cli) { history.replaceState({}, '', location.pathname); setTimeout(() => ir('perfil'), 300); }
+  if (location.hash === '#ayuda') { history.replaceState({}, '', location.pathname); setTimeout(() => abrirAyuda(), 400); } // volvió de los Términos abiertos desde Ayuda
   const m = location.hash.match(/^#\/seguimiento\/(\d+)/);
   const k = new URLSearchParams(location.hash.split('?')[1] || '').get('k');
   if (m && k) return ir('seguir', +m[1], k);
   const act = JSON.parse(LS.get('rodar_viaje') || 'null');
   if (act) return ir('seguir', act.id, act.k);
-  if (/^#\/empresas/.test(location.hash)) return ir('empresas');
+  if (/^#\/empresas/.test(location.hash)) { if (!LS.get('rodar_corp')) { location.replace('empresa.html'); return; } return ir('empresas'); } // las empresas tienen su propia app
   if (/^#\/ingresar/.test(location.hash) && !S.cli) return ir('ingresar');
   if (/^#\/crear/.test(location.hash) && !S.cli) return ir('ingresar', 'crear');
   ir('pedir');
@@ -272,14 +462,16 @@ function recordarLugar(x) {
 function listaChips() {
   if (S.cli) {
     const favs = (S.cli.lugares || []).map(l => ({ fav: 1, et: l.etiqueta, dir: l.direccion, lat: l.lat, lng: l.lng, loc: l.localidad, prov: l.provincia, ref: l.referencias }));
-    const rec = (S.cli.recientes || []).filter(r => !favs.some(f => f.dir === r.direccion)).map(r => ({ dir: r.direccion, lat: r.lat, lng: r.lng, loc: r.localidad, prov: r.provincia }));
+    const rec = (S.cli.recientes || []).filter(r => !favs.some(f => f.dir === r.direccion)).map(r => ({ id: r.id, dir: r.direccion, lat: r.lat, lng: r.lng, loc: r.localidad, prov: r.provincia }));
     return [...favs, ...rec].slice(0, 10);
   }
   return lugaresLocales();
 }
 function chips(c, l) {
   if (!l.length) return '';
-  return `<div class="chips">${l.map((x, i) => `<button type="button" class="${x.fav ? 'fav' : ''}" data-l="${c}${i}" title="${esc(x.dir)}">${x.fav ? '' + esc(x.et) : '' + esc(x.dir)}</button>`).join('')}</div>`;
+  // Los recientes se pueden quitar con la ×; los guardados (Casa, Trabajo…) se administran en Lugares
+  return `<div class="chips">${l.map((x, i) => x.fav ? `<button type="button" class="fav" data-l="${c}${i}" title="${esc(x.dir)}">${esc(x.et)}</button>`
+    : `<span class="chip-r"><button type="button" data-l="${c}${i}" title="${esc(x.dir)}">${esc(x.dir)}</button><button type="button" class="chip-x" data-lx="${i}" aria-label="Quitar ${esc(x.dir)} de recientes" title="Quitar de recientes">×</button></span>`).join('')}</div>`;
 }
 function ubicar(silencio) {
   if (!navigator.geolocation) { if (!silencio) toast('Tu celular no comparte la ubicación con el navegador', 'error'); return; }
@@ -298,7 +490,7 @@ async function pedido(pre) {
   const nombre = S.cli ? S.cli.nombre : (LS.get('rodar_nombre') || ''), tel = S.cli ? S.cli.telefono : (LS.get('rodar_tel') || '');
   const conocido = nombre && tel; const l = listaChips();
   const medioPref = (S.cli && S.cli.medio_pago_pref) || LS.get('rodar_medio') || 'efectivo';
-  $('#cont').innerHTML = `<div id="enCurso"></div>
+  $('#cont').innerHTML = `<div id="enCurso"></div><div id="cargosAv"></div>
     ${corp ? `<div class="nota">Pedido corporativo: <b>${esc(corp.nombre)}</b> (a cuenta de la empresa) <a href="#" id="xc">salir</a></div>` : ''}
     <div class="campo rel"><label class="paso">1. ¿Dónde te buscamos?</label><div class="fila"><input id="od" placeholder="Calle y altura, localidad, provincia (o tocá el mapa)" style="flex:1" autocomplete="off"><button class="btn sec" id="gps" title="Usar mi ubicación">📍</button></div><div class="sug oculto" id="so"></div><input type="hidden" id="ol" value="${esc(st.cfg.localidad || '')}"><input type="hidden" id="op" value="${esc(st.cfg.provincia || '')}"><div class="ubic" id="ubic"></div>${chips('o', l)}
       ${S.cli ? '<button class="linkito oculto" id="favO">Guardar este lugar</button>' : ''}</div>
@@ -306,12 +498,12 @@ async function pedido(pre) {
     <div class="campo rel"><label class="paso">2. ¿A dónde vas?</label><input id="dd" placeholder="Destino — calle y altura, localidad, provincia" autocomplete="off"><div class="sug oculto" id="sd"></div><input type="hidden" id="dl" value="${esc(st.cfg.localidad || '')}"><input type="hidden" id="dp" value="${esc(st.cfg.provincia || '')}"><div class="ubic" id="ubicD"></div>${chips('d', l)}
       ${S.cli ? '<button class="linkito oculto" id="favD">Guardar este lugar</button>' : ''}</div>
     <div class="campo"><label class="paso">3. ¿Cuándo?</label><div class="seg"><button type="button" class="on" data-c="ahora">Ahora</button><button type="button" data-c="prog">Programar</button></div>
-      <div id="progBox" class="oculto" style="margin-top:8px">${S.cli ? `<input type="datetime-local" id="prog">` : `<div class="banner">Para reservar un viaje para más tarde <a id="bannerCta">creá tu cuenta gratis</a> (lleva un minuto).</div>`}</div></div>
+      <div id="progBox" class="oculto" style="margin-top:8px">${S.cli ? `<input type="datetime-local" id="prog"><div class="res-pol" id="resPol"></div>` : `<div class="banner">Para reservar un viaje para más tarde <a id="bannerCta">creá tu cuenta gratis</a> (lleva un minuto).</div>`}</div></div>
     ${conocido ? `<div class="quien" id="quien">Pedís como <b>${esc(nombre)}</b> · ${esc(tel)}${S.cli ? '' : '<a id="cambiar">cambiar</a>'}</div>` : '<div class="paso">4. Tus datos</div>'}
     <div class="grid g2" id="datos" ${conocido ? 'style="display:none"' : ''}><div class="campo"><label>Tu nombre</label><input id="n" autocomplete="given-name" value="${esc(nombre)}"></div><div class="campo"><label>Celular</label><input id="t" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3454 123456" value="${esc(tel)}"></div></div>
-    ${corp ? '' : `<div class="campo"><label>Forma de pago</label><select id="mp">${st.cfg.medios.map(x => `<option value="${x.codigo}" ${x.codigo === medioPref ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>`}
+    ${corp ? '' : `<div class="campo"><label for="mp">Forma de pago</label><select id="mp">${st.cfg.medios.map(x => `<option value="${x.codigo}" ${x.codigo === medioPref ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>`}
     <div class="kpi" style="text-align:center"><div class="l">Precio estimado</div><div class="v" id="est">—</div><small id="estd" style="color:var(--suave)">Marcá origen y destino</small></div>
-    <button class="btn grande verde" id="pedir">Pedir remís</button>
+    <button class="btn grande verde" id="pedir">Pedir remís</button><div class="res-pol" id="cancPol" style="display:none"></div>
     ${S.cli || corp ? '' : `<div class="banner"><a id="bannerCta2">Creá tu cuenta</a> para ver tus viajes, guardar Casa/Trabajo y reservar. ¿Ya tenés? <a id="bannerIng">Ingresá</a>.</div>`}
     <p style="font-size:12px;color:var(--suave);text-align:center">Al subir, decile al conductor el PIN que te mostramos. Tocá el mapa para marcar dónde estás; mantenelo apretado para marcar el destino.</p>
     <div id="inst2" style="display:flex;justify-content:center"></div>`;
@@ -319,13 +511,25 @@ async function pedido(pre) {
   if ($('#cambiar')) $('#cambiar').onclick = () => { $('#quien').remove(); $('#datos').style.display = ''; $('#n').focus(); };
   ['bannerCta', 'bannerCta2'].forEach(id => { if ($('#' + id)) $('#' + id).onclick = () => ir('ingresar', 'crear'); });
   if ($('#bannerIng')) $('#bannerIng').onclick = () => ir('ingresar');
+  $$('[data-lx]').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation(); const x = l[+b.dataset.lx]; if (!x) return;
+    try {
+      if (S.cli && x.id) S.cli = await api(`/api/cli/recientes/${x.id}/quitar`, {});
+      else LS.set('rodar_lugares', JSON.stringify(lugaresLocales().filter(y => y.dir !== x.dir)));
+      const i = b.dataset.lx; l[+i] = null; $$(`[data-lx="${i}"]`).forEach(z => z.closest('.chip-r').remove());   // en origen y en destino
+      toast('Lugar quitado de recientes', 'ok');
+    } catch (e) { toast(e.message, 'error'); }
+  });
   $$('[data-l]').forEach(b => b.onclick = () => { const c = b.dataset.l[0], x = l[+b.dataset.l.slice(1)]; if (x) { fijar(c, x.lat, x.lng, { direccion: x.dir, localidad: x.loc, provincia: x.prov }); if (c === 'o' && x.ref) $('#or').value = x.ref; } });
   $$('.seg [data-c]').forEach(b => b.onclick = () => {
     $$('.seg [data-c]').forEach(x => x.classList.toggle('on', x === b));
     const pr = b.dataset.c === 'prog'; $('#progBox').classList.toggle('oculto', !pr);
     if ($('#prog')) { const min = new Date(Date.now() + 20 * 60000); $('#prog').min = localISO(min); if (!$('#prog').value) $('#prog').value = localISO(new Date(Math.ceil((Date.now() + 60 * 60000) / 9e5) * 9e5)); }
     $('#pedir').textContent = pr ? 'Reservar viaje' : 'Pedir remís';
+    if (pr && $('#resPol')) politicaReservas().then(c => { if (c && $('#resPol')) $('#resPol').innerHTML = `ℹ️ Cancelás sin cargo hasta <b>${minTxt(c.sin_cargo_min)} antes</b>. <a href="#" id="verPol">Ver condiciones</a>`; const vp = $('#verPol'); if (vp) vp.onclick = e => { e.preventDefault(); cpDialogo({ icono: '📅', titulo: 'Cancelación de reservas', html: politicaHtml(c, st.estimado), si: 'Entendido', no: false }); }; });
   });
+  avisoCargos();
+  politicaReservas().then(c => { const x = $('#cancPol'); if (c && x && +c.pct_asignado > 0) { x.style.display = ''; x.innerHTML = `ℹ️ Cancelar es <b>gratis</b> mientras se busca un móvil. Si el remís ya está en camino, se cobra el <b>${c.pct_asignado}%</b> del viaje.`; } });
   ['favO', 'favD'].forEach(id => { if ($('#' + id)) $('#' + id).onclick = () => guardarFavorito(id === 'favO' ? st.o : st.d, id === 'favO' ? $('#or').value : ''); });
   mapa.off('click'); mapa.off('contextmenu');
   mapa.on('click', e => fijar('o', e.latlng.lat, e.latlng.lng));
@@ -357,7 +561,7 @@ async function fijar(c, lat, lng, d) {
   { const l = $('#' + c + 'l'), pr = $('#' + c + 'p'); if (l && d.localidad) l.value = d.localidad; if (pr && d.provincia) pr.value = d.provincia; }
   const fb = $(c === 'o' ? '#favO' : '#favD'); if (fb) fb.classList.remove('oculto');
   const k = c === 'o' ? 'mo' : 'md';
-  st[k] && st[k].remove(); st[k] = L.marker([lat, lng], { icon: icono(c === 'o' ? '#2f9e57' : '#2a86e8'), draggable: true }).addTo(mapa);
+  st[k] && st[k].remove(); st[k] = L.marker([lat, lng], { icon: icono(c === 'o' ? '#278449' : '#2a86e8'), draggable: true }).addTo(mapa);
   st[k].on('dragend', e => { const p = e.target.getLatLng(), txt = inp.value.trim();
     if (RODAR.partirDir(txt).altura) { st[c].lat = p.lat; st[c].lng = p.lng; st[c].dir = RODAR.enTexto(txt).dir; aviso(c, 'Ubicación corregida.'); estimar(); } else fijar(c, p.lat, p.lng); });
   if (d.sinAltura) { const pos = d.direccion.length + 1; inp.value = d.direccion + ' ' + inp.value.slice(d.direccion.length); aviso(c, ''); if (!S.noFoco) { inp.focus(); inp.setSelectionRange(pos, pos); } }
@@ -384,9 +588,46 @@ async function estimar() {
     mapa.fitBounds(st.ruta.getBounds().pad(.15));
   }
   const r = await api('/api/pub/estimar', { origen_lat: st.o.lat, origen_lng: st.o.lng, destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, medio_pago: $('#mp') && $('#mp').value, metros_ruta: st.rutaM }).catch(() => null);
+  st.estimado = r && r.monto != null ? +r.monto : null;
   if (!r || !$('#est')) return;
   $('#est').textContent = r.monto != null ? pesos(r.monto) : 'Desde ' + pesos(r.bajada);
-  $('#estd').textContent = r.monto != null ? `${km1(r.km)} km aprox. · ${r.cobro === 'fijo' ? 'precio fijo' : 'precio estimado, se cobra lo que marca el reloj'}` : 'Sin destino: se cobra lo que marca el reloj';
+  $('#estd').textContent = r.monto != null ? `${km1(r.km)} km aprox. · ${r.cobro === 'fijo' ? 'precio fijo' : 'precio estimado, se cobra lo que marca el reloj'}${+r.cargo_plataforma > 0 ? ` · incluye ${pesos(r.cargo_plataforma)} de cargos de la plataforma` : ''}` : 'Sin destino: se cobra lo que marca el reloj' + (r.cargo_activo ? ' (más cargos de la plataforma)' : '');
+}
+// ---------- Reservas: política de cancelación ----------
+const minTxt = m => { m = +m; if (m >= 60) { const h = Math.floor(m / 60), r = m % 60; return h + (h === 1 ? ' hora' : ' horas') + (r ? ' ' + r + ' min' : ''); } return m + ' minutos'; };
+let polRes = null;
+async function politicaReservas() { if (!polRes) polRes = await api('/api/pub/reservas').catch(() => null); return polRes; }
+function politicaHtml(c, base) {
+  const $$m = p => base > 0 && p > 0 ? ` (≈ ${pesos(Math.ceil(base * p / 100))})` : '';
+  const ult = [c.ultimo_modo !== 'penalizacion' && +c.pct_ultimo > 0 ? `se cobra el <b>${c.pct_ultimo}%</b> del viaje${$$m(+c.pct_ultimo)}` : '', c.ultimo_modo !== 'cargo' && +c.dias_penalizacion > 0 ? `no vas a poder reservar durante <b>${c.dias_penalizacion} ${+c.dias_penalizacion === 1 ? 'día' : 'días'}</b>` : ''].filter(Boolean).join(' y ') || 'sin cargo';
+  return `<ul><li class="v"><span class="t">✅</span><div>Hasta <b>${minTxt(c.sin_cargo_min)} antes</b>: cancelás <b>sin cargo</b>.</div></li>
+    ${+c.sin_cargo_min > +c.tardio_min ? `<li class="a"><span class="t">⚠️</span><div>Entre ${minTxt(c.sin_cargo_min)} y ${minTxt(c.tardio_min)} antes: ${+c.pct_tardio > 0 ? `se cobra el <b>${c.pct_tardio}%</b> del viaje${$$m(+c.pct_tardio)}` : 'sin cargo'}.</div></li>` : ''}
+    <li class="r"><span class="t">⛔</span><div>Con menos de ${minTxt(c.tardio_min)}: ${ult}.</div></li>
+    ${+c.pct_asignado > 0 ? `<li class="a"><span class="t">🚕</span><div>Si el remís ya está en camino, se cobra al menos el <b>${c.pct_asignado}%</b>${$$m(+c.pct_asignado)}.</div></li>` : ''}</ul>
+    <p class="nota">Los cargos se suman al total de tu próximo viaje. El porcentaje se calcula sobre el precio estimado.</p>`;
+}
+// Cartel antes de confirmar la reserva
+async function avisoReservas() {
+  const c = await politicaReservas(); if (!c) return true;
+  return cpDialogo({ icono: '📅', titulo: 'Antes de reservar', html: `<p style="margin:0 0 4px">Si necesitás cancelar la reserva:</p>${politicaHtml(c, st.estimado)}`, si: 'Entendido, reservar', no: 'Volver' });
+}
+// Antes de cancelar: muestra qué se cobra ahora
+async function confirmarCancelacion(urlPrevia, reserva) {
+  let p = null; try { p = await api(urlPrevia); } catch { }
+  if (p && p.aplica && p.reserva === false) {
+    if (!(p.monto > 0)) return cpDialogo({ icono: '🚕', titulo: '¿Cancelar el viaje?', html: '<p style="margin:0">Todavía no hay un móvil asignado: <b>no tiene cargo</b>.</p>', si: 'Sí, cancelar', no: 'No, seguir esperando', peligro: true });
+    return cpDialogo({ icono: '⚠️', titulo: 'Tu remís ya está en camino', peligro: true, si: 'Cancelar igual', no: 'No, mantener el viaje',
+      html: `<p style="margin:0">Un móvil ya aceptó tu viaje y va a buscarte. Si cancelás ahora se cobra:</p><div class="monto">${pesos(p.monto)}</div><p style="margin:0;text-align:center">(${p.pct}% del viaje) se sumarán a tu próximo viaje.</p>` });
+  }
+  if (!p || !p.aplica || (!(p.monto > 0) && !p.penaliza)) return reserva ? cpDialogo({ icono: '🗓️', titulo: '¿Cancelar la reserva?', html: '<p style="margin:0">Todavía estás a tiempo: <b>no tiene cargo</b>.</p>', si: 'Sí, cancelar', no: 'No, mantenerla', peligro: true }) : confirm('¿Cancelar el viaje?');
+  return cpDialogo({ icono: '⚠️', titulo: 'Cancelación tardía', peligro: true, si: 'Cancelar igual', no: 'No, mantener el viaje',
+    html: `<p style="margin:0">${p.asignado ? 'El remís ya está en camino. ' : ''}Faltan <b>${minTxt(Math.max(0, p.minutos))}</b> para la reserva.</p>${p.monto > 0 ? `<div class="monto">${pesos(p.monto)}</div><p style="margin:0;text-align:center">(${p.pct}% del viaje) se sumarán a tu próximo viaje.</p>` : ''}${p.penaliza ? `<p style="margin:10px 0 0"><b>No vas a poder hacer reservas durante ${p.dias} ${p.dias === 1 ? 'día' : 'días'}.</b> Podés seguir pidiendo viajes para ahora.</p>` : ''}` });
+}
+async function avisoCargos() {
+  const box = $('#cargosAv'); if (!box || !S.cli) return;
+  const x = await api('/api/cli/cargos').catch(() => null); if (!x || !$('#cargosAv')) return;
+  box.innerHTML = [x.pendiente > 0 ? `<div class="banner aviso">💳 Tenés <b>${pesos(x.pendiente)}</b> por cancelación tardía de una reserva: se suman a tu próximo viaje.</div>` : '',
+    x.reservas_bloqueadas_hasta ? `<div class="banner aviso">⛔ No podés hacer reservas hasta el <b>${fecha(x.reservas_bloqueadas_hasta)}</b> por una cancelación tardía. Podés pedir viajes para ahora.</div>` : ''].join('');
 }
 async function pedir() {
   const corp = JSON.parse(LS.get('rodar_corp') || 'null');
@@ -403,14 +644,15 @@ async function pedir() {
   try {
     let r;
     if (S.cli && !corp) {
-      if (programar) { if (!$('#prog').value) throw new Error('Elegí el día y la hora'); base.programado = $('#prog').value.replace('T', ' ') + ':00'; }
+      if (programar) { if (!$('#prog').value) throw new Error('Elegí el día y la hora'); base.programado = $('#prog').value.replace('T', ' ') + ':00';
+        if (!(await avisoReservas())) { $('#pedir').disabled = false; return; } }
       r = await api('/api/cli/viaje', base);
       if (r.reserva) { toast('¡Reserva confirmada! La ves en Mis viajes.', 'ok'); return ir('viajes'); }
     } else {
       const nombre = $('#n').value.trim(), tel = $('#t').value.trim();
       if (!nombre || !tel) throw new Error('Completá nombre y celular');
       LS.set('rodar_nombre', nombre); LS.set('rodar_tel', tel); LS.set('rodar_medio', base.medio_pago); recordarLugar(st.o); recordarLugar(st.d);
-      r = await api('/api/pub/viaje', { ...base, nombre, telefono: tel, token: corp && corp.token });
+      r = await api('/api/pub/viaje', { ...base, nombre, telefono: tel, token: corp && corp.token, captcha: corp && corp.token ? null : await RODAR.captcha('pedido') });
     }
     LS.set('rodar_viaje', JSON.stringify({ id: r.id, k: r.k })); activarPush(false);
     history.replaceState({}, '', `#/seguimiento/${r.id}?k=${r.k}`);
@@ -420,6 +662,64 @@ async function pedir() {
 
 // ---------- SEGUIMIENTO ----------
 const TXT = { pendiente: 'Buscando un móvil…', ofrecido: 'Buscando un móvil…', confirmado: 'Tu móvil está en camino', en_curso: 'Viaje en curso', finalizado: 'Llegaste. ¡Gracias por viajar!', anulado: 'Viaje cancelado', reserva: 'Reserva confirmada' };
+// ---------- Botón de emergencia (SOS) ----------
+// Manda una alerta a la central con la ubicación (y el viaje en curso, si hay); después sigue enviando la ubicación.
+function botonSOS(ctx) {
+  let b = document.getElementById('sosP');
+  if (!ctx) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('button'); b.id = 'sosP'; b.className = 'sos-p'; b.innerHTML = 'SOS<small>Emergencia</small>'; document.body.append(b); }
+  b.onclick = () => abrirSOS(ctx);
+}
+function ubicacionActual() {
+  return new Promise(ok => { if (!navigator.geolocation) return ok(null); navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy) }), () => ok(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 20000 }); });
+}
+function abrirSOS(ctx = {}) {
+  document.querySelectorAll('.sos-ov').forEach(x => x.remove());
+  const tel = String(st.cfg.telefono || '').replace(/[^\d+]/g, '');
+  const ov = document.createElement('div'); ov.className = 'sos-ov';
+  ov.innerHTML = `<div class="sos-c" role="dialog" aria-modal="true"><button class="sos-x" aria-label="Cerrar">×</button>
+    <div class="sos-h"><div class="e">🚨</div><h3>Emergencia</h3><p>Si estás en peligro, llamá al 911.</p></div>
+    <div class="sos-b" id="sosB">
+      <a class="sos-911" href="tel:911">📞 Llamar al 911</a>
+      <button class="sos-env" id="sosEnv"><span class="fill"></span><span class="tx"><b>Mantené apretado para avisar a la central</b><small>Enviamos tu ubicación${ctx.id ? ' y los datos del viaje' : ''}</small></span></button>
+      <div class="sos-op">${tel ? `<a href="tel:${esc(tel)}">☎️ Llamar a la central</a>` : ''}<button id="sosWa">📍 Compartir mi ubicación</button></div>
+    </div></div>`;
+  document.body.append(ov);
+  const cerrar = () => { ov.remove(); };
+  ov.querySelector('.sos-x').onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  ov.querySelector('#sosWa').onclick = async () => {
+    const u = await ubicacionActual(); if (!u) return toast('No pudimos obtener tu ubicación. Revisá el permiso del GPS.', 'error');
+    const txt = `🚨 Necesito ayuda. Mi ubicación: https://maps.google.com/?q=${u.lat},${u.lng}${ctx.movil ? ` · Voy en el remís móvil ${ctx.movil}${ctx.patente ? ' (' + ctx.patente + ')' : ''}` : ''}`;
+    compartirTexto('Mi ubicación', txt);
+  };
+  // envío con pulsación larga (evita alertas por error)
+  const env = ov.querySelector('#sosEnv'); let t0 = 0, tim = null, enviado = false;
+  const soltar = () => { clearTimeout(tim); if (!enviado) env.classList.remove('carga'); };
+  const apretar = e => { e.preventDefault(); if (enviado) return; env.classList.add('carga'); tim = setTimeout(enviar, 1800); };
+  ['pointerdown'].forEach(t => env.addEventListener(t, apretar)); ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => env.addEventListener(t, soltar));
+  env.addEventListener('contextmenu', e => e.preventDefault());
+  async function enviar() {
+    enviado = true; if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    env.querySelector('.tx').innerHTML = '<b>Enviando alerta…</b>';
+    const u = await ubicacionActual();
+    try {
+      const r = await api('/api/pub/sos', { viaje_id: ctx.id || null, k: ctx.k || null, cli_token: S.tk || null, lat: u && u.lat, lng: u && u.lng, precision: u && u.precision });
+      $('#sosB', ov).innerHTML = `<div class="sos-ok"><div class="e">✅</div><b>La central recibió tu alerta</b><p>${u ? 'Le enviamos tu ubicación y la vamos a seguir actualizando mientras tengas la app abierta.' : 'No pudimos obtener tu ubicación: si podés, activá el GPS.'} Si estás en peligro, llamá al 911.</p></div>
+        <a class="sos-911" href="tel:911">📞 Llamar al 911</a>${tel ? `<a class="sos-cen" href="tel:${esc(tel)}">☎️ Llamar a la central</a>` : ''}`;
+      // seguimiento de la ubicación durante 20 minutos
+      if (navigator.geolocation && !S.sosWatch) {
+        let ult = 0; const fin = Date.now() + 20 * 60000;
+        S.sosWatch = navigator.geolocation.watchPosition(p => {
+          if (Date.now() > fin) { navigator.geolocation.clearWatch(S.sosWatch); S.sosWatch = null; return; }
+          if (Date.now() - ult < 25000) return; ult = Date.now();
+          api('/api/pub/sos', { alerta_id: r.id, viaje_id: ctx.id || null, k: ctx.k || null, cli_token: S.tk || null, lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy) }).catch(() => { });
+        }, () => { }, { enableHighAccuracy: true, maximumAge: 15000 });
+      }
+    } catch (e) {
+      enviado = false; env.classList.remove('carga'); env.querySelector('.tx').innerHTML = '<b>Mantené apretado para avisar a la central</b>'; toast(e.message, 'error');
+    }
+  }
+}
 async function seguimiento(id, k) {
   mostrarMapa(true);
   mapa.off('click'); mapa.off('contextmenu');
@@ -443,33 +743,84 @@ async function seguimiento(id, k) {
       st.claveAviso = clave;
       guardiaViaje(['pendiente', 'ofrecido', 'confirmado', 'en_curso'].includes(v.estado));
     }
-    if (['pendiente', 'ofrecido'].includes(st.estPrev) && v.estado === 'confirmado') { toast(`Móvil ${v.movil_numero} en camino${v.conductor ? ' · ' + v.conductor : ''}`, 'ok'); try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch { } }
+    if (['pendiente', 'ofrecido'].includes(st.estPrev) && v.estado === 'confirmado' && !v.llego) { toast(`Móvil ${v.movil_numero} en camino${v.conductor ? ' · ' + v.conductor : ''}`, 'ok'); sonarAviso(1); vibrar([200, 100, 200]); }
+    if (v.estado === 'confirmado' && v.llego && st.estPrev !== null) avisoLlegada(id, v);
     st.estPrev = v.estado;
+    botonSOS(['confirmado', 'en_curso'].includes(v.estado) ? { id, k, movil: v.movil_numero, patente: v.patente } : null);
+    setTimeout(pintarAvisoNot, 0);
     $('#cont').innerHTML = `<div class="estado-g">${v.estado === 'confirmado' && v.llego ? '📍 Tu remís llegó: te está esperando' : (TXT[v.estado] || v.estado)}</div>
-      ${v.movil_numero && !['pendiente', 'ofrecido'].includes(v.estado) ? `<div class="kpi"><div class="l">Tu móvil</div><div class="v">N° ${v.movil_numero} · ${esc(v.patente || '')}</div><div>${esc(v.movil || '')}</div><div>Conductor: ${esc(v.conductor || '')}</div></div>` : ''}
+      ${['pendiente', 'ofrecido', 'confirmado'].includes(v.estado) && !v.llego ? '<div id="avisoNot"></div>' : ''}
+      ${v.movil_numero && !['pendiente', 'ofrecido'].includes(v.estado) ? `<div class="kpi" style="display:flex;gap:12px;align-items:center">${v.conductor_foto ? `<img src="${esc(v.conductor_foto)}" alt="Foto del conductor ${esc(v.conductor || '')}" style="width:58px;height:58px;border-radius:50%;object-fit:cover;flex:none;border:3px solid #e7eef7">` : ''}<div style="min-width:0"><div class="l">Tu móvil</div><div class="v">N° ${v.movil_numero} · ${esc(v.patente || '')}</div><div>${esc(v.movil || '')}</div><div>Conductor: ${esc(v.conductor || '')}</div></div></div>` : ''}
       ${v.pin && ['confirmado', 'ofrecido', 'pendiente'].includes(v.estado) ? `<div class="kpi"><div class="l" style="text-align:center">PIN de seguridad — dáselo al conductor al subir</div><div class="pin">${v.pin}</div></div>` : ''}
-      <div>${esc(v.origen)}${v.destino ? `<br>${esc(v.destino)}` : ''}</div>${v.monto ? `<div>${v.estado === 'finalizado' ? 'Total' : 'Estimado'}: <b>${pesos(v.monto)}</b></div>` : ''}
-      ${['pendiente', 'ofrecido', 'confirmado', 'reserva'].includes(v.estado) ? '<button class="btn rojo grande" id="canc">Cancelar viaje</button>' : ''}
+      <div>${esc(v.origen)}${v.destino ? `<br>${esc(v.destino)}` : ''}</div>${v.monto ? `<div>${v.estado === 'finalizado' ? 'Total' : 'Estimado'}: <b>${pesos(v.monto)}</b>${+v.cargo_plataforma > 0 ? `<br><small style="color:var(--suave,#627280)">Incluye ${pesos(v.cargo_plataforma)} de cargos de la plataforma</small>` : ''}</div>` : ''}
+      ${['pendiente', 'ofrecido', 'confirmado', 'reserva'].includes(v.estado) ? (v.cancelar_seg == null || v.cancelar_seg > 0 ? '<button class="btn rojo grande" id="canc">Cancelar viaje</button><div class="canc-t" id="cancT"></div>' : `<div class="canc-fin">⏱ Ya pasó el tiempo para cancelar desde la app${v.cancelar_min ? ` (${String(v.cancelar_min).replace('.', ',')} min)` : ''}. Si necesitás cancelar, comunicate con la central.</div>`) : ''}
+      ${v.estado === 'finalizado' ? '<div id="mpPago"></div>' : ''}
       ${v.estado === 'finalizado' ? `<p style="text-align:center">¿Cómo fue tu viaje?</p><div class="estrellas">${[1, 2, 3, 4, 5].map(n => `<span data-s="${n}">${n <= (v.calificacion || 0) ? '★' : '☆'}</span>`).join('')}</div>` : ''}
       ${['finalizado', 'anulado'].includes(v.estado) ? '<button class="btn grande" id="nuevo">Pedir otro viaje</button>' : ''}
+      ${v.estado === 'finalizado' && S.cli ? '<button class="btn sec" id="verComp">🧾 Ver comprobante</button>' : ''}
       <button class="btn sec" id="comp">Compartir seguimiento</button>
       ${S.cli ? '<button class="btn sec" id="misv">Ver mis viajes</button>' : ''}`;
-    if ($('#canc')) $('#canc').onclick = async () => { if (confirm('¿Cancelar el viaje?')) { try { await api(`/api/pub/viaje/${id}/cancelar?k=${k}`, {}); } catch (e) { toast(e.message, 'error'); } ult = null; pintar(); } };
+    // Tiempo para cancelar: cuenta regresiva; al terminar el botón desaparece
+    clearInterval(st.cancTimer);
+    if ($('#canc') && v.cancelar_seg != null) {
+      const hasta = Date.now() + v.cancelar_seg * 1000;
+      const tic = () => { const r = Math.max(0, Math.round((hasta - Date.now()) / 1000)), b = $('#canc'), t = $('#cancT'); if (!b) return clearInterval(st.cancTimer);
+        if (r <= 0) { clearInterval(st.cancTimer); b.outerHTML = `<div class="canc-fin">⏱ Ya pasó el tiempo para cancelar desde la app. Si necesitás cancelar, comunicate con la central.</div>`; if (t) t.remove(); return; }
+        if (t) t.textContent = `Podés cancelar durante ${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')} más`; };
+      tic(); st.cancTimer = setInterval(tic, 1000);
+    }
+    if ($('#canc')) $('#canc').onclick = async () => { if (await confirmarCancelacion(`/api/pub/viaje/${id}/cancelar-previa?k=${k}`, false)) { try { await api(`/api/pub/viaje/${id}/cancelar?k=${k}`, {}); } catch (e) { toast(e.message, 'error'); } ult = null; pintar(); } };
+    if ($('#mpPago')) cobroMp(id, k, v);
     if ($('#nuevo')) $('#nuevo').onclick = () => { LS.del('rodar_viaje'); history.replaceState({}, '', location.pathname); ir('pedir'); };
+    if ($('#verComp')) $('#verComp').onclick = async () => { try { const vs = await api('/api/cli/viajes?limite=60'); comprobante(vs.find(x => x.id === +id)); } catch (e) { toast(e.message, 'error'); } };
     if ($('#misv')) $('#misv').onclick = () => { history.replaceState({}, '', location.pathname); ir('viajes'); };
     $$('[data-s]').forEach(s => s.onclick = async () => { await api(`/api/pub/viaje/${id}/calificar?k=${k}`, { estrellas: +s.dataset.s }); toast('¡Gracias!', 'ok'); ult = null; pintar(); });
     $('#comp').onclick = () => { const u = location.href.split('#')[0] + `#/seguimiento/${id}?k=${k}`; navigator.share ? navigator.share({ title: 'Mi viaje', url: u }).catch(() => { }) : (navigator.clipboard.writeText(u), toast('Enlace copiado')); };
     limpiarMapa();
-    if (v.origen_lat) st.mo = L.marker([v.origen_lat, v.origen_lng], { icon: icono('#2f9e57') }).addTo(mapa);
+    if (v.origen_lat) st.mo = L.marker([v.origen_lat, v.origen_lng], { icon: icono('#278449') }).addTo(mapa);
     if (v.destino_lat) st.md = L.marker([v.destino_lat, v.destino_lng], { icon: icono('#2a86e8') }).addTo(mapa);
-    if (v.lat && ['confirmado', 'en_curso'].includes(v.estado)) { st.mm = L.marker([v.lat, v.lng], { icon: L.divIcon({ className: '', html: `<div class="marcador-movil" style="background:#5fa52f">${v.movil_numero}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(mapa); mapa.fitBounds(L.latLngBounds([[v.lat, v.lng], [v.origen_lat, v.origen_lng]]).pad(.4)); }
+    if (v.lat && ['confirmado', 'en_curso'].includes(v.estado)) { st.mm = L.marker([v.lat, v.lng], { icon: L.divIcon({ className: '', html: `<div class="marcador-movil" style="background:#4a8125">${v.movil_numero}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(mapa); mapa.fitBounds(L.latLngBounds([[v.lat, v.lng], [v.origen_lat, v.origen_lng]]).pad(.4)); }
     else if (v.origen_lat) mapa.setView([v.origen_lat, v.origen_lng], 15);
     if (['finalizado', 'anulado'].includes(v.estado)) LS.del('rodar_viaje');
   }
   const primero = await api(`/api/pub/viaje/${id}?k=${k}`).catch(() => null);
-  if (primero && primero.canal) { S.socket = RODAR.tiempoReal(primero.canal, ['']); S.socket.on('viaje', v => { ult = null; pintar(v); }); }
+  if (primero && primero.canal) { S.socket = RODAR.tiempoReal(primero.canal, ['']); S.socket.on('viaje', v => { ult = null; pintar(v); }); S.socket.on('pago', d => { if (d && d.estado === 'pagado') { st.mp = { ...(st.mp || {}), [id]: { ...(st.mp && st.mp[id] || {}), pagado: true, habilitado: true } }; toast('✔ Pago con Mercado Pago recibido', 'ok'); if ($('#mpPago')) cobroMp(id, k, null, true); } }); }
   S.timers.push(setInterval(() => pintar(), 5000));
   pintar(primero);
+}
+// ---------- Pago del viaje con Mercado Pago (va directo a la cuenta del conductor si la vinculó) ----------
+async function cobroMp(id, k, v, soloPintar) {
+  st.mp = st.mp || {};
+  const pago = new URLSearchParams(location.hash.split('?')[1] || '').get('pago');
+  if (pago) { // volvimos de Mercado Pago
+    history.replaceState({}, '', `#/seguimiento/${id}?k=${k}`);
+    st.mpRet = pago; st.mpRetT = Date.now();
+    if (pago === 'ok') toast('✔ Pago aprobado. ¡Gracias!', 'ok'); else if (pago === 'error') toast('El pago no se completó', 'error');
+  }
+  if (!soloPintar && (!st.mp[id] || (!st.mp[id].pagado && Date.now() - (st.mp[id].t || 0) > 8000))) {
+    try { st.mp[id] = { ...(await api(`/api/pub/viaje/${id}/mp?k=${k}`)), t: Date.now() }; } catch { st.mp[id] = { habilitado: false, t: Date.now() }; }
+  }
+  const e = st.mp[id] || {}, c = $('#mpPago'); if (!c) return;
+  if (e.pagado) { c.innerHTML = `<div class="mp-card ok"><b>✔ Pago recibido</b><span>Pagaste ${pesos(e.monto || (v && v.monto))} con Mercado Pago. ¡Gracias por viajar con nosotros!</span></div>`; return; }
+  if (st.mpRet && Date.now() - (st.mpRetT || 0) > 120000) st.mpRet = null; // si no se confirmó en 2 min, vuelve a ofrecer el pago
+  if (st.mpRet === 'ok' || st.mpRet === 'pendiente') { c.innerHTML = `<div class="mp-card"><b>⏳ Procesando el pago…</b><span>Mercado Pago está acreditando el pago. En unos segundos se confirma acá.</span></div>`; setTimeout(() => { if (st.mp[id]) st.mp[id].t = 0; cobroMp(id, k, v); }, 5000); return; }
+  if (!e.habilitado) { c.innerHTML = ''; return; }
+  if (st.mpEfectivo === id) { c.innerHTML = `<div class="mp-card"><b>💵 Pago en efectivo</b><span>Abonale ${pesos(e.monto)} a tu conductor.</span><a href="#" id="mpOtra">Prefiero pagar con Mercado Pago</a></div>`; $('#mpOtra').onclick = ev => { ev.preventDefault(); st.mpEfectivo = null; cobroMp(id, k, v, true); }; return; }
+  c.innerHTML = `<div class="mp-card"><div class="mp-tot"><span>Total del viaje</span><b>${pesos(e.monto)}</b></div>${v && +v.cargo_plataforma > 0 ? `<small style="display:block;margin:-4px 0 8px;color:#627280">Incluye ${pesos(v.cargo_plataforma)} de cargos de la plataforma</small>` : ''}
+    <button class="btn grande mp-btn" id="mpPagar">Pagar con Mercado Pago</button>
+    <button class="btn sec" id="mpEfec">Le pago en efectivo al conductor</button>
+    ${e.directo ? '<small>El pago va directo a la cuenta de tu conductor.</small>' : '<small>Pago seguro con Mercado Pago.</small>'}</div>`;
+  $('#mpEfec').onclick = () => { st.mpEfectivo = id; cobroMp(id, k, v, true); };
+  $('#mpPagar').onclick = async () => {
+    const b = $('#mpPagar'); b.disabled = true; b.textContent = 'Abriendo Mercado Pago…';
+    try {
+      const C = window.RODAR_CONFIG || {}, r = await fetch(C.supabaseUrl.replace(/\/$/, '') + '/functions/v1/mp-pagar', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: C.supabaseKey, Authorization: 'Bearer ' + C.supabaseKey }, body: JSON.stringify({ id, k }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'No se pudo abrir Mercado Pago');
+      if (d.ya_pagado) { st.mp[id] = { ...e, pagado: true }; return cobroMp(id, k, v, true); }
+      location.href = d.init_point;
+    } catch (er) { b.disabled = false; b.textContent = 'Pagar con Mercado Pago'; toast(er.message, 'error'); }
+  };
 }
 function limpiarMapa() { ['mo', 'md', 'mm'].forEach(k => { st[k] && st[k].remove(); st[k] = null; }); }
 
@@ -489,8 +840,8 @@ async function misViajes() {
         ${v.monto != null && v.estado !== 'anulado' ? `<span class="monto">${v.monto_final ? '' : '~'}${pesos(v.monto)}</span>` : ''}</div>
       <div class="acc">${['pendiente', 'ofrecido', 'confirmado', 'en_curso'].includes(v.estado) ? `<button class="btn chico" data-ver="${v.id}">Ver en el mapa</button>` : ''}
         ${v.estado === 'reserva' ? `<button class="btn rojo chico" data-canc="${v.id}">Cancelar reserva</button>` : ''}
-        ${v.estado === 'finalizado' ? `<button class="btn sec chico" data-comp="${v.id}">Comprobante</button>${v.calificacion ? '' : `<button class="btn sec chico" data-ver="${v.id}">★ Calificar</button>`}` : ''}
-        ${['finalizado', 'anulado'].includes(v.estado) ? `<button class="btn sec chico" data-rep="${v.id}">↻ Repetir</button>` : ''}</div></div>`; };
+        ${v.estado === 'finalizado' ? `<button class="btn sec chico" data-comp="${v.id}">🧾 Comprobante</button>${v.calificacion ? '' : `<button class="btn sec chico" data-ver="${v.id}">★ Calificar</button>`}` : ''}
+        ${['finalizado', 'anulado'].includes(v.estado) ? `<button class="btn sec chico" data-rep="${v.id}">↻ Repetir</button><button class="btn sec chico" data-recl="${v.id}" title="Reclamo u objeto olvidado">⚠️ Ayuda</button>` : ''}</div></div>`; };
   $('#cont').innerHTML = `<h2 class="tit">Mis viajes</h2>
     ${act.length ? `<div class="paso">Ahora</div>${act.map(tarjeta).join('')}` : ''}
     <div class="paso">Reservas</div>${res.length ? res.map(tarjeta).join('') : '<div class="vacio" style="padding:6px">No tenés reservas. Podés programar un viaje desde <a href="#" id="irPedir">Pedir</a> → Programar.</div>'}
@@ -498,14 +849,20 @@ async function misViajes() {
   const de = id => vs.find(v => v.id === +id);
   if ($('#irPedir')) $('#irPedir').onclick = e => { e.preventDefault(); ir('pedir'); };
   $$('[data-ver]').forEach(b => b.onclick = () => { const v = de(b.dataset.ver); ir('seguir', v.id, v.k); });
-  $$('[data-canc]').forEach(b => b.onclick = async () => { if (!confirm('¿Cancelar esta reserva?')) return; try { await api(`/api/cli/viajes/${b.dataset.canc}/cancelar`, {}); toast('Reserva cancelada', 'ok'); misViajes(); } catch (e) { toast(e.message, 'error'); } });
+  $$('[data-canc]').forEach(b => b.onclick = async () => { if (!(await confirmarCancelacion(`/api/cli/viajes/${b.dataset.canc}/cancelar-previa`, true))) return; try { const x = await api(`/api/cli/viajes/${b.dataset.canc}/cancelar`, {}); toast(x && x.cargo > 0 ? `Reserva cancelada. Se sumarán ${pesos(x.cargo)} a tu próximo viaje.` : 'Reserva cancelada', 'ok'); misViajes(); } catch (e) { toast(e.message, 'error'); } });
   $$('[data-rep]').forEach(b => b.onclick = () => { const v = de(b.dataset.rep); ir('pedir', { o: { lat: v.origen_lat, lng: v.origen_lng, dir: v.origen_dir, ref: v.origen_ref }, d: v.destino_lat ? { lat: v.destino_lat, lng: v.destino_lng, dir: v.destino_dir } : null }); });
   $$('[data-comp]').forEach(b => b.onclick = () => comprobante(de(b.dataset.comp)));
+  $$('[data-recl]').forEach(b => b.onclick = () => abrirAyuda('reclamo', { viaje: +b.dataset.recl }));
 }
+// Comprobante del viaje (vista compartida con la app del conductor, en js/comprobante/). El pasajero no ve el N° de viaje.
 function comprobante(v) {
-  const w = window.open('', '_blank'); if (!w) return toast('Permití las ventanas emergentes para ver el comprobante', 'error');
+  if (!v) return;
   const c = st.cfg || {};
-  abrirTicket(w, { ...v, movil_patente: v.patente }, { empresa: { nombre: c.nombre, localidad: c.localidad, telefono: c.telefono }, cliente: [S.cli.nombre, S.cli.telefono].filter(Boolean).join(' · ') });
+  abrirComprobante({ ...v, movil_patente: v.movil_patente || v.patente }, {
+    numero: false, cliente: S.cli ? [S.cli.nombre, S.cli.telefono].filter(Boolean).join(' · ') : '',
+    empresa: { nombre: c.nombre, localidad: c.localidad, telefono: c.telefono },
+    pagoMp: v.k && v.medio_pago === 'mercadopago' ? api(`/api/pub/viaje/${v.id}/mp?k=${v.k}`).then(e => !!(e && e.pagado)).catch(() => false) : null,
+  });
 }
 
 // ---------- LUGARES ----------
@@ -542,28 +899,128 @@ function miPerfil() {
   mostrarMapa(false);
   const c = S.cli;
   const ini = String(c.nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase();
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const desde = (() => { const m = String(c.desde || '').match(/(\d{4})-(\d\d)/); return m ? MESES[+m[2] - 1] + ' de ' + m[1] : ''; })();
+  const medios = st.cfg.medios || [], ICOM = { efectivo: '💵', mercadopago: '💳', transferencia: '🏦', tarjeta: '💳', cuenta_corriente: '🏢', vale: '🎟' };
+  const fila = (id, ic, t, sub, extra = '') => `<button class="pf-f" id="${id}"><span class="ic">${ic}</span><span class="tx"><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span>${extra}<span class="fl">›</span></button>`;
   $('#cont').innerHTML = `<h2 class="tit">Mi perfil</h2>
-    <div class="perf-h"><span class="av">${esc(ini)}</span><div style="min-width:0"><b>${esc(c.nombre || '')}</b><small>Cuenta creada ${esc(fecha(c.desde))}</small></div></div>
-    <div class="caja-blanca"><div class="campo"><label>Nombre</label><input id="pN" value="${esc(c.nombre || '')}" autocomplete="name"></div>
-    <div class="campo"><label>Email</label><input id="pE" type="email" value="${esc(c.email || '')}" autocomplete="email"></div>
-    <div class="campo"><label>Celular</label><input id="pT" type="tel" inputmode="tel" value="${esc(c.telefono || '')}" autocomplete="tel"></div>
-    <div class="campo"><label>Forma de pago preferida</label><select id="pM">${st.cfg.medios.map(x => `<option value="${x.codigo}" ${x.codigo === c.medio_pago_pref ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>
-    <details><summary style="cursor:pointer;color:var(--pri-2);font-weight:600;padding:6px 0">Cambiar contraseña</summary>
-      <div class="campo"><label>Contraseña actual</label><input id="pA" type="password" autocomplete="current-password"></div>
-      <div class="campo"><label>Nueva contraseña (mínimo 6)</label><input id="pP" type="password" autocomplete="new-password"></div></details>
-    <button class="btn grande verde" id="pG" style="width:100%;margin-top:8px">Guardar cambios</button></div>
-    <div id="inst3" style="display:flex;justify-content:center"></div>
-    <button class="btn grande" id="pS" style="background:#fff;color:#c0392b;border:2px solid #f3c7c7">🚪 Cerrar sesión</button>
-    <button class="linkito" id="pEmp" style="text-align:center">Ingreso para empresas (cuenta corriente)</button>`;
+    <div class="pf-cab"><button type="button" class="av av-foto" id="pfFoto" aria-label="${c.foto ? 'Cambiar' : 'Agregar'} foto de perfil">${FOTO_PERFIL.avatarHtml(c.foto, c.nombre)}<span class="cam" aria-hidden="true">📷</span></button><div class="dt"><b>${esc(c.nombre || '')}</b><small>${esc(c.email || '')}</small><small>${esc(c.telefono || '')}</small>${c.foto ? '<button type="button" class="pf-qf" id="pfFotoQ">Quitar foto</button>' : '<button type="button" class="pf-qf" id="pfFotoA">📷 Agregar foto</button>'}</div>
+      <button class="pf-ed" id="pfEd" aria-label="Editar mis datos">✎</button></div>
+    ${desde ? `<div class="pf-desde">🎉 Pasajero desde ${desde}</div>` : ''}
+    <div class="pf-stats" id="pfSt"><div><b>—</b><small>Viajes</small></div><div><b>—</b><small>Km recorridos</small></div><div><b>—</b><small>Este mes</small></div></div>
+
+    <div class="pf-g"><h3>Mis datos</h3>
+      <form class="pf-datos" id="pfF" autocomplete="on">
+        <div class="campo"><label>Nombre y apellido</label><input name="nombre" value="${esc(c.nombre || '')}" autocomplete="name" required></div>
+        <div class="campo"><label>Email</label><input name="email" type="email" value="${esc(c.email || '')}" autocomplete="email" required></div>
+        <div class="campo"><label>Celular</label><input name="telefono" type="tel" inputmode="tel" value="${esc(c.telefono || '')}" autocomplete="tel" required><small class="ay">El conductor y la central te llaman a este número.</small></div>
+        <div class="pf-acc" id="pfAcc"><button type="button" class="btn sec" id="pfCan">Cancelar</button><button class="btn verde">Guardar cambios</button></div>
+      </form></div>
+
+    <div class="pf-g"><h3>Forma de pago preferida</h3>
+      <div class="pf-medios">${medios.map(x => `<button data-mp="${esc(x.codigo)}" class="${x.codigo === c.medio_pago_pref ? 'on' : ''}"><span>${ICOM[x.codigo] || '💲'}</span>${esc(x.nombre)}</button>`).join('')}</div>
+      <small class="ay">Se elige sola cuando pedís un viaje. La podés cambiar en cada pedido.</small></div>
+
+    <div class="pf-g"><h3>Mi cuenta</h3><div class="pf-lista">
+      ${fila('pfLug', '📍', 'Lugares guardados', (c.lugares || []).length ? (c.lugares || []).map(l => esc(l.etiqueta)).slice(0, 3).join(' · ') : 'Guardá Casa, Trabajo…')}
+      ${fila('pfVia', '🧾', 'Mis viajes y comprobantes', 'Historial, comprobantes en PDF y reclamos')}
+      ${fila('pfPw', '🔑', 'Cambiar contraseña', 'Por seguridad, usá una que no uses en otro lado')}
+      <div class="pf-pw" id="pfPwBox" hidden><div class="campo"><label>Contraseña actual</label><input id="pA" type="password" autocomplete="current-password"></div>
+        <div class="campo"><label>Nueva contraseña (mínimo 6)</label><input id="pP" type="password" autocomplete="new-password"></div>
+        <button class="btn verde" id="pfPwOk" style="width:100%">Cambiar contraseña</button></div>
+      ${NATIVO || 'Notification' in window ? fila('pfNot', '🔔', 'Notificaciones', 'Avisos cuando el remís está en camino y llega', `<span class="pf-est" id="pfNotE"></span>`) : ''}
+    </div></div>
+
+    <div class="pf-g"><h3>Ayuda y más</h3><div class="pf-lista">
+      ${fila('pfAy', '🙋', 'Centro de ayuda', 'Reclamos, objetos olvidados y consultas')}
+      ${fila('pfMan', '📘', 'Manual de uso', 'Cómo usar la app paso a paso')}
+      ${fila('pfComp', '📣', 'Recomendar la app', 'Compartila con familia y amigos')}
+      ${fila('pfTyc', '📜', 'Términos y condiciones', '<span id="pfTycE">Condiciones de uso de la app</span>')}
+      ${fila('pfPriv', '🔒', 'Privacidad y cancelaciones', 'Qué datos usamos, cookies, cancelaciones y reembolsos')}
+      ${fila('pfArr', '↩️', 'Botón de arrepentimiento', 'Revocar un servicio que todavía no se prestó')}
+      ${fila('pfBajaS', '⛔', 'Botón de baja de servicio', 'Dar de baja tu cuenta')}
+    </div><div id="inst3" style="display:flex;justify-content:center;margin-top:10px"></div></div>
+
+    <button class="pf-salir" id="pS">🚪 Cerrar sesión</button>
+    <button class="linkito pf-baja" id="pfBaja">Quiero eliminar mi cuenta</button>
+    <div class="pf-ver">Remises TOQUE! · App de pasajeros</div>`;
   botonInstalar($('#inst3'), 'btn sec');
-  $('#pEmp').onclick = ingresoEmpresas;
-  $('#pS').onclick = () => { if (confirm('¿Cerrar sesión en este celular?')) salirCuenta(); };
-  $('#pG').onclick = async () => {
-    const b = { nombre: $('#pN').value, email: $('#pE').value, telefono: $('#pT').value, medio_pago_pref: $('#pM').value };
-    if ($('#pP').value) { b.password_actual = $('#pA').value; b.password_nueva = $('#pP').value; }
-    try { S.cli = await api('/api/cli/perfil', b, 'PUT'); toast('Datos guardados', 'ok'); pintarNav(); miPerfil(); } catch (e) { toast(e.message, 'error'); }
+  // datos: los botones Guardar/Cancelar aparecen al modificar algo
+  const f = $('#pfF'), acc = $('#pfAcc'), orig = new FormData(f);
+  const sucio = () => [...new FormData(f)].some(([k, v]) => v !== orig.get(k));
+  $$('input', f).forEach(i => i.oninput = () => acc.classList.toggle('ver', sucio()));
+  // Foto de perfil: cámara o galería, se guarda achicada
+  const cambiarFoto = async () => { try { const f = await FOTO_PERFIL.elegirFotoPerfil(); if (!f) return; S.cli = await api('/api/cli/foto', { foto: f }); toast('Foto de perfil actualizada', 'ok'); miPerfil(); } catch (er) { toast(er.message, 'error'); } };
+  $('#pfFoto').onclick = cambiarFoto; if ($('#pfFotoA')) $('#pfFotoA').onclick = cambiarFoto;
+  if ($('#pfFotoQ')) $('#pfFotoQ').onclick = async () => { if (!confirm('¿Quitar tu foto de perfil?')) return; try { S.cli = await api('/api/cli/foto', { foto: '' }); miPerfil(); } catch (er) { toast(er.message, 'error'); } };
+  $('#pfEd').onclick = () => { const i = $('[name=nombre]', f); i.focus(); i.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+  $('#pfCan').onclick = () => miPerfil();
+  f.onsubmit = async e => {
+    e.preventDefault(); const d = Object.fromEntries(new FormData(f)); const bt = $('.btn.verde', f); bt.disabled = true;
+    try { S.cli = await api('/api/cli/perfil', { ...d, medio_pago_pref: S.cli.medio_pago_pref }, 'PUT'); LS.set('rodar_nombre', S.cli.nombre); LS.set('rodar_tel', S.cli.telefono); toast('Datos guardados', 'ok'); pintarNav(); miPerfil(); }
+    catch (er) { toast(er.message, 'error'); bt.disabled = false; }
   };
+  $$('[data-mp]').forEach(b => b.onclick = async () => {
+    if (b.classList.contains('on')) return;
+    const prev = $('.pf-medios .on'); $$('[data-mp]').forEach(x => x.classList.toggle('on', x === b));
+    try { S.cli = await api('/api/cli/perfil', { nombre: S.cli.nombre, email: S.cli.email, telefono: S.cli.telefono, medio_pago_pref: b.dataset.mp }, 'PUT'); toast('Forma de pago guardada', 'ok'); }
+    catch (er) { toast(er.message, 'error'); $$('[data-mp]').forEach(x => x.classList.toggle('on', x === prev)); }
+  });
+  $('#pfLug').onclick = () => ir('lugares');
+  $('#pfVia').onclick = () => ir('viajes');
+  $('#pfPw').onclick = () => { const bx = $('#pfPwBox'); bx.hidden = !bx.hidden; if (!bx.hidden) $('#pA').focus(); };
+  $('#pfPwOk').onclick = async () => {
+    if ($('#pP').value.length < 6) return toast('La nueva contraseña tiene que tener al menos 6 caracteres', 'error');
+    try { S.cli = await api('/api/cli/perfil', { nombre: S.cli.nombre, email: S.cli.email, telefono: S.cli.telefono, medio_pago_pref: S.cli.medio_pago_pref, password_actual: $('#pA').value, password_nueva: $('#pP').value }, 'PUT'); toast('Contraseña cambiada', 'ok'); $('#pfPwBox').hidden = true; $('#pA').value = $('#pP').value = ''; }
+    catch (er) { toast(er.message, 'error'); }
+  };
+  const pintarNot = async () => { const e = $('#pfNotE'); if (!e) return; const p = await estadoAvisos(); e.textContent = p === 'granted' ? 'Activadas' : p === 'denied' ? 'Bloqueadas' : 'Activar'; e.className = 'pf-est ' + (p === 'granted' ? 'ok' : p === 'denied' ? 'mal' : ''); };
+  if ($('#pfNot')) { pintarNot(); $('#pfNot').onclick = async () => { const p = await pedirAvisos(); pintarNot(); if (p === 'granted') toast('Notificaciones activadas', 'ok'); else if (p === 'denied') toast(NATIVO ? 'Las notificaciones están bloqueadas: habilitalas en Ajustes → Apps → Remises TOQUE! → Notificaciones' : 'Las notificaciones están bloqueadas: habilitalas tocando el candado 🔒 junto a la dirección de la página', 'error'); }; }
+  $('#pfAy').onclick = () => abrirAyuda();
+  $('#pfMan').onclick = () => abrirAyuda('manual');
+  $('#pfTyc').onclick = () => { location.href = 'terminos.html?para=pasajeros&de=' + encodeURIComponent('pasajero.html#/perfil'); };
+  $('#pfComp').onclick = () => { const url = location.origin + location.pathname.replace(/[^/]*$/, '') + 'pasajero.html', txt = `Pedí tu remís con ${st.cfg.nombre || 'Remises TOQUE!'} desde el celular: seguís el móvil en el mapa y ves el precio antes de viajar. 👉 ${url}`;
+    typeof compartirTexto === 'function' ? compartirTexto('Recomendar la app', txt) : (navigator.clipboard.writeText(txt), toast('Enlace copiado', 'ok')); };
+  $('#pS').onclick = () => { if (confirm('¿Cerrar sesión en este celular?')) salirCuenta(); };
+  $('#pfPriv').onclick = () => { location.href = 'terminos.html?para=privacidad&de=' + encodeURIComponent('pasajero.html#/perfil'); };
+  $('#pfBaja').onclick = eliminarCuenta;
+  $('#pfArr').onclick = () => { location.href = 'baja.html?tipo=arrepentimiento&de=' + encodeURIComponent('pasajero.html#/perfil'); };
+  $('#pfBajaS').onclick = () => { location.href = 'baja.html?tipo=baja&de=' + encodeURIComponent('pasajero.html#/perfil'); };
+  // estadísticas y aceptación de términos
+  api('/api/cli/viajes?limite=300').then(vs => { const fin = vs.filter(v => v.estado === 'finalizado'), mes = new Date().toISOString().slice(0, 7);
+    const km = fin.reduce((a, v) => a + (+v.km || 0), 0), enMes = fin.filter(v => String(v.creado || '').slice(0, 7) === mes).length, box = $('#pfSt'); if (!box) return;
+    box.innerHTML = `<div><b>${fin.length}</b><small>Viaje${fin.length === 1 ? '' : 's'}</small></div><div><b>${km >= 100 ? Math.round(km) : km.toFixed(1).replace('.', ',')}</b><small>Km recorridos</small></div><div><b>${enMes}</b><small>Este mes</small></div>`; }).catch(() => { });
+  api('/api/cli/tyc').then(t => { const e = $('#pfTycE'); if (e && t && t.aceptado && t.aceptado_at) e.textContent = '✔ Aceptados el ' + String(t.aceptado_at).slice(0, 10).split('-').reverse().join('/'); }).catch(() => { });
 }
+// Términos y condiciones: si el pasajero no aceptó la versión vigente, se le pide antes de seguir
+async function revisarTyc() {
+  let e; try { e = await api('/api/cli/tyc'); } catch { return true; } // si falla la consulta no se bloquea la app
+  if (!e || e.aceptado) return true;
+  const ok = await pedirTyc({ para: 'pasajeros', primera: e.primera, aceptar: () => api('/api/cli/tyc', { aceptar: true }) });
+  if (!ok) { await salirCuenta(); toast('Para usar tu cuenta tenés que aceptar los Términos y condiciones'); return false; }
+  return true;
+}
+// Eliminar la cuenta (Ley 25.326): borra los datos de contacto, lugares y notificaciones; los viajes quedan sin nombre ni teléfono
+async function eliminarCuenta() {
+  eliminarCuenta.pw = '';
+  const ok = await cpDialogo({ icono: '🗑️', titulo: 'Eliminar mi cuenta', peligro: true, si: 'Eliminar mi cuenta', no: 'Volver',
+    html: `<p style="margin:0 0 8px">Se borran tu nombre, email, celular, contraseña, lugares guardados y notificaciones. No se puede deshacer.</p>
+      <p class="nota" style="margin:0 0 10px">Tus viajes quedan registrados sin datos que te identifiquen, porque la ley nos pide guardar los registros de cobros. Si tenés un viaje o una reserva activa, cancelala antes.</p>
+      <label for="delPw" style="font-weight:700;font-size:14px">Escribí tu contraseña para confirmar</label>
+      <input id="delPw" type="password" autocomplete="current-password" style="width:100%;margin-top:6px;padding:12px;border:2px solid #cfdadc;border-radius:12px;font-size:16px">` ,
+  });
+  // cpDialogo cierra el cuadro al elegir: la contraseña se guarda mientras se escribe
+  if (!ok) return;
+  const pw = eliminarCuenta.pw;
+  if (!pw) return toast('Escribí tu contraseña para confirmar', 'error');
+  try {
+    const r = await api('/api/cli/eliminar', { password: pw });
+    await cpDialogo({ icono: '✅', titulo: 'Cuenta eliminada', no: false, si: 'Entendido', html: `<p style="margin:0">Tu cuenta y tus datos personales fueron eliminados.</p><p style="margin:10px 0 0">Código de identificación: <b>${esc(r.codigo)}</b></p>` });
+    ['rodar_cli_token', 'rodar_nombre', 'rodar_tel', 'rodar_tuvo_cuenta', 'rodar_viaje', 'rodar_lugares', 'rodar_medio'].forEach(LS.del);
+    S.tk = null; S.cli = null; ir('pedir');
+  } catch (e) { toast(e.message, 'error'); }
+}
+document.addEventListener('input', e => { if (e.target && e.target.id === 'delPw') eliminarCuenta.pw = e.target.value; });
 async function salirCuenta(silencio) {
   if (!silencio) { try { await RODAR.llamar('/api/cli/logout', 'POST', {}, S.tk); } catch { } }
   LS.del('rodar_cli_token'); S.tk = null; S.cli = null;
@@ -576,33 +1033,50 @@ function pantallaIngreso(modo) {
   modo = modo === 'crear' || (!modo && !LS.get('rodar_tuvo_cuenta')) ? 'crear' : 'entrar';
   const crear = modo === 'crear';
   $('#cont').innerHTML = marcoLogin(`<div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:220px;max-width:80%"></a></div>
-    <div class="rol-etiqueta">🙂 Pasajeros</div>
-    <div class="tipo-ing"><button type="button" class="on"><span>🙂</span>Soy pasajero</button><button type="button" class="emp" id="tEmp"><span>🏢</span>Soy empresa</button></div>
-    <div class="aviso-cuenta">Para pedir un viaje necesitás una cuenta. ${crear ? 'Es gratis y tarda un minuto.' : '¿Todavía no tenés? Tocá <b>Crear cuenta</b>.'}</div>
+    <p class="sub-l">${crear ? 'Creá tu cuenta gratis para pedir tu remís. Tarda un minuto.' : 'Ingresá con el email y la contraseña de tu cuenta.'}</p>
     <div class="seg"><button type="button" data-m="entrar" class="${crear ? '' : 'on'}">Ingresar</button><button type="button" data-m="crear" class="${crear ? 'on' : ''}">Crear cuenta</button></div>
     <form id="fi" style="display:flex;flex-direction:column;gap:10px" autocomplete="on">
       ${crear ? `<div class="campo"><label>Nombre y apellido</label><input name="nombre" autocomplete="name" value="${esc(LS.get('rodar_nombre') || '')}" required></div>` : ''}
       <div class="campo"><label>Email</label><input name="email" type="email" autocomplete="email" autocapitalize="none" required></div>
       ${crear ? `<div class="campo"><label>Celular</label><input name="telefono" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3454 123456" value="${esc(LS.get('rodar_tel') || '')}" required></div>` : ''}
       <div class="campo"><label>Contraseña${crear ? ' (mínimo 6 caracteres)' : ''}</label><div class="pass"><input name="password" id="pw" type="password" autocomplete="${crear ? 'new-password' : 'current-password'}" required><button type="button" id="ver">👁</button></div></div>
+      ${crear ? `<label class="acepto"><input type="checkbox" name="mayor_edad" required> <span>Soy mayor de 18 años</span></label>
+      <label class="acepto"><input type="checkbox" name="acepto" required> <span>Leí y acepto los <a href="terminos.html?para=pasajeros&de=pasajero.html" target="_blank" rel="opener">Términos y condiciones</a> y la <a href="terminos.html?para=privacidad&de=pasajero.html" target="_blank" rel="opener">Política de privacidad</a></span></label>` : ''}
       <div class="err" id="err"></div>
-      <button class="btn grande verde" id="ok">${crear ? 'Crear mi cuenta' : 'Ingresar'}</button>
+      <button class="btn grande" id="ok">${crear ? 'Crear mi cuenta' : 'Ingresar'}</button>
     </form>
-    ${crear ? '<p style="font-size:13px;color:var(--suave);text-align:center">Con tu cuenta ves tus viajes, guardás Casa y Trabajo, y reservás para más tarde.</p>' : '<button class="linkito" id="olv" style="text-align:center">Olvidé mi contraseña</button>'}
-    <div class="otros-ingresos"><span>¿Necesitás ayuda?</span><a href="manual-pasajero.html">📘 Cómo se usa</a><a href="#" id="ayuda2">💬 Ayuda</a></div>
-    ${ES_ANDROID && !NATIVO ? `<div class="otros-ingresos"><span>App Android</span><a href="${APK_PAS}" class="dest">📲 Descargar la app</a></div>` : ''}
-    <div class="otros-ingresos"><span>Otros ingresos</span><a href="conductor.html">🚕 Soy conductor</a><a href="index.html">🏠 Página principal</a></div>`);
+    ${crear ? '' : '<button class="linkito" id="olv" style="text-align:center">Olvidé mi contraseña</button>'}
+    <div class="tips">${crear ? 'Con tu cuenta ves tus viajes, guardás <b>Casa</b> y <b>Trabajo</b> y reservás para más tarde.' : '<b>¿Primera vez?</b> Para pedir un viaje necesitás una cuenta: tocá <b>Crear cuenta</b>, es gratis.'}</div>
+    <div class="ing-pie">
+      <div class="ing-tit">¿Necesitás ayuda?</div>
+      <div class="ing-grid">
+        <a href="manual-pasajero.html"><span class="ic">📘</span><b>Manual</b><small>Cómo se usa</small></a>
+        <a href="#" id="ayuda2"><span class="ic">💬</span><b>Ayuda</b><small>Escribinos</small></a>
+        <a href="terminos.html?para=pasajeros&de=pasajero.html%23%2Fingresar"><span class="ic">📜</span><b>Términos</b><small>Uso de la app</small></a>
+        <a href="terminos.html?para=privacidad&de=pasajero.html%23%2Fingresar"><span class="ic">🔒</span><b>Privacidad</b><small>Tus datos</small></a>
+      </div>
+      ${ES_ANDROID && !NATIVO ? `<a class="ing-apk" href="${APK_PAS}"><span class="ic">📲</span><span><b>Descargar la app para Android</b><small>Avisos con el celular bloqueado</small></span><span class="fl">›</span></a>` : ''}
+      <div class="ing-tit">Defensa del consumidor</div>
+      <div class="ing-legal">
+        <a href="baja.html?tipo=arrepentimiento&de=pasajero.html">↩️ Botón de arrepentimiento</a>
+        <a href="baja.html?tipo=baja&de=pasajero.html">⛔ Botón de baja de servicio</a>
+      </div>
+    </div>
+    `);
   $('#ayuda2').onclick = e => { e.preventDefault(); $('#ayuda').click(); };
   $$('.seg [data-m]').forEach(b => b.onclick = () => pantallaIngreso(b.dataset.m));
   $('#ver').onclick = () => { const p = $('#pw'); p.type = p.type === 'password' ? 'text' : 'password'; };
-  $('#tEmp').onclick = ingresoEmpresas;
   if ($('#olv')) $('#olv').onclick = olvide;
   $('#fi').onsubmit = async e => {
     e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)); const er = $('#err'); er.style.display = 'none';
     $('#ok').disabled = true;
     try {
+      if (crear && !d.mayor_edad) throw new Error('Para crear una cuenta tenés que ser mayor de 18 años. Si sos menor, pedile a un adulto que pida el viaje por vos.');
+      if (crear && !d.acepto) throw new Error('Para crear la cuenta tenés que aceptar los Términos y condiciones y la Política de privacidad');
+      if (crear) { d.acepto_tyc = true; d.mayor_edad = true; d.captcha = await RODAR.captcha('registro'); }
       const r = await RODAR.llamar(crear ? '/api/cli/registro' : '/api/cli/login', 'POST', d, null);
       S.tk = r.token; S.cli = r.cliente; LS.set('rodar_cli_token', r.token); LS.set('rodar_tuvo_cuenta', '1'); LS.set('rodar_nombre', r.cliente.nombre); LS.set('rodar_tel', r.cliente.telefono);
+      if (!crear && !(await revisarTyc())) return;
       toast(crear ? '¡Listo! Ya tenés tu cuenta.' : '¡Hola, ' + (r.cliente.nombre || '').split(' ')[0] + '!', 'ok');
       ir('pedir');
     } catch (x) { er.textContent = x.message; er.style.display = 'block'; $('#ok').disabled = false; }
@@ -619,24 +1093,171 @@ function waAyuda() {
   const n = String(st.cfg.whatsapp || '').replace(/\D/g, ''); if (!n) return '';
   return `<p><a class="btn verde" style="display:inline-flex;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/${n}${st.cfg.whatsapp_texto ? '?text=' + encodeURIComponent(st.cfg.whatsapp_texto) : ''}">Escribinos por WhatsApp</a></p>`;
 }
-$('#ayuda').onclick = () => {
-  const d = document.createElement('div'); d.className = 'modal-fondo';
-  const tel = S.cli ? S.cli.telefono : (LS.get('rodar_tel') || '');
-  d.innerHTML = `<div class="modal"><div class="mh"><h3>Ayuda</h3><button>×</button></div><div class="mb"><p>¿Tuviste un problema? Escribinos y te respondemos.${st.cfg.telefono ? ` También podés llamar al <a href="tel:${esc(st.cfg.telefono)}">${esc(st.cfg.telefono)}</a>.` : ''}</p>${waAyuda()}<p><a href="ayuda.html?tipo=Reclamo">⚠️ Hacer un reclamo</a> · <a href="manual-pasajero.html" target="_blank">📘 Manual de uso</a></p><div class="campo"><label>Celular</label><input id="at" value="${esc(tel)}"></div><div class="campo"><label>Mensaje</label><textarea id="am"></textarea></div></div><div class="mf"><button class="btn">Enviar</button></div></div>`;
-  document.body.append(d); $('.mh button', d).onclick = () => d.remove();
-  $('.mf button', d).onclick = async () => { try { await api('/api/pub/soporte', { telefono: $('#at', d).value, alias: S.cli ? S.cli.nombre : LS.get('rodar_nombre'), texto: $('#am', d).value }); toast('Mensaje enviado', 'ok'); d.remove(); } catch (e) { toast(e.message, 'error'); } };
+// ---------- Centro de ayuda dentro de la app: reclamos, objetos olvidados, mensajes, manual y preguntas frecuentes ----------
+const AY_TIPOS = {
+  reclamo: { t: 'Hacer un reclamo', ico: '⚠️', etq: 'Reclamo', pre: '¿Qué pasó?', motivos: ['💲 Me cobraron mal', '🧑‍✈️ Trato del conductor', '⏱ Demoró mucho', '🚗 Estado del vehículo', '🗺 Recorrido más largo', '📱 Problema con la app', '💳 Pago con Mercado Pago', '✏️ Otro'], ph: 'Contanos qué pasó con el mayor detalle posible: horario, lo que te dijeron, cuánto pagaste…', viaje: true },
+  objeto: { t: 'Objeto olvidado', ico: '🎒', etq: 'Objeto olvidado', pre: '¿Qué olvidaste?', motivos: ['📱 Celular', '👛 Billetera', '🔑 Llaves', '🎒 Bolso o mochila', '🧥 Ropa', '📄 Documentos', '✏️ Otro'], ph: 'Describí el objeto (color, marca, dónde lo dejaste en el auto).', viaje: true },
+  mensaje: { t: 'Escribir a la central', ico: '💬', etq: 'Consulta', pre: '¿Sobre qué es?', motivos: ['❓ Consulta', '💡 Sugerencia', '⭐ Felicitación', '🏢 Cuenta para empresas', '🗑 Borrar mi cuenta'], ph: 'Escribí tu mensaje.', viaje: false },
 };
+const AY_FAQ = [
+  ['¿Cómo sé cuánto voy a pagar?', 'Antes de pedir ves un precio estimado. El importe final se calcula con el recorrido real y la espera, y lo ves en el comprobante al terminar.'],
+  ['¿Hasta cuándo puedo cancelar?', 'Desde la pantalla de seguimiento podés cancelar durante el tiempo que se muestra. Después tenés que comunicarte con la central.'],
+  ['¿Para qué sirve el PIN?', 'Es tu código de seguridad: dáselo al conductor al subir. Así confirmás que te subiste al móvil correcto.'],
+  ['No encuentra mi dirección', 'Escribí la calle y la altura, o tocá el mapa para marcar el lugar exacto. Agregá referencias (portón, color de la casa).'],
+  ['¿Puedo pedir para otra persona?', 'Sí. Marcá el origen donde está esa persona y escribí su nombre en referencias. Después compartile el seguimiento.'],
+  ['¿Dónde veo mis comprobantes?', 'En Mis viajes, tocá 🧾 Comprobante en el viaje. Lo podés compartir en PDF o imprimir.'],
+  ['¿Cómo pago con Mercado Pago?', 'Al terminar el viaje aparece el botón Pagar con Mercado Pago. Se abre Mercado Pago y, al volver, la app confirma el pago.'],
+];
+const AY_MANUAL = [['cuenta', '👤', 'Crear tu cuenta'], ['ingresar', '🔑', 'Ingresar y recuperar la clave'], ['instalar', '📲', 'Instalar la app'], ['pedir', '🚕', 'Pedir un remís'], ['reservar', '📅', 'Reservar para más tarde'],
+  ['seguir', '🗺', 'Seguir tu viaje'], ['terminar', '🏁', 'Al terminar el viaje'], ['viajes', '🧾', 'Mis viajes y comprobantes'], ['lugares', '📍', 'Lugares guardados'], ['perfil', '🙂', 'Tu perfil']];
+function cerrarAyuda() { const o = $('.ay-ov'); if (!o) return false; o._atras ? o._atras() : o.remove(); return true; }
+$('#ayuda').onclick = () => abrirAyuda();
+function abrirAyuda(vista, arg) {
+  $$('.ay-ov').forEach(x => x.remove());
+  const ov = document.createElement('div'); ov.className = 'ay-ov'; document.body.append(ov);
+  const pila = [];
+  const ir2 = (v, a, atras) => { if (!atras && ov._v) pila.push([ov._v, ov._a]); ov._v = v; ov._a = a; pintar(); };
+  ov._atras = () => { const p = pila.pop(); if (!p) return ov.remove(); ov._v = p[0]; ov._a = p[1]; pintar(); };
+  // sin sesión iniciada no se muestran ni se completan datos de nadie (puede ser un celular compartido)
+  const tel = () => S.cli ? S.cli.telefono : '';
+  const nom = () => S.cli ? S.cli.nombre : '';
+  function marco(titulo, cuerpo) {
+    ov.innerHTML = `<div class="ay-bar"><button class="ay-vol" aria-label="Volver">‹</button><b>${titulo}</b><button class="ay-x" aria-label="Cerrar">×</button></div><div class="ay-sc">${cuerpo}</div>`;
+    $('.ay-vol', ov).onclick = ov._atras; $('.ay-x', ov).onclick = () => ov.remove();
+    $('.ay-sc', ov).scrollTop = 0;
+  }
+  function pintar() {
+    const v = ov._v;
+    if (v === 'inicio') {
+      const wa = String(st.cfg.whatsapp || '').replace(/\D/g, '');
+      marco('Ayuda', `<div class="ay-hola"><div class="e">🙋</div><h2>¿En qué te ayudamos${nom() ? ', ' + esc(nom().split(' ')[0]) : ''}?</h2><p>Elegí una opción y te respondemos lo antes posible.</p></div>
+        ${S.cli ? '' : `<div class="ay-inv"><span>🙂</span><div><b>No iniciaste sesión</b><small>Podés escribirnos igual. Para reclamar por un viaje de tu cuenta, ingresá primero.</small></div><button class="btn chico" id="ayIng">Ingresar</button></div>`}
+        <button class="ay-sos" id="aySos"><span>🚨</span><div><b>Emergencia (SOS)</b><small>Avisá a la central con tu ubicación · Llamar al 911</small></div><i>›</i></button>
+        <div class="ay-grid">
+          <button class="ay-op roja" data-v="reclamo"><span>⚠️</span><b>Hacer un reclamo</b><small>Cobro, conductor, demora, vehículo…</small></button>
+          <button class="ay-op nar" data-v="objeto"><span>🎒</span><b>Objeto olvidado</b><small>Dejaste algo en el remís</small></button>
+          <button class="ay-op azul" data-v="mensaje"><span>💬</span><b>Escribir a la central</b><small>Consultas y sugerencias</small></button>
+          <button class="ay-op verde" data-v="manual"><span>📘</span><b>Manual de uso</b><small>Cómo usar la app paso a paso</small></button>
+        </div>
+        ${wa || st.cfg.telefono ? `<div class="ay-cont">${wa ? `<a class="ay-wa" target="_blank" rel="noopener" href="https://wa.me/${wa}${st.cfg.whatsapp_texto ? '?text=' + encodeURIComponent(st.cfg.whatsapp_texto) : ''}">💬 WhatsApp</a>` : ''}${st.cfg.telefono ? `<a class="ay-tel" href="tel:${esc(st.cfg.telefono)}">📞 Llamar a la central</a>` : ''}</div>` : ''}
+        <h3 class="ay-sub">Preguntas frecuentes</h3>
+        <div class="ay-faq">${AY_FAQ.map(([q, r]) => `<details><summary>${esc(q)}</summary><p>${esc(r)}</p></details>`).join('')}</div>
+        <p class="ay-pie"><a href="terminos.html?para=pasajeros&de=pasajero.html%23ayuda">📜 Términos y condiciones</a></p>`);
+      $$('[data-v]', ov).forEach(b => b.onclick = () => ir2(b.dataset.v));
+      if ($('#aySos', ov)) $('#aySos', ov).onclick = () => { let c = {}; try { const a = JSON.parse(LS.get('rodar_viaje') || 'null'); if (a && a.id) c = { id: a.id, k: a.k }; } catch { } abrirSOS(c); };
+      if ($('#ayIng', ov)) $('#ayIng', ov).onclick = () => { ov.remove(); ir('ingresar'); };
+    }
+    else if (AY_TIPOS[v]) formulario_(v);
+    else if (v === 'manual') {
+      marco('Manual de uso', `<div class="ay-hola chico"><div class="e">📘</div><h2>Manual del pasajero</h2><p>Elegí un tema para ver el paso a paso.</p></div>
+        <div class="ay-lista">${AY_MANUAL.map(([id, ic, t], i) => `<button data-m="${id}"><span class="n">${i + 1}</span><span class="ic">${ic}</span><b>${t}</b><span class="fl">›</span></button>`).join('')}</div>
+        <button class="btn sec" id="ayTodo" style="width:100%;margin-top:12px">Ver el manual completo</button>`);
+      $$('[data-m]', ov).forEach(b => b.onclick = () => ir2('leer', b.dataset.m));
+      $('#ayTodo', ov).onclick = () => ir2('leer', '');
+    }
+    else if (v === 'leer') {
+      const t = (AY_MANUAL.find(x => x[0] === ov._a) || [, , 'Manual completo'])[2];
+      marco(esc(t), `<iframe class="ay-man" title="Manual" src="manual-pasajero.html${ov._a ? '#' + ov._a : ''}"></iframe>`);
+      $('.ay-sc', ov).classList.add('sin');
+      const fr = $('.ay-man', ov); fr.onload = () => { try { const d = fr.contentDocument; const css = d.createElement('style'); css.textContent = 'header,.indice,nav.toc,footer{display:none!important}body{padding-top:0!important}'; d.head.append(css); if (ov._a) { const el = d.getElementById(ov._a); el && el.scrollIntoView(); } } catch { } };
+    }
+    else if (v === 'ok') {
+      marco('Listo', `<div class="ay-ok"><div class="e">✅</div><h2>¡Mensaje enviado!</h2><p>${esc(ov._a.etq === 'Reclamo' ? 'Recibimos tu reclamo.' : ov._a.etq === 'Objeto olvidado' ? 'Ya avisamos a la central para buscar tu objeto.' : 'Recibimos tu mensaje.')} Te vamos a contactar al <b>${esc(ov._a.tel)}</b>.</p>
+        <button class="btn grande" id="ayFin">Volver a la app</button></div>`);
+      $('#ayFin', ov).onclick = () => ov.remove(); pila.length = 0;
+    }
+  }
+  async function formulario_(v) {
+    const T = AY_TIPOS[v]; let motivo = '', viaje = null, viajes = [];
+    marco(T.t, `<div class="ay-hola chico"><div class="e">${T.ico}</div><h2>${T.t}</h2></div>
+      <form class="ay-f" novalidate>
+        <label class="ay-l">${T.pre}</label><div class="ay-chips" id="ayM">${T.motivos.map(m => `<button type="button" data-m="${esc(m)}">${esc(m)}</button>`).join('')}</div>
+        ${T.viaje ? `<label class="ay-l">¿En qué viaje?</label><div id="ayV" class="ay-viajes">${S.cli ? '<div class="ay-cargando">Cargando tus viajes…</div>' : ''}</div>
+          ${S.cli ? '' : '<div class="dos-c"><div class="campo"><label>Fecha y hora aproximada</label><input name="fecha" type="datetime-local"></div><div class="campo"><label>Móvil o patente (si lo sabés)</label><input name="movil" placeholder="Ej: 12 o AB123CD"></div></div>'}` : ''}
+        <label class="ay-l">Contanos más</label><textarea name="texto" rows="5" placeholder="${esc(T.ph)}"></textarea>
+        <div class="dos-c"><div class="campo"><label>Tu nombre</label><input name="nombre" value="${esc(nom())}" autocomplete="name"></div><div class="campo"><label>Celular para contactarte</label><input name="telefono" type="tel" inputmode="tel" value="${esc(tel())}" autocomplete="tel"></div></div>
+        <div class="err" id="ayErr"></div>
+        <button class="btn grande" id="ayEnv">Enviar ${v === 'reclamo' ? 'reclamo' : 'a la central'}</button>
+        <p class="ay-nota">${v === 'reclamo' ? 'Revisamos cada reclamo con el registro del viaje y te respondemos a la brevedad.' : 'Te respondemos por WhatsApp o llamada al celular que indiques.'}</p>
+      </form>`);
+    const f = $('.ay-f', ov), err = m => { const e = $('#ayErr', ov); e.textContent = m || ''; e.style.display = m ? 'block' : 'none'; };
+    $$('#ayM button', ov).forEach(b => b.onclick = () => { motivo = b.dataset.m; $$('#ayM button', ov).forEach(x => x.classList.toggle('on', x === b)); });
+    if (arg && arg.motivo) { const b = $$('#ayM button', ov).find(x => x.dataset.m.includes(arg.motivo)); b && b.click(); }
+    if (T.viaje && S.cli) {
+      try { viajes = (await api('/api/cli/viajes?limite=15')).filter(x => ['finalizado', 'anulado'].includes(x.estado)).slice(0, 8); } catch { viajes = []; }
+      const box = $('#ayV', ov); if (!box) return;
+      box.innerHTML = viajes.map(x => `<button type="button" data-id="${x.id}"><b>${esc(fecha(x.creado))}</b><span>${esc(x.origen_dir || '')}${x.destino_dir ? ' → ' + esc(x.destino_dir) : ''}</span><small>${x.movil_numero ? 'Móvil ' + x.movil_numero + ' · ' : ''}${x.monto != null ? pesos(x.monto) : ''}</small></button>`).join('')
+        + `<button type="button" data-id="0"><b>Otro viaje</b><span>No está en la lista</span></button>`;
+      $$('button', box).forEach(b => b.onclick = () => { viaje = +b.dataset.id ? viajes.find(x => x.id === +b.dataset.id) : { otro: true }; $$('button', box).forEach(x => x.classList.toggle('on', x === b)); });
+      if (arg && arg.viaje) { const b = $(`button[data-id="${arg.viaje}"]`, box); b && b.click(); }
+    }
+    f.onsubmit = async e => {
+      e.preventDefault(); err('');
+      const d = Object.fromEntries([...new FormData(f)].map(([k, x]) => [k, String(x).trim()])), t = d.telefono.replace(/\D/g, '');
+      if (!motivo) return err('Elegí una opción: ' + T.pre.toLowerCase());
+      if (T.viaje && S.cli && !viaje) return err('Elegí el viaje (o "Otro viaje")');
+      if (d.texto.length < 5) return err('Contanos un poco más en el mensaje');
+      if (!d.nombre) return err('Escribí tu nombre');
+      if (t.length < 8) return err('Escribí un celular válido, con código de área');
+      const etq = v === 'mensaje' ? motivo.replace(/^\S+\s/, '') : T.etq;
+      const extra = [];
+      if (v !== 'mensaje') extra.push('Motivo: ' + motivo.replace(/^\S+\s/, ''));
+      if (viaje && !viaje.otro) extra.push(`Viaje #${viaje.id} · ${String(viaje.creado || '').replace('T', ' ').slice(0, 16)} · ${viaje.origen_dir || ''}${viaje.destino_dir ? ' → ' + viaje.destino_dir : ''}${viaje.movil_numero ? ' · Móvil ' + viaje.movil_numero : ''}${viaje.monto != null ? ' · $' + viaje.monto : ''}`);
+      if (d.fecha) extra.push('Fecha del viaje: ' + d.fecha.replace('T', ' ')); if (d.movil) extra.push('Móvil/patente: ' + d.movil);
+      if (S.cli && S.cli.email) extra.push('Email: ' + S.cli.email);
+      const texto = `[${etq}] ${d.texto}${extra.length ? '\n\n' + extra.join('\n') : ''}`;
+      const b = $('#ayEnv', ov); b.disabled = true; b.textContent = 'Enviando…';
+      try { await api('/api/pub/soporte', { telefono: t, alias: d.nombre, texto }); ir2('ok', { etq, tel: d.telefono }); }
+      catch (x) { err(x.message); b.disabled = false; b.textContent = 'Enviar'; }
+    };
+  }
+  ir2(vista || 'inicio', arg);
+}
 function ingresoEmpresas() { ir('empresas'); }
 // Ingreso para empresas con cuenta corriente: pantalla aparte del ingreso de pasajeros (también se llega con pasajero.html#/empresas).
+// "Mi empresa": saldo de la cuenta corriente, viajes del mes (en curso, reservas e historial) y tickets
+const APK_EMP = 'https://remisestoque.com/apk/toque-empresa.apk';
+async function empViajesCC(corp, mes = 0) {
+  const box = $('#empCC'); if (!box) return;
+  const call = u => RODAR.llamar(u, 'GET', null, corp.token);
+  const d0 = new Date(), a = new Date(d0.getFullYear(), d0.getMonth() + mes, 1, 12), z = mes ? new Date(d0.getFullYear(), d0.getMonth() + mes + 1, 0, 12) : d0;
+  const iso = x => new Date(x - x.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  let vs, cta;
+  try { [vs, cta] = await Promise.all([call('/api/emp/viajes?' + new URLSearchParams({ desde: iso(a), hasta: iso(z) })), call('/api/emp/cuenta').catch(() => null)]); }
+  catch (e) { if (S.vista === 'empresas' && $('#empCC')) box.innerHTML = `<div class="vacio">${esc(e.message)}${/sesi/i.test(e.message) ? ' Volvé a ingresar como empresa.' : ''}</div>`; return; }
+  if (S.vista !== 'empresas' || !$('#empCC')) return;
+  const filas = vs.filas || [], act = filas.filter(v => !['finalizado', 'anulado'].includes(v.estado)), hist = filas.filter(v => ['finalizado', 'anulado'].includes(v.estado));
+  const t = vs.totales || {}, nomMes = a.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  const tarjeta = v => { const [et, cl] = ETQ[v.estado] || [v.estado, ''];
+    return `<div class="tarjeta"><div class="fila1"><b>${esc(fecha(v.estado === 'reserva' ? v.programado : v.creado))}</b><span class="tag ${cl}">${et}</span></div>
+      <div><b>${esc(v.pasajero || '')}</b>${v.centro_costo ? ` <small style="color:var(--suave)">· 🏷 ${esc(v.centro_costo)}</small>` : ''}</div>
+      <div class="vjr"><div><i class="o"></i>${esc(v.origen_dir || '')}</div>${v.destino_dir ? `<div><i class="d"></i>${esc(v.destino_dir)}</div>` : ''}</div>
+      <div class="fila1"><small style="color:var(--suave)">${v.movil_numero && !['pendiente', 'ofrecido', 'reserva'].includes(v.estado) ? `Móvil ${v.movil_numero}${v.movil ? ' · ' + esc(v.movil) : ''}` : ''}${v.km ? ` · ${km1(v.km)} km` : ''}${v.estado === 'anulado' && v.motivo_anulacion ? esc(v.motivo_anulacion) : ''}</small>
+        ${v.monto != null && v.estado !== 'anulado' ? `<span class="monto">${v.monto_final ? '' : '~'}${pesos(v.monto)}</span>` : ''}</div>
+      ${v.estado === 'finalizado' ? `<div class="acc"><button class="btn sec chico" data-etk="${v.id}">🧾 Ticket</button></div>` : ''}</div>`; };
+  box.innerHTML = `${cta ? `<div class="caja-empresa" style="margin-top:12px;text-align:center"><small style="color:var(--suave)">Saldo de la cuenta corriente</small>
+      <div style="font-size:28px;font-weight:900;color:${+cta.saldo > 0 ? '#b42323' : '#1b6e31'}">${pesos(Math.abs(+cta.saldo || 0))}</div><small>${+cta.saldo > 0 ? 'a pagar a la central' : +cta.saldo < 0 ? 'a favor de la empresa' : 'al día'}</small></div>` : ''}
+    <h3 style="margin:16px 0 4px;color:#1f4e79">🧾 Viajes a cuenta corriente</h3>
+    <div class="fila" style="gap:6px;margin-bottom:6px"><button class="btn ${mes ? 'sec' : ''} chico" data-emes="0">Este mes</button><button class="btn ${mes ? '' : 'sec'} chico" data-emes="-1">Mes anterior</button></div>
+    <div class="sub" style="margin:0 0 8px">${esc(nomMes.charAt(0).toUpperCase() + nomMes.slice(1))}: <b>${t.viajes || 0}</b> viaje(s) realizados · <b>${pesos(t.monto || 0)}</b></div>
+    ${act.length ? `<div class="paso">En curso y reservas</div>${act.map(tarjeta).join('')}` : ''}
+    <div class="paso">Realizados</div>${hist.length ? hist.map(tarjeta).join('') : '<div class="vacio" style="padding:6px">No hay viajes realizados en este período.</div>'}`;
+  $$('[data-emes]', box).forEach(b => b.onclick = () => { box.innerHTML = '<div class="vacio">Cargando…</div>'; empViajesCC(corp, +b.dataset.emes); });
+  $$('[data-etk]', box).forEach(b => b.onclick = () => { const v = filas.find(x => x.id === +b.dataset.etk); if (!v) return; const c = st.cfg || {};
+    abrirComprobante({ ...v, movil_patente: v.patente }, { numero: false, cliente: v.pasajero || '', empresa: { nombre: c.nombre, localidad: c.localidad, telefono: c.telefono } }); });
+}
 function pantallaEmpresas() {
   mostrarMapa(false);
   const corp = JSON.parse(LS.get('rodar_corp') || 'null');
+  if (!corp) { location.href = 'empresa.html'; return; } // el ingreso de empresas está en su propia app
   const enLogin = !S.cli && !corp, envol = h => enLogin ? marcoLogin(h) : h;
   $('#cont').innerHTML = envol(`<div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:${enLogin ? 220 : 190}px;max-width:80%"></a></div>
     ${enLogin ? '<div class="rol-etiqueta rol-empresa">🏢 Empresas</div>' : ''}
-    ${S.cli || corp ? '' : `<div class="tipo-ing"><button type="button" id="tPas"><span>🙂</span>Soy pasajero</button><button type="button" class="emp on"><span>🏢</span>Soy empresa</button></div>`}
+    <a class="btn grande" href="empresa.html" style="background:#1f4e79;margin-bottom:10px;text-decoration:none;display:flex;justify-content:center">🏢 Abrir la app para empresas</a>
+    ${!NATIVO && !/iphone|ipad|ipod/i.test(navigator.userAgent) ? `<a class="btn sec" href="${APK_EMP}" style="margin-bottom:10px;text-decoration:none;display:flex;justify-content:center;gap:6px;white-space:normal;text-align:center">📲 Descargar app de empresas · Android</a>` : ''}
+    <p style="margin:-4px 0 12px;text-align:center;font-size:13px;color:var(--suave)">Nueva: pedí y reservá para tu equipo, seguí los viajes en el mapa y descargá el resumen mensual.</p>
     <div class="caja-empresa">${enLogin ? '' : '<h3 style="margin:0 0 6px;color:#1f4e79">🏢 Ingreso para empresas</h3>'}
-      ${corp ? `<div class="nota">Ingresaste como <b>${esc(corp.nombre)}</b>. Los viajes que pidas quedan a cuenta de la empresa.</div><button class="btn grande" id="pedirEmp" style="background:#1f4e79">Pedir un viaje para la empresa</button><button class="btn sec" id="xc2" style="margin-top:8px;width:100%">Salir de la cuenta de empresa</button>` : `
+      ${corp ? `<div class="nota">Ingresaste como <b>${esc(corp.nombre)}</b>. Los viajes que pidas quedan a cuenta de la empresa.</div><button class="btn grande" id="pedirEmp" style="background:#1f4e79">Pedir un viaje para la empresa</button><button class="btn sec" id="xc2" style="margin-top:8px;width:100%">Salir de la cuenta de empresa</button></div><div id="empCC"><div class="vacio">Cargando viajes de cuenta corriente…</div>` : `
       <ul class="ventajas"><li>Los viajes quedan <b>a cuenta corriente</b>: no se pagan en el momento.</li><li>Pedís para cualquier persona de tu equipo indicando su nombre y celular.</li><li>La central te envía el resumen de viajes para facturar.</li></ul>
       <p style="margin:0 0 10px;font-size:14px">Ingresá con el <b>usuario de empresa</b> que te dio la central (no es tu cuenta de pasajero).</p>
       <form id="fe" style="display:flex;flex-direction:column;gap:10px" autocomplete="on">
@@ -646,18 +1267,20 @@ function pantallaEmpresas() {
         <button class="btn grande" id="oke" style="background:#1f4e79">Ingresar como empresa</button>
       </form>
       <p style="font-size:13px;color:var(--suave);margin:12px 0 0;text-align:center">¿Tu empresa todavía no tiene cuenta corriente? ${st.cfg.telefono ? `Llamá al <a href="tel:${esc(st.cfg.telefono)}">${esc(st.cfg.telefono)}</a> o tocá <b>Ayuda</b>` : 'Tocá <b>Ayuda</b> arriba'} y pedila.</p>`}</div>
-    <div class="otros-ingresos"><span>Otros ingresos</span><a href="conductor.html">🚕 Soy conductor</a><a href="#" id="ayuda3">💬 Ayuda</a><a href="index.html">🏠 Página principal</a></div>`);
+    <div class="otros-ingresos"><span>¿Necesitás ayuda?</span><a href="#" id="ayuda3">💬 Ayuda</a></div>`);
   $('#ayuda3').onclick = e => { e.preventDefault(); $('#ayuda').click(); };
-  if ($('#tPas')) $('#tPas').onclick = () => ir('ingresar');
   if ($('#pedirEmp')) $('#pedirEmp').onclick = () => ir('pedir');
-  if ($('#xc2')) $('#xc2').onclick = e => { e.preventDefault(); LS.del('rodar_corp'); ir(S.cli ? 'pedir' : 'empresas'); };
+  if (corp) empViajesCC(corp);
+  if ($('#xc2')) $('#xc2').onclick = e => { e.preventDefault(); LS.del('rodar_corp'); history.replaceState({}, '', location.pathname); ir(S.cli ? 'pedir' : 'ingresar'); };
   if (!$('#fe')) return;
   $('#vere').onclick = () => { const x = $('#pwe'); x.type = x.type === 'password' ? 'text' : 'password'; };
   $('#fe').onsubmit = async e => {
     e.preventDefault(); const er = $('#erre'); er.textContent = ''; const btn = $('#oke'); btn.disabled = true;
     try {
-      const r = await RODAR.llamar('/api/login', 'POST', { usuario: e.target.usuario.value.trim(), password: e.target.password.value, tipo: 'web' }, null);
+      const r = await RODAR.llamar('/api/login', 'POST', { usuario: e.target.usuario.value.trim(), password: e.target.password.value, tipo: 'empresa' }, null);
       if (!r.usuario.roles.includes('corporativo')) throw new Error('Este usuario no es de una empresa. Si sos pasajero, ingresá desde Ingresar.');
+      try { await RODAR.llamar('/api/emp/inicio', 'GET', null, r.token); }
+      catch (y) { RODAR.llamar('/api/logout', 'POST', {}, r.token).catch(() => { }); throw new Error(/no es de una empresa|ninguna empresa/i.test(y.message) ? 'Tu usuario no está asociado a ninguna empresa. Pedile a la central que te cree un usuario de empresa.' : y.message); }
       LS.set('rodar_corp', JSON.stringify({ token: r.token, nombre: r.usuario.nombre + ' ' + r.usuario.apellido }));
       ir('pedir');
     } catch (x) { er.textContent = x.message; btn.disabled = false; }

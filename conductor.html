@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#215181">
 <link rel="manifest" href="manifest-conductor.json">
 <link rel="apple-touch-icon" href="img/conductor-180.png">
@@ -12,19 +12,26 @@
 <meta name="apple-mobile-web-app-title" content="TOQUE! Conductor">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Remises TOQUE! · Conductor</title>
-<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=2026101631">
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="css/app.css?v=2026102560">
 <style>
   body{background:#0e1a2b;color:#fff;overscroll-behavior:none}
   .app{position:fixed;inset:0;display:flex;flex-direction:column;max-width:560px;margin:0 auto;background:#13233a}
   .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0f1f35;padding-top:max(10px,env(safe-area-inset-top))}
   .hd .num{background:var(--pri);border-radius:10px;padding:6px 10px;font-weight:800;font-size:18px}
   .hd .est{padding:5px 10px;border-radius:14px;font-weight:700;font-size:13px}
-  .hd .salir-b{margin-left:auto;background:#d64545;border:0;color:#fff;border-radius:10px;height:40px;padding:0 12px;font-weight:700;font-size:14px}
+  .hd .salir-b{margin-left:auto;background:#d43d3d;border:0;color:#fff;border-radius:10px;height:40px;padding:0 12px;font-weight:700;font-size:14px}
   .hd .menu-b{margin-left:0;background:var(--acento);border:0;color:#fff;border-radius:10px;width:44px;height:40px;font-size:22px}
+  #saldo{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  @media (max-width:380px){.hd{gap:6px;padding-left:8px;padding-right:8px}.hd .num{font-size:16px;padding:5px 8px}.hd .est{font-size:11.5px;padding:4px 7px;white-space:nowrap}.hd .salir-b{height:36px;padding:0 9px;font-size:13px}.hd .menu-b{width:38px;height:36px;font-size:20px}}
   #mapa{flex:1;min-height:200px}
-  .panel{background:#fff;color:var(--texto);border-radius:18px 18px 0 0;padding:14px;padding-bottom:max(14px,env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.3)}
+  .panel{background:#fff;color:var(--texto);border-radius:18px 18px 0 0;padding:14px;padding-bottom:max(38px,calc(env(safe-area-inset-bottom) + 26px));box-shadow:0 -6px 20px rgba(0,0,0,.3)}
   .panel h2{margin:0 0 6px;font-size:18px}
+  .pin-caja{margin:10px 0 8px;background:#eef4fb;border:2px solid #b9cfe8;border-radius:16px;padding:10px 12px}
+  .pin-caja label{display:block;font-weight:800;font-size:16px;color:#0f2740;margin-bottom:6px}.pin-caja label small{display:block;font-weight:500;font-size:13px;color:#4b5d6b}
+  .pin-in{width:100%;box-sizing:border-box;text-align:center;font:800 34px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.5em;padding:10px 0 10px .5em;border:2px solid #215181;border-radius:12px;background:#fff;color:#0f2740;min-height:62px}
+  .pin-in::placeholder{color:#a9b8c6;letter-spacing:.3em}.pin-in.ok{border-color:#278449;background:#f0faf3}
+  .pin-ay{display:block;min-height:18px;margin-top:4px;font-size:13.5px;font-weight:700;color:#215181;text-align:center}
   .grande{width:100%;justify-content:center;font-size:16px;min-height:52px;border-radius:12px;margin-top:8px}
   .dos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .tarifador{text-align:center;background:#0f1f35;color:#fff;border-radius:14px;padding:12px;margin:8px 0}
@@ -36,10 +43,10 @@
   .lateral .mh{position:relative;background:linear-gradient(135deg,#183c62,#215181);color:#fff;padding:18px 16px 16px;padding-top:calc(18px + env(safe-area-inset-top))}
   .lateral .mx{position:absolute;right:10px;top:calc(8px + env(safe-area-inset-top));background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:50%;width:36px;height:36px;font-size:24px;line-height:1;cursor:pointer}
   .lateral .mp{display:flex;gap:12px;align-items:center;padding-right:40px}.lateral .mp b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lateral .mp small{opacity:.8}
-  .lateral .av{flex:none;width:50px;height:50px;border-radius:50%;background:#7ac143;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.35)}
+  .lateral .av{flex:none;width:50px;height:50px;border-radius:50%;background:#64a135;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.35)}
   .lateral .mest{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}.lateral .mest .pill{color:#fff;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800}.lateral .ms{font-size:14px}
   .lateral .mfs{display:block;width:calc(100% - 24px);margin:12px;min-height:50px;border:2px solid #4b5556;background:#fff;color:#4b5556;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer}
-  .lateral .mfs.lib{border-color:#2f9e57;background:#2f9e57;color:#fff}
+  .lateral .mfs.lib{border-color:#278449;background:#278449;color:#fff}
   .lateral .mg{font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#7a8a96;padding:12px 18px 6px}
   .lateral a{display:flex;align-items:center;gap:12px;margin:0 12px 6px;padding:10px 12px;background:#fff;border-radius:14px;color:var(--texto);text-decoration:none;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06)}
   .lateral a:active{background:#eef3f8}
@@ -56,16 +63,21 @@
   .hoja .hv{font-size:34px;padding:0 3px 5px 0}
   .hoja .hb{flex:1;overflow:auto;padding:12px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
   .hoja .hc{background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .mpc{display:flex;flex-direction:column;gap:10px}.mpc p{margin:0;color:#3b4a59;font-size:14.5px}.mpc small{color:#627280;font-size:12.5px;text-align:center}
+  .mpc-e{align-self:flex-start;background:#eef2f6;color:#475a6c;border-radius:999px;padding:3px 12px;font-weight:700;font-size:13px}.mpc-e.ok{background:#e3f6e8;color:#1b6e31}
+  .mpc-b{background:#fff7e8;border:1px solid #f2d39b;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;font-size:13.5px;color:#7a5200}
+  .mpc-b.ok{background:#e9f7ec;border-color:#a9dcb4;color:#1b6e31}.mpc-b.mal{background:#fdecec;border-color:#f3b9b9;color:#9b1c1c}
+  .btn.mpc-btn{background:#009ee3;border-color:#009ee3;color:#fff}
   .hoja.h-viajes .hc{background:none;box-shadow:none;padding:0}
   .vjres{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#0f1f35;color:#fff;border-radius:16px;padding:14px 10px;text-align:center}
   .vjres small{display:block;font-size:11.5px;opacity:.75;text-transform:uppercase;letter-spacing:.5px}.vjres b{display:block;font-size:20px;margin-top:2px;color:#a6e06b}
   .vjsub{text-align:center;color:#7a8a96;font-size:13px;margin:8px 0 2px}
-  .vjg{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#7a8a96;padding:14px 4px 6px}.vjg span{color:#2f9e57;letter-spacing:0;font-size:13px}
+  .vjg{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#7a8a96;padding:14px 4px 6px}.vjg span{color:#278449;letter-spacing:0;font-size:13px}
   .vj{background:#fff;border-radius:16px;padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.08)}.vj.an{opacity:.7}
   .vj1{display:flex;align-items:center;gap:8px}.vjh{font-weight:800;font-size:17px}.vjn{color:#7a8a96;font-size:13px}
   .vje{color:#fff;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:800}.vjm{margin-left:auto;font-size:19px;color:#183c62}
   .vjr{margin:10px 0 8px;padding-left:4px;font-size:15px;line-height:1.35}.vjr div{display:flex;gap:10px;align-items:flex-start;position:relative;padding:3px 0}
-  .vjr i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}.vjr i.o{background:#2f9e57}.vjr i.d{background:#d64545}
+  .vjr i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}.vjr i.o{background:#278449}.vjr i.d{background:#d43d3d}
   .vjr div:first-child::after{content:"";position:absolute;left:4px;top:17px;bottom:-6px;border-left:2px dotted #c3ccd3}
   .vj2{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.vj2 .ch{background:#f0f3f6;border-radius:999px;padding:4px 10px;font-size:12.5px;color:#4b5a66}
   .vjt{margin-left:auto;background:#e8f1fb;color:#215181;border:0;border-radius:10px;padding:8px 12px;font-weight:800;font-size:13.5px;cursor:pointer}
@@ -79,13 +91,14 @@
   .habla{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:800;background:#1f2b2c;color:#fff;border-radius:22px;padding:8px 16px;font-weight:700;display:none;box-shadow:0 4px 14px rgba(0,0,0,.35);max-width:90%;text-align:center}
   .habla.on{display:block;animation:pulso 1s infinite alternate}
   @keyframes pulso{from{background:#1f2b2c}to{background:#b4232f}}
-  .bg-ind{position:fixed;right:8px;bottom:8px;z-index:900;border:0;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff;background:#2f9e57;opacity:.92}
+  .bg-ind{position:fixed;right:8px;bottom:8px;z-index:900;border:0;border-radius:14px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff;background:#278449;opacity:.92}
   .bg-ind.aviso{background:#d98a00}
 
   .sos{position:absolute;right:12px;bottom:12px;z-index:700;width:58px;height:58px;border-radius:50%;background:#b0003a;color:#fff;border:3px solid #fff;font-weight:800}
   .aviso-pel{position:absolute;top:8px;left:72px;right:8px;z-index:700;background:#b0003a;color:#fff;padding:8px 12px;border-radius:10px;display:none;text-align:center;font-weight:700}
   .login-cond{color:var(--texto)}
   .login-cond .caja{max-width:400px}
+  .tyc-l{text-align:center;font-size:12.5px;color:var(--suave);margin:14px 0 0}.tyc-l a{color:var(--pri-2);font-weight:700;text-decoration:underline}
   .login-cond .sub-l{color:var(--suave);margin:6px 0 16px;text-align:center;font-size:14px}
   .login-cond input{font-size:16px;min-height:46px}
   .login-cond .hola{background:#eef4fa;border-radius:12px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;color:var(--texto)}
@@ -102,10 +115,25 @@
   .centrar.on{display:block}
   .mov-yo{position:relative;width:36px;height:36px}.mov-yo .marcador-movil{position:relative;z-index:1}
   .mov-yo .rumbo{position:absolute;left:50%;top:50%;width:0;height:0;margin:-31px 0 0 -9px;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid #215181;transform-origin:9px 31px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+  .bq-ov{position:absolute;inset:0;z-index:705;background:rgba(12,22,36,.62);display:flex;align-items:safe center;justify-content:center;padding:44px 16px 84px;overflow-y:auto;animation:bqIn .2s ease-out}
+  .bq-card{background:#fff;color:var(--texto);border-radius:20px;max-width:380px;width:100%;padding:20px 18px 14px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.45);border-top:6px solid #d43d3d;position:relative}
+  .bq-card .bq-ic{width:64px;height:64px;border-radius:50%;background:#fdecec;display:grid;place-items:center;font-size:32px;margin:-50px auto 8px;border:4px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+  .bq-card h2{margin:0;color:#b42323;font-size:21px}.bq-card .bq-sub{color:var(--suave);margin:2px 0 10px;font-size:14px}
+  .bq-deuda{background:#fff4f4;border:1px solid #f5c6c6;border-radius:14px;padding:10px;margin:0 0 10px}.bq-deuda small{display:block;color:#9b1c1c;font-weight:700;font-size:12px;letter-spacing:.4px;text-transform:uppercase}.bq-deuda b{font-size:30px;color:#9b1c1c}
+  .bq-no{list-style:none;padding:0;margin:0 0 12px;text-align:left;font-size:14.5px}.bq-no li{padding:5px 0;display:flex;gap:8px;align-items:center}.bq-no li::before{content:'🚫';font-size:14px}
+  .bq-pagar{width:100%;border:0;border-radius:14px;padding:15px;font:inherit;font-size:18px;font-weight:800;color:#fff;background:linear-gradient(135deg,#009ee3,#0b6fc9);box-shadow:0 6px 16px rgba(0,110,200,.35);cursor:pointer}
+  .bq-sec{display:flex;gap:8px;margin-top:8px}.bq-sec button{flex:1;border:1px solid #d9e1ea;background:#f6f8fa;border-radius:12px;padding:10px 6px;font:inherit;font-weight:700;font-size:13.5px;color:#33475b;cursor:pointer}
+  .bq-pill{position:absolute;left:50%;transform:translateX(-50%);top:72px;z-index:690;background:#d43d3d;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:inherit;font-weight:800;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.35);white-space:nowrap;animation:bqIn .2s ease-out}
+  /* el cartel tapa la radio; el botón SOS queda siempre a mano por encima */
+  .sos{z-index:706!important}
+  div:has(> .bq-ov) > .sos{top:12px;bottom:auto}
+  .bq-ov{align-items:flex-start;padding-top:96px}
+  @media (max-height:760px){.bq-card{padding:16px 14px 12px}.bq-card .bq-ic{width:52px;height:52px;font-size:26px;margin-top:-42px}.bq-card h2{font-size:19px}.bq-deuda{padding:6px}.bq-deuda b{font-size:24px}.bq-no{font-size:13.5px;margin-bottom:8px}.bq-no li{padding:3px 0}.bq-pagar{padding:12px;font-size:16px}}
+  .bq-panel{background:#fff4f4;border:1px solid #f5c6c6;border-radius:14px;padding:12px;color:#7a1c1c;margin-bottom:8px}.bq-panel b{display:block;font-size:16px;margin-bottom:2px}
   .tk-ov{position:fixed;inset:0;z-index:5000;background:#eef2f4;display:flex;flex-direction:column}
   .tk-ov .tk-bar{display:flex;gap:8px;padding:10px;padding-top:calc(10px + env(safe-area-inset-top));background:#215181}
   .tk-ov .tk-bar button{flex:1;min-height:48px;border:0;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer}
-  .tk-ov .tk-imp{background:#7ac143;color:#fff}.tk-ov .tk-vol{background:#fff;color:#215181}
+  .tk-ov .tk-imp{background:#64a135;color:#fff}.tk-ov .tk-vol{background:#fff;color:#215181}
   .tk-ov iframe{flex:1;border:0;width:100%;background:#eef2f4}
   .demo{position:absolute;top:8px;right:8px;z-index:700;background:rgba(255,255,255,.9);color:#000;border-radius:8px;padding:4px 8px;font-size:11px}
   /* celular acostado (soporte en el auto): mapa a la izquierda, controles a la derecha */
@@ -120,12 +148,13 @@
   .rotar{position:fixed;inset:0;background:#0f1f35;z-index:2000;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;font-size:18px}
   /* soporte: botón flotante, aviso emergente y chat */
   .chat-c{position:absolute;left:12px;top:12px;z-index:700;width:52px;height:52px;border-radius:50%;background:#fff;color:var(--pri);border:0;font-size:24px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
-  .badge-n{position:absolute;top:-4px;right:-4px;min-width:22px;height:22px;border-radius:11px;background:#d64545;color:#fff;font-size:12px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 5px;border:2px solid #fff}
+  .badge-n{position:absolute;top:-4px;right:-4px;min-width:22px;height:22px;border-radius:11px;background:#d43d3d;color:#fff;font-size:12px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 5px;border:2px solid #fff}
   .badge-n.on{display:flex}
   .lateral a .badge-n{position:static;display:none;margin-left:8px;border:0}.lateral a .badge-n.on{display:inline-flex}
   .pop{position:fixed;left:10px;right:10px;top:max(10px,env(safe-area-inset-top));z-index:1500;background:#fff;color:var(--texto);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45);display:flex;gap:12px;align-items:center;padding:12px 14px;border-left:6px solid var(--acento);cursor:pointer;animation:popIn .25s ease-out;max-width:560px;margin:0 auto}
   .pop .ic{font-size:28px}.pop .tx{flex:1;min-width:0}.pop .tx b{display:block;font-size:15px}.pop .tx span{display:block;font-size:14px;opacity:.85;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .pop .tx small{color:var(--pri);font-weight:700}.pop .x{background:none;border:0;font-size:24px;color:#888;padding:0 4px}
+  @keyframes bqIn{from{opacity:0}to{opacity:1}}
   @keyframes popIn{from{transform:translateY(-120%);opacity:0}to{transform:none;opacity:1}}
   .chat{display:flex;flex-direction:column;height:100%}
   .chat .msgs{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 10px}
@@ -164,7 +193,7 @@
   .mp-guia{margin:4px 0 0;padding-left:20px;font-size:14px;line-height:1.5}.mp-guia li{margin:5px 0}
   .mp-tecla{display:inline-block;background:#eaf6fd;color:#00609a;border:1px solid #b9e2f7;border-radius:8px;padding:1px 8px;font-weight:700;font-size:13px;white-space:nowrap}
   .mp-paso i{flex:none;font-style:normal;width:28px;height:28px;border-radius:50%;background:#009ee3;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
-  .btn-mp.verde{background:#2f9e57;box-shadow:0 6px 16px rgba(47,158,87,.35)}
+  .btn-mp.verde{background:#278449;box-shadow:0 6px 16px rgba(47,158,87,.35)}
   .btn-mp.gris{background:#fff;color:#215181;border:2px solid #b9e2f7;box-shadow:none;min-height:56px}
   .mp-paso:last-of-type{border-bottom:0}
   .mp-nota{font-size:13px;color:#5b6b6b;line-height:1.4}
@@ -177,7 +206,9 @@
   .alta .ayuda{font-size:12px;opacity:.7;margin-top:2px}
   .alta .doc{display:flex;align-items:center;gap:10px;border:1px dashed #b8d3d5;border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer}
   .alta .doc input{display:none}.alta .doc .ic{font-size:24px}.alta .doc .tx{flex:1;min-width:0}.alta .doc .tx small{display:block;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .alta .doc.ok{border-style:solid;border-color:#2f9e57;background:#f0faf3}
+  .alta .doc.mal{border-color:#d43d3d;border-style:solid;background:#fdf1f1}.alta .doc.mal .tx small{color:#c0392b;opacity:1;font-weight:600}.alta .doc.nreq{opacity:.55}
+  .alta .doc .opc{font-style:normal;font-size:11px;font-weight:700;background:#eef2f6;color:#5b6b7b;border-radius:999px;padding:1px 8px;margin-left:4px;vertical-align:1px}
+  .alta .doc.ok{border-style:solid;border-color:#278449;background:#f0faf3}
   .alta .err{color:#c0392b;font-size:12px;display:none}.alta .campo.mal input{border-color:#c0392b}.alta .campo.mal .err{display:block}
   .alta .chk{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:6px 0 12px}
   .alta-ok{text-align:center;padding:30px 10px}.alta-ok .ic{font-size:56px}
@@ -186,23 +217,40 @@
 <body>
 <div class="rotar">Girá el celular a vertical para usar la app.</div>
 <div id="root"></div>
-<script src="config.js?v=2026101631"></script>
+<script src="config.js?v=2026101733"></script>
 <script src="vendor/supabase/supabase.js"></script>
-<script src="vendor/leaflet/leaflet.js"></script>
-<script src="js/backend.js?v=2026101631"></script>
-<script src="js/pwa.js?v=2026101631"></script>
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="js/mapa-gl.js?v=2026102540"></script>
+<script src="js/mapa-base.js?v=2026102401"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/integraciones.js?v=2026102701"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
+<script src="js/tarifa.js?v=2026102701"></script>
+<script src="js/comprobante/estilos.js?v=2026102520"></script>
+<script src="js/comprobante/tarjeta.js?v=2026102701"></script>
+<script src="js/comprobante/compartir.js?v=2026102701"></script>
+<script src="js/comprobante/pantalla.js?v=2026102701"></script>
+<script src="js/pdf/librerias.js?v=2026102701"></script>
+<script src="js/pdf/membretado.js?v=2026102701"></script>
+<script src="js/pdf/visor.js?v=2026102520"></script>
+<script src="js/terminos-aceptacion.js?v=2026102520"></script>
+<script src="js/accesibilidad.js?v=2026102520"></script>
+<script src="js/foto-perfil.js?v=2026102530"></script>
+<script src="js/pwa.js?v=2026102520"></script>
 <script>
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pesos = n => n == null ? '—' : '$ ' + Math.round(n).toLocaleString('es-AR');
-const EST = { disponible: ['LIBRE', '#2f9e57'], confirmado: ['CONFIRMADO', '#e8892b'], con_pasajero: ['CON PASAJERO', '#d64545'], en_parada: ['EN PARADA', '#2f6fd6'], fuera_servicio: ['FUERA DE SERVICIO', '#4b5556'], desconectado: ['DESCONECTADO', '#8b9899'], emergencia: ['EMERGENCIA', '#b0003a'] };
+const EST = { disponible: ['LIBRE', '#278449'], confirmado: ['CONFIRMADO', '#e8892b'], con_pasajero: ['CON PASAJERO', '#d43d3d'], en_parada: ['EN PARADA', '#2f6fd6'], fuera_servicio: ['FUERA DE SERVICIO', '#4b5556'], desconectado: ['DESCONECTADO', '#8b9899'], emergencia: ['EMERGENCIA', '#b0003a'] };
 let TK = localStorage.getItem('rodar_cond_token');
 const S = { estado: null, pos: null, viaje: null, tarif: null, socket: null, mapa: null, mk: {}, audioOk: false };
 // ---------- App Android (Capacitor) ----------
 // Dentro de la app Android la misma página usa el GPS nativo en segundo plano (con un aviso fijo en la barra),
 // notificaciones del sistema y la tecla Atrás. En el navegador nada de esto se activa.
 const NATIVO = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-const APK_URL = 'https://github.com/cesar385/remises-toque/releases/latest/download/toque-conductor.apk';
+const APK_URL = 'https://remisestoque.com/apk/toque-conductor.apk';
 const ES_ANDROID = /android/i.test(navigator.userAgent);
 const plug = n => (NATIVO && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null;
 let nativoListo = false;
@@ -211,7 +259,7 @@ function nativoIniciar() {
   const LN = plug('LocalNotifications'), App = plug('App');
   if (LN) {
     LN.requestPermissions().catch(() => { });
-    LN.createChannel({ id: 'toque-avisos', name: 'Viajes y mensajes', description: 'Viajes ofrecidos y mensajes de la central', importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#5fa52f' }).catch(() => { });
+    LN.createChannel({ id: 'toque-avisos', name: 'Viajes y mensajes', description: 'Viajes ofrecidos y mensajes de la central', importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#4a8125' }).catch(() => { });
     LN.addListener('localNotificationActionPerformed', a => { const ab = a && a.notification && a.notification.extra && a.notification.extra.abrir; refrescar(); if (ab) setTimeout(() => abrirDesdeAviso(ab), 300); });
   }
   if (App) {
@@ -219,6 +267,7 @@ function nativoIniciar() {
     // Atrás: cierra lo que esté abierto; si no hay nada, minimiza (cerrar la app cortaría el servicio)
     App.addListener('backButton', () => {
       if ($('.oferta')) return;
+      if (cerrarComprobante()) return;
       if ($('.hoja')) return $('.hoja').dataset.menu === '1' ? volverAlMenu() : cerrarHoja();
       if ($('#lat') && $('#lat').classList.contains('ab')) return cerrarMenu();
       App.minimizeApp();
@@ -265,27 +314,11 @@ async function api(url, body, method) {
 // Ticket: se muestra dentro de la app (sin ventanas emergentes). "Imprimir / Guardar PDF" usa la impresión del navegador;
 // en la app Android (que no puede imprimir) abre el mismo ticket en Chrome, donde se imprime o se guarda como PDF.
 // "Volver" cierra el ticket y la pantalla de cobro y deja al conductor en su pantalla principal.
-async function ticket(id) {
+// Ticket del viaje: misma vista que el comprobante del pasajero, pero con el N° de viaje. Compartir e Imprimir / PDF.
+// desdeLista = se abrió desde Mis viajes (al volver se queda en la lista); si no, es el cierre de un viaje recién cobrado.
+async function ticket(id, desdeLista) {
   let v; try { v = await api(`/api/viajes/${id}/ticket`); } catch (er) { return toast(er.message, 'error'); }
-  $$('.tk-ov').forEach(x => x.remove());
-  const ov = document.createElement('div'); ov.className = 'tk-ov';
-  ov.innerHTML = `<div class="tk-bar"><button class="tk-vol">← Volver</button><button class="tk-imp">🖨 Imprimir / PDF</button></div><iframe title="Ticket de viaje"></iframe>`;
-  document.body.append(ov);
-  const fr = $('iframe', ov);
-  fr.srcdoc = ticketHtml(v, {}).replace('<div class="barra">', '<div class="barra" style="display:none">');
-  const volver = () => { document.removeEventListener('visibilitychange', alVolver); ov.remove(); limpiarCobro(); cerrarHoja(); refrescar(); };
-  const alVolver = () => { if (!document.hidden && S.tkExterno) { S.tkExterno = false; volver(); } };
-  $('.tk-vol', ov).onclick = volver;
-  $('.tk-imp', ov).onclick = () => {
-    if (NATIVO) {
-      // Se abre fuera de la app (remisestoque.netlify.app es otro dominio, así Android lo manda a Chrome) con los datos en el enlace
-      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(v)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      S.tkExterno = true; document.addEventListener('visibilitychange', alVolver);
-      location.href = 'https://remisestoque.netlify.app/ticket.html#' + b64;
-      return;
-    }
-    try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch { const w = window.open('', '_blank'); if (w) { abrirTicket(w, v, { auto: true }); } }
-  };
+  abrirComprobante(v, { numero: true, alVolver: desdeLista ? null : () => { limpiarCobro(); cerrarHoja(); refrescar(); } });
 }
 function toast(m, t) { let c = $('#toasts'); if (!c) { c = document.createElement('div'); c.id = 'toasts'; document.body.append(c); } const e = document.createElement('div'); e.className = 'toast ' + (t || ''); e.textContent = m; c.append(e); setTimeout(() => e.remove(), 4000); }
 function vibrar(p) { try { navigator.vibrate && navigator.vibrate(p); } catch { } }
@@ -299,23 +332,37 @@ function pantallaLogin() {
   const rec = leerRec();
   $('#root').innerHTML = `<div class="login login-cond"><div class="caja">
     <div style="text-align:center"><a href="index.html" title="Ir a la página principal"><img src="img/logo.png" alt="Remises TOQUE!" style="width:220px;max-width:80%"></a></div>
-    <div class="rol-etiqueta">🚕 Conductores</div><div id="emp" style="display:none"></div>
+    <div id="emp" style="display:none"></div>
     <p class="sub-l">${rec ? 'Escribí tu contraseña para entrar.' : 'Ingresá con tu DNI o usuario y la contraseña que te dio la central.'}</p>
     <form id="fl" autocomplete="on">
       ${rec ? `<div class="hola"><div><div style="opacity:.75;font-size:13px">Hola de nuevo</div><b>${esc(rec.nombre || rec.usuario)}</b></div><a href="#" id="otro">No soy yo</a></div>
         <input type="hidden" name="usuario" value="${esc(rec.usuario)}" autocomplete="username">`
       : `<div class="campo"><label>DNI o usuario</label><input name="usuario" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" required></div>`}
       <div class="campo" style="margin-top:10px"><label>Contraseña</label><div class="pass"><input name="password" id="pw" type="password" autocomplete="current-password" required><button type="button" id="ver" aria-label="Mostrar contraseña">👁</button></div></div>
-      ${rec ? '' : '<label class="rec"><input type="checkbox" id="recordar" checked> Recordarme en este celular</label>'}
+      ${rec ? '' : '<label class="rec"><input type="checkbox" id="recordar"> Recordarme en este celular</label>'}
       <div class="err" id="err"></div>
       <button class="btn" id="entrar" style="width:100%;justify-content:center;margin-top:12px">Ingresar</button>
     </form>
     <div id="lm" class="lista-moviles"></div>
     <div id="inst"></div>
     ${rec ? '' : `<div class="tips"><b>Primera vez:</b> la contraseña te la da la central. Al entrar, aceptá el permiso de <b>ubicación</b> para recibir viajes.</div>`}
-    <div class="otros-ingresos"><span>¿Querés manejar con nosotros?</span><a href="#" id="alta" class="dest">📝 Quiero ser conductor</a></div>
-    ${ES_ANDROID && !NATIVO ? `<div class="otros-ingresos"><span>App Android</span><a href="${APK_URL}" class="dest">📲 Descargar app del conductor</a></div>` : ''}
-    <div class="otros-ingresos"><span>Otros ingresos</span><a href="pasajero.html#/ingresar">🙂 Soy pasajero</a><a href="index.html">🏠 Página principal</a></div></div></div>`;
+    <div class="ing-pie">
+      <a class="ing-apk" href="#" id="alta"><span class="ic">📝</span><span><b>Quiero ser conductor</b><small>Mandá tu solicitud con tus datos y documentos</small></span><span class="fl">›</span></a>
+      ${ES_ANDROID && !NATIVO ? `<a class="ing-apk" href="${APK_URL}"><span class="ic">📲</span><span><b>Descargar la app para Android</b><small>Recibí viajes con el celular bloqueado</small></span><span class="fl">›</span></a>` : ''}
+      <div class="ing-tit">¿Necesitás ayuda?</div>
+      <div class="ing-grid">
+        <a href="manual-conductor.html"><span class="ic">📘</span><b>Manual</b><small>Cómo se usa</small></a>
+        <a href="ayuda.html"><span class="ic">💬</span><b>Ayuda</b><small>Escribinos</small></a>
+        <a href="terminos.html?para=conductores&de=conductor.html"><span class="ic">📜</span><b>Términos</b><small>Uso de la app</small></a>
+        <a href="terminos.html?para=privacidad&de=conductor.html"><span class="ic">🔒</span><b>Privacidad</b><small>Tus datos</small></a>
+      </div>
+      <div class="ing-tit">Defensa del consumidor</div>
+      <div class="ing-legal">
+        <a href="baja.html?tipo=arrepentimiento&de=conductor.html">↩️ Botón de arrepentimiento</a>
+        <a href="baja.html?tipo=baja&de=conductor.html">⛔ Botón de baja de servicio</a>
+      </div>
+    </div>
+    <p class="tyc-l">Al ingresar aceptás los <a href="terminos.html?para=conductores&de=conductor.html">Términos y condiciones</a> y la <a href="terminos.html?para=privacidad&de=conductor.html">Política de privacidad</a>.</p></div></div>`;
   api('/api/pub/config').then(c => { if (c && c.nombre) $('#emp').textContent = c.nombre; }).catch(() => { });
   botonInstalar($('#inst'), 'btn sec');
   const err = m => { const e = $('#err'); e.textContent = m || ''; e.style.display = m ? 'block' : 'none'; };
@@ -354,7 +401,9 @@ function pantallaLogin() {
 function formAlta() {
   const anios = []; for (let a = new Date().getFullYear() + 1; a >= 1995; a--) anios.push(a);
   const campo = (k, l, o = {}) => `<div class="campo" data-c="${k}"><label>${l}${o.req ? ' *' : ''}</label><input name="${k}" ${o.tipo ? `type="${o.tipo}"` : ''} ${o.im ? `inputmode="${o.im}"` : ''} ${o.ac ? `autocomplete="${o.ac}"` : ''} ${o.ph ? `placeholder="${o.ph}"` : ''} ${o.cap ? `autocapitalize="${o.cap}"` : ''} ${o.max ? `maxlength="${o.max}"` : ''}><div class="err">${o.err || 'Completá este dato'}</div>${o.ayuda ? `<div class="ayuda">${o.ayuda}</div>` : ''}</div>`;
-  const DOCS = [['dni_f', 'DNI (frente)', '🪪'], ['dni_d', 'DNI (dorso)', '🪪'], ['lic', 'Licencia de conducir', '🚦'], ['ced', 'Cédula del vehículo', '📄'], ['seg', 'Seguro del vehículo', '🛡️']];
+  // req: 1 = obligatorio · 'auto' = obligatorio solo si tiene vehículo propio · 0 = opcional
+  const DOCS = [['dni_f', 'DNI (frente)', '🪪', 1], ['dni_d', 'DNI (dorso)', '🪪', 1], ['lic', 'Licencia de conducir', '🚦', 1], ['ced', 'Cédula del vehículo', '📄', 'auto'], ['seg', 'Seguro del vehículo', '🛡️', 'auto'],
+    ['ant', 'Certificado de antecedentes penales', '📋', 0]];
   const el = hoja('Quiero ser conductor', `<div class="alta"><p style="margin:0 0 12px">Completá tus datos. La central los revisa y se comunica con vos para darte el alta. Los campos con * son obligatorios.</p>
     <form id="fa" novalidate>
       <div class="paso"><h3><i>1</i>Tus datos</h3><div class="grid g2">
@@ -370,23 +419,24 @@ function formAlta() {
           <div class="campo" data-c="anio"><label>Año</label><select name="anio"><option value="">Elegí</option>${anios.map(a => `<option>${a}</option>`).join('')}</select></div>
           ${campo('marca', 'Marca', { ph: 'Ej: Chevrolet', cap: 'words' })}${campo('modelo', 'Modelo', { ph: 'Ej: Prisma', cap: 'words' })}
         </div></div>
-      <div class="paso"><h3><i>3</i>Documentación <small style="font-weight:400;opacity:.7">(opcional, agiliza el alta)</small></h3>
-        <p class="ayuda" style="margin:0 0 8px">Tocá cada recuadro para sacar una foto o elegir un archivo.</p>
-        ${DOCS.map(([k, t, ic]) => `<label class="doc" data-d="${k}"><span class="ic">${ic}</span><span class="tx"><b>${t}</b><small>Sin cargar</small></span><span class="est">＋</span><input type="file" name="${k}" accept="image/*,application/pdf"></label>`).join('')}
+      <div class="paso"><h3><i>3</i>Documentación</h3>
+        <p class="ayuda" style="margin:0 0 8px">Tocá cada recuadro para sacar una foto o elegir un archivo (foto o PDF). Los marcados con <b>*</b> son obligatorios.</p>
+        ${DOCS.map(([k, t, ic, req]) => `<label class="doc" data-d="${k}" data-req="${req}"><span class="ic">${ic}</span><span class="tx"><b>${t}${req ? ' *' : ' <em class="opc">Opcional</em>'}</b><small>${req === 'auto' ? 'Obligatorio si tenés vehículo propio' : 'Sin cargar'}</small></span><span class="est">＋</span><input type="file" name="${k}" accept="image/*,application/pdf"></label>`).join('')}
       </div>
-      <label class="chk"><input type="checkbox" id="acepto"> Declaro que los datos son reales y acepto que la central me contacte por teléfono o WhatsApp.</label>
+      <label class="chk"><input type="checkbox" id="acepto"> <span>Declaro que los datos son reales, acepto que la central me contacte por teléfono o WhatsApp y acepto los <a href="terminos.html?para=conductores&de=conductor.html" target="_blank" rel="opener" style="color:inherit;font-weight:700;text-decoration:underline">Términos y condiciones para conductores</a> y la <a href="terminos.html?para=privacidad&de=conductor.html" target="_blank" rel="opener" style="color:inherit;font-weight:700;text-decoration:underline">Política de privacidad</a>.</span></label>
       <button class="btn grande verde" style="width:100%" id="env">Enviar solicitud</button>
     </form></div>`);
   const f = $('#fa', el), archivos = {};
   const mal = (k, si) => { const c = $(`[data-c="${k}"]`, f); if (c) c.classList.toggle('mal', !!si); return !!si; };
   $('[name=patente]', f).oninput = e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); };
   $('[name=dni]', f).oninput = e => { e.target.value = e.target.value.replace(/\D/g, ''); };
-  $('#sinAuto', f).onchange = e => { $('#auto', f).style.display = e.target.checked ? 'none' : ''; };
+  const docsAuto = () => { const sin = $('#sinAuto', f).checked; $$('.doc[data-req=auto]', f).forEach(lb => { lb.classList.toggle('nreq', sin); if (sin) lb.classList.remove('mal'); if (!lb.classList.contains('ok')) $('small', lb).textContent = sin ? 'No hace falta: no tenés vehículo propio' : 'Obligatorio si tenés vehículo propio'; }); };
+  $('#sinAuto', f).onchange = e => { $('#auto', f).style.display = e.target.checked ? 'none' : ''; docsAuto(); };
   $$('input', f).forEach(i => i.addEventListener('input', () => { const c = i.closest('.campo'); c && c.classList.remove('mal'); }));
   $$('.doc input', f).forEach(inp => inp.onchange = async () => {
     const lb = inp.closest('.doc'), fi = inp.files[0]; if (!fi) return;
     $('small', lb).textContent = 'Procesando…';
-    try { archivos[inp.name] = await achicarArchivo(fi); lb.classList.add('ok'); $('.est', lb).textContent = '✔'; $('small', lb).textContent = fi.name; }
+    try { archivos[inp.name] = await achicarArchivo(fi); lb.classList.add('ok'); lb.classList.remove('mal'); $('.est', lb).textContent = '✔'; $('small', lb).textContent = fi.name; }
     catch (er) { delete archivos[inp.name]; lb.classList.remove('ok'); $('.est', lb).textContent = '＋'; $('small', lb).textContent = er.message; toast(er.message, 'error'); }
   });
   f.onsubmit = async e => {
@@ -398,9 +448,13 @@ function formAlta() {
     chk('email', d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email));
     chk('patente', !sinAuto && d.patente && !/^([A-Z]{3}\d{3}|[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]\d{3}[A-Z]{3})$/.test(d.patente));
     if (primero) { const c = $(`[data-c="${primero}"] input`, f); c && c.focus(); c && c.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('Revisá los datos marcados en rojo', 'error'); }
+    // Documentación obligatoria
+    const faltan = DOCS.filter(([k, , , req]) => (req === 1 || (req === 'auto' && !sinAuto)) && !archivos[k]);
+    DOCS.forEach(([k]) => { const lb = $(`.doc[data-d="${k}"]`, f); lb.classList.toggle('mal', faltan.some(x => x[0] === k)); if (faltan.some(x => x[0] === k)) $('small', lb).textContent = 'Falta cargar este documento'; });
+    if (faltan.length) { $(`.doc[data-d="${faltan[0][0]}"]`, f).scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('Falta cargar: ' + faltan.map(x => x[1]).join(', '), 'error'); }
     if (!$('#acepto', f).checked) return toast('Marcá la casilla de declaración para enviar', 'error');
     if (sinAuto) { ['patente', 'marca', 'modelo', 'anio'].forEach(k => delete d[k]); }
-    d.telefono = tel;
+    d.telefono = tel; d.acepto_tyc = true;
     d.docs = DOCS.filter(([k]) => archivos[k]).map(([k, t]) => ({ tipo: t, archivo: archivos[k] }));
     if (sinAuto) d.docs.push({ tipo: 'Sin vehículo propio', archivo: null });
     const b = $('#env', f); b.disabled = true; b.textContent = 'Enviando…';
@@ -425,6 +479,9 @@ function achicarArchivo(fi) {
 async function iniciar() {
   let e;
   try { e = await api('/api/conductor/estado'); } catch (er) { return pantallaLogin(); }
+  // Términos y condiciones para conductores: se aceptan al primer ingreso y cada vez que cambian
+  try { const t = await api('/api/conductor/tyc');
+    if (t && !t.aceptado && !(await pedirTyc({ para: 'conductores', primera: t.primera, aceptar: () => api('/api/conductor/tyc', { aceptar: true }), textoSalir: 'No acepto, cerrar sesión' }))) return salir(); } catch { }
   S.estado = e;
   $('#root').innerHTML = `<div class="app"><div class="hd"><span class="num">${e.movil.numero}</span><div style="flex:1;min-width:0"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.conductor.nombre + ' ' + e.conductor.apellido)}</div><small id="saldo" style="opacity:.8"></small></div><span class="est" id="est"></span><button class="salir-b" id="sb">Salir</button><button class="menu-b" id="mb">☰</button></div>
     <div style="position:relative;flex:1;display:flex"><div id="mapa"></div><div class="aviso-pel" id="pel"></div><button class="chat-c" id="chatb" title="Soporte con la central">💬<span class="badge-n" id="chatn"></span></button><button class="ptt-c" id="ptt">🎙</button><button class="sos" id="sos" title="Mantener 2 segundos">SOS</button><div class="demo" id="demo">GPS…</div><button class="centrar" id="centrar" aria-label="Centrar en mi móvil">◎ Centrar</button></div>
@@ -434,9 +491,9 @@ async function iniciar() {
   S.mapa = L.map('mapa', { zoomControl: false }).setView([e.empresa.lat, e.empresa.lng], 15);
   S.mapa.on('dragstart', () => seguirMovil(false));
   setTimeout(() => { const cb = $('#centrar'); if (cb) cb.onclick = () => seguirMovil(true); }, 0);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(S.mapa);
+  capaBase(S.mapa);
   e.zonas.forEach(z => z.poligono.length > 2 && L.polygon(z.poligono, { color: z.color, weight: 1, fillOpacity: .05, interactive: false }).addTo(S.mapa));
-  e.paradas.forEach(p => p.lat && L.circleMarker([p.lat, p.lng], { radius: 7, color: '#2f6fd6', fillOpacity: .9 }).addTo(S.mapa).bindTooltip('Parada ' + p.nombre));
+  e.paradas.forEach(p => p.lat && L.circleMarker([p.lat, p.lng], { radius: 7, color: '#2f6fd6', fillOpacity: .9 }).addTo(S.mapa).bindTooltip('Parada ' + esc(p.nombre)));
   e.peligrosas.forEach(z => L.polygon(z.poligono, { color: '#d00', fillOpacity: .2, dashArray: '4' }).addTo(S.mapa));
   if (e.movil.lat) S.pos = { lat: e.movil.lat, lng: e.movil.lng };
   $('#mb').onclick = abrirMenu;
@@ -557,6 +614,8 @@ function pintarMovil() {
   S.anim = requestAnimationFrame(paso);
   centrarMovil();
 }
+// la actualización automática no recarga la app con un viaje tomado o en curso
+window.appOcupada = () => !!(S.estado && S.estado.viaje);
 async function refrescar() { try { S.estado = await api('/api/conductor/estado'); S.ultRef = Date.now(); pintar(); } catch { } }
 function pintar() {
   const e = S.estado, m = e.movil, v = e.viaje;
@@ -564,18 +623,28 @@ function pintar() {
   if (v && v.estado === 'ofrecido' && !$('.oferta') && S.ofertaVista !== v.id) { S.ofertaVista = v.id; mostrarOferta({ ...v, segundos: 15 }, false); }
   const [t, c] = EST[m.estado] || [m.estado, '#888'];
   $('#est').textContent = t; $('#est').style.background = c;
-  $('#saldo').textContent = `Saldo ${pesos(e.saldo)}${m.sin_saldo ? ' · SIN SALDO' : ''}${m.bloqueado ? ' · BLOQUEADO: pagá la base' : ''}${m.penalizado ? ' · PENALIZADO hasta ' + m.penalizado.hasta.slice(11, 16) : ''}`;
+  $('#saldo').textContent = `Saldo ${pesos(e.saldo)}${m.sin_saldo ? ' · SIN SALDO' : ''}${m.bloqueado || (e.bloqueo_base && e.bloqueo_base.bloqueado) ? ' · BLOQUEADO: pagá la base' : ''}${m.penalizado ? ' · PENALIZADO hasta ' + m.penalizado.hasta.slice(11, 16) : ''}`;
   pintarMovil();
+  pintarBloqueo();
   S.mk.o && S.mk.o.remove(); S.mk.d && S.mk.d.remove(); S.mk.o = S.mk.d = null;
   const p = $('#panel');
+  const pinAntes = $('#pin'), pinVal = pinAntes ? pinAntes.value : (S.pinViaje === (v && v.id) ? S.pinTxt || '' : ''), pinFoco = pinAntes && document.activeElement === pinAntes;
   if (v && v.estado === 'confirmado') {
     S.mk.o = L.marker([v.origen_lat, v.origen_lng]).addTo(S.mapa).bindTooltip('Pasajero', { permanent: true });
     p.innerHTML = `<h2>Ir a buscar al pasajero</h2><div><b>${esc(v.origen_dir)}</b>${v.origen_ref ? `<br><small>${esc(v.origen_ref)}</small>` : ''}</div><div style="margin-top:4px">${esc(v.alias || 'Pasajero')} ${v.telefono ? `· <a href="tel:${esc(v.telefono)}">${esc(v.telefono)}</a>` : ''}</div>${v.destino_dir ? `<div>${esc(v.destino_dir)}</div>` : ''}${v.datos_movil ? `<div class="nota" style="margin:6px 0 0">${esc(v.datos_movil)}</div>` : ''}
       <div class="dos"><a class="btn sec grande" target="_blank" href="https://www.google.com/maps/dir/?api=1&destination=${v.origen_lat},${v.origen_lng}">Navegar</a><button class="btn azul grande" id="llegue" ${v.llegada_at ? 'disabled' : ''}>${v.llegada_at ? '✓ Avisado' : 'Llegué'}</button></div>
-      ${v.pin_requerido ? '<div class="campo" style="margin-top:8px"><label>PIN del pasajero</label><input id="pin" inputmode="numeric" maxlength="4" placeholder="4 dígitos"></div>' : ''}
+      ${v.pin_requerido ? `<div class="pin-caja"><label for="pin">🔐 PIN del pasajero <small>Pedíselo al subir: está en su app</small></label><input id="pin" class="pin-in" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="4" placeholder="• • • •" aria-describedby="pinAy"><small id="pinAy" class="pin-ay"></small></div>` : ''}
       <button class="btn verde grande" id="ini">▶ Iniciar viaje</button><button class="btn sec grande" id="canc" style="min-height:40px">Cancelar viaje</button>`;
+    const pin = $('#pin');
+    if (pin) {
+      pin.value = pinVal; if (pinFoco) pin.focus();
+      const ayuda = () => { const n = pin.value.length; $('#pinAy').textContent = n === 4 ? '✓ Listo: tocá Iniciar viaje' : n ? `Faltan ${4 - n} dígito${4 - n === 1 ? '' : 's'}` : ''; pin.classList.toggle('ok', n === 4); };
+      pin.oninput = () => { pin.value = pin.value.replace(/\D/g, '').slice(0, 4); S.pinTxt = pin.value; S.pinViaje = v.id; ayuda(); };
+      pin.onfocus = () => setTimeout(() => pin.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);   // que el teclado no lo tape
+      ayuda();
+    }
     $('#llegue').onclick = async () => { await api(`/api/conductor/viaje/${v.id}/llegue`, {}); refrescar(); };
-    $('#ini').onclick = async () => { try { await api(`/api/conductor/viaje/${v.id}/iniciar`, { pin: $('#pin') && $('#pin').value }); S.tarif = { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() }; guardarTarif(); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+    $('#ini').onclick = async () => { if ($('#pin') && $('#pin').value.length < 4) { toast('Escribí los 4 dígitos del PIN del pasajero', 'error'); return $('#pin').focus(); } try { await api(`/api/conductor/viaje/${v.id}/iniciar`, { pin: $('#pin') && $('#pin').value }); S.pinTxt = ''; S.tarif = { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() }; guardarTarif(); refrescar(); } catch (er) { toast(er.message, 'error'); } };
     $('#canc').onclick = async () => { const mot = prompt('Motivo de la cancelación'); if (mot == null) return; await api(`/api/conductor/viaje/${v.id}/cancelar`, { motivo: mot }); refrescar(); };
     if (S.vistaViaje !== v.id) { S.vistaViaje = v.id; S.mapa.fitBounds(L.latLngBounds([[v.origen_lat, v.origen_lng], S.pos ? [S.pos.lat, S.pos.lng] : [v.origen_lat, v.origen_lng]]).pad(.3)); S.seguir = false; clearTimeout(S.seguirT); S.seguirT = setTimeout(() => seguirMovil(true), 6000); }
   } else if (v && v.estado === 'en_curso') {
@@ -600,6 +669,16 @@ function pintar() {
     const libre = ['disponible', 'en_parada'].includes(m.estado);
     if (m.estado !== 'fuera_servicio' && S.fueraDesde) { S.fueraDesde = null; lsSet('rodar_fuera_desde', ''); }
     const z = e.paradas.find(x => x.id === m.parada_id);
+    if (baseBloqueada()) {
+      // Bloqueado por deuda de base: en lugar de Libre / Viaje de calle / Parada, el acceso a pagar
+      const bq = e.bloqueo_base;
+      p.innerHTML = `<div class="bq-panel"><b>🔒 Móvil bloqueado por deuda</b>${bq.deuda > 0 ? 'Debés ' + pesos(bq.deuda) + '. ' : ''}Pagá la base para volver a tomar pedidos.</div>
+        <button class="btn grande" id="bqPagar" style="width:100%;background:#0b6fc9;color:#fff;font-size:18px">💳 Pagar la base</button>
+        ${['disponible', 'en_parada'].includes(m.estado) ? '<button class="btn-fs" id="fs">FUERA DE SERVICIO</button>' : ''}`;
+      $('#bqPagar').onclick = () => irAPagarBase();
+      if ($('#fs')) $('#fs').onclick = () => menu('fuera');
+      return;
+    }
     const abiertas = (e.abiertas || []).map(a => `<div class="nota" style="display:flex;gap:8px;align-items:center;margin:6px 0"><span style="flex:1">#${a.id} ${esc(a.origen_dir)}${a.zona ? ' · ' + esc(a.zona) : ''}</span><button class="btn chico verde" data-post="${a.id}">Postularme</button></div>`).join('');
     p.innerHTML = libre ? `<h2>${m.estado === 'en_parada' ? `En parada ${esc(z ? z.nombre : '')} · puesto ${z ? z.cola.indexOf(m.numero) + 1 : '?'}` : 'Libre, esperando viajes'}</h2><div id="abiertas">${abiertas}</div>
       <div class="dos"><button class="btn naranja grande" id="calle">Viaje de calle</button>${m.estado === 'en_parada' ? '<button class="btn sec grande" id="sal">Salir de parada</button>' : '<button class="btn azul grande" id="par">Entrar a parada</button>'}</div>
@@ -608,12 +687,12 @@ function pintar() {
         : m.estado === 'fuera_servicio' ? `<div class="fs-card"><div class="ic">⏸️</div><h2>Estás fuera de servicio</h2><p>No te llegan viajes${S.fueraDesde ? ' desde las ' + S.fueraDesde : ''}. </p><button class="btn verde grande" id="lib" style="width:100%;font-size:18px">▶️ Ponerme libre</button></div>`
         : `<h2>${EST[m.estado] ? EST[m.estado][0] : m.estado}</h2><button class="btn verde grande" id="lib">Ponerme libre</button>`;
     const b = id => $('#' + id);
-    if (b('lib')) b('lib').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'disponible' }); refrescar(); } catch (er) { toast(er.message, 'error'); } };
-    if (b('sal')) b('sal').onclick = async () => { await api('/api/conductor/estado', { estado: 'disponible' }); refrescar(); };
-    if (b('par')) b('par').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'en_parada' }); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+    if (b('lib')) b('lib').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'disponible' }); refrescar(); } catch (er) { errBase(er); } };
+    if (b('sal')) b('sal').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'disponible' }); refrescar(); } catch (er) { errBase(er); } };
+    if (b('par')) b('par').onclick = async () => { try { await api('/api/conductor/estado', { estado: 'en_parada' }); refrescar(); } catch (er) { errBase(er); } };
     if (b('fs')) b('fs').onclick = () => menu('fuera');
-    $$('[data-post]', p).forEach(x => x.onclick = async () => { try { await api(`/api/conductor/viaje/${x.dataset.post}/postular`, {}); refrescar(); } catch (er) { toast(er.message, 'error'); refrescar(); } });
-    if (b('calle')) b('calle').onclick = async () => { if (!confirm('¿Iniciar un viaje de calle desde tu ubicación?')) return; try { const v2 = await api('/api/conductor/calle', {}); S.tarif = { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() }; guardarTarif(v2.id); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+    $$('[data-post]', p).forEach(x => x.onclick = async () => { try { await api(`/api/conductor/viaje/${x.dataset.post}/postular`, {}); refrescar(); } catch (er) { errBase(er); refrescar(); } });
+    if (b('calle')) b('calle').onclick = async () => { if (!confirm('¿Iniciar un viaje de calle desde tu ubicación?')) return; try { const v2 = await api('/api/conductor/calle', {}); S.tarif = { metros: 0, espera: 0, ult: S.pos ? { ...S.pos } : null, t0: Date.now() }; guardarTarif(v2.id); refrescar(); } catch (er) { errBase(er); } };
   }
   try { actualizarRecorrido(); } catch { }
 }
@@ -623,13 +702,14 @@ const COBRO = 'rodar_cobro_pend';
 function limpiarCobro() { localStorage.removeItem(COBRO); }
 function mostrarCobro(r, previo, guardar = true) {
   const calle = r.origen_tipo === 'calle', medio = r.medio_pago || 'efectivo';
-  if (guardar) { try { localStorage.setItem(COBRO, JSON.stringify({ t: Date.now(), previo, r: { id: r.id, monto: r.monto, km: r.km, minutos: r.minutos, medio_pago: medio, origen_tipo: r.origen_tipo } })); } catch { } }
+  if (guardar) { try { localStorage.setItem(COBRO, JSON.stringify({ t: Date.now(), previo, r: { id: r.id, monto: r.monto, km: r.km, minutos: r.minutos, medio_pago: medio, origen_tipo: r.origen_tipo, cargo_cancelacion: r.cargo_cancelacion } })); } catch { } }
   vibrar([200, 100, 200]);
-  const ajustado = previo != null && r.monto != null && Math.abs(r.monto - previo) >= 1;
+  const cargo = +r.cargo_cancelacion || 0, ajustado = previo != null && r.monto != null && Math.abs(r.monto - cargo - previo) >= 1;
   const el = hoja(calle ? 'Viaje de calle finalizado' : 'Viaje finalizado', `<div class="tarifador" style="text-align:center"><div style="font-weight:700;letter-spacing:.5px">${calle ? 'EL PASAJERO DEBE ABONAR' : 'Total a cobrar'}</div><div class="monto" style="font-size:52px;line-height:1.1;margin:6px 0">${pesos(r.monto)}</div><div>${km1(r.km)} km · ${Math.round(r.minutos || 0)} min · ${esc(medio)}</div></div>
+    ${cargo > 0 ? `<p style="font-size:14px;margin:8px 0;background:rgba(255,190,80,.18);border-radius:10px;padding:8px">Incluye <b>${pesos(cargo)}</b> que el pasajero debía por cancelar tarde una reserva. Viaje: ${pesos(r.monto - cargo)}.</p>` : ''}
     ${ajustado ? `<p style="font-size:13px;opacity:.85;margin:8px 0">El monto se ajustó con el recorrido que registró el servidor (en pantalla marcaba ${pesos(previo)}). Cobrá este.</p>` : ''}
     ${calle && medio === 'efectivo' ? '<p style="margin:8px 0;text-align:center">Cobrá en efectivo antes de que se baje.</p>' : ''}
-    <button class="btn grande sec" onclick="ticket(${r.id})">🧾 Ver ticket · Imprimir / PDF</button><button class="btn grande verde" id="cobOk">Ya cobré · Volver</button>`);
+    <button class="btn grande sec" onclick="ticket(${r.id})">🧾 Ver ticket · Compartir / PDF</button><button class="btn grande verde" id="cobOk">Ya cobré · Volver</button>`);
   const cerrar = () => { limpiarCobro(); cerrarHoja(); refrescar(); };
   $('#cobOk', el).onclick = cerrar; const x = $('.hx', el); if (x) x.onclick = cerrar;
 }
@@ -637,9 +717,9 @@ function cobroPendiente() { try { const p = JSON.parse(localStorage.getItem(COBR
 // tarifador
 function calcMonto() {
   const t = S.estado.tarifa; if (!t || !S.tarif) return 0;
-  return montoTarifa(t, S.tarif.metros, S.tarif.espera, (S.estado.viaje && S.estado.viaje.indice) || 1);
+  return montoTarifa(t, metrosCorregidos(t, S.tarif.metros), S.tarif.espera, (S.estado.viaje && S.estado.viaje.indice) || 1);
 }
-function actualizarTarif() { if (!$('#tm') || !S.tarif) return; $('#tm').textContent = pesos(calcMonto()); $('#td').textContent = `${(Math.round(S.tarif.metros / 100) / 10).toFixed(1)} km · espera ${Math.floor(S.tarif.espera / 60)}:${String(Math.floor(S.tarif.espera % 60)).padStart(2, '0')}`; }
+function actualizarTarif() { if (!$('#tm') || !S.tarif) return; $('#tm').textContent = pesos(calcMonto()); $('#td').textContent = `${(Math.round(metrosCorregidos(S.estado.tarifa, S.tarif.metros) / 100) / 10).toFixed(1)} km · espera ${Math.floor(S.tarif.espera / 60)}:${String(Math.floor(S.tarif.espera % 60)).padStart(2, '0')}`; }
 function guardarTarif(id) { const v = id || (S.estado.viaje && S.estado.viaje.id); if (v && S.tarif) localStorage.setItem('rodar_tarif_' + v, JSON.stringify(S.tarif)); }
 setInterval(() => { if (S.tarif && S.estado && S.estado.viaje && S.estado.viaje.estado === 'en_curso') { const t = Date.now(), dt = Math.min(120, Math.max(0, (t - (S.tarif.tk || t)) / 1000)); S.tarif.tk = t; if ((S.vel || 0) < 3) S.tarif.espera += dt; actualizarTarif(); if (Date.now() % 5000 < 1000) guardarTarif(); } }, 1000);
 function nuevaPos(lat, lng, vel) {
@@ -684,8 +764,8 @@ async function actualizarRecorrido() {
   if (S.rutaClave !== clave) return;
   const pts = rt && rt.coords && rt.coords.length ? rt.coords : [[S.pos.lat, S.pos.lng], [dest.lat, dest.lng]];
   if (S.plRuta) S.plRuta.setLatLngs(pts);
-  else S.plRuta = L.polyline(pts, { color: v.estado === 'confirmado' ? '#e8892b' : '#2f9e57', weight: 5, opacity: .8, dashArray: '2 10', lineCap: 'round' }).addTo(S.mapa);
-  if (S.plRuta) S.plRuta.setStyle({ color: v.estado === 'confirmado' ? '#e8892b' : '#2f9e57' });
+  else S.plRuta = L.polyline(pts, { color: v.estado === 'confirmado' ? '#e8892b' : '#278449', weight: 5, opacity: .8, dashArray: '2 10', lineCap: 'round' }).addTo(S.mapa);
+  if (S.plRuta) S.plRuta.setStyle({ color: v.estado === 'confirmado' ? '#e8892b' : '#278449' });
 }
 function sumarTraza(lat, lng, ahora) {
   const v = S.estado && S.estado.viaje;
@@ -699,7 +779,8 @@ function sumarTraza(lat, lng, ahora) {
 function dist(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180; const x = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); }
 let ultEnvio = 0;
 async function enviarPos() {
-  if (!S.pos || Date.now() - ultEnvio < 3500) return; ultEnvio = Date.now();
+  // en movimiento la posición se manda más seguido (cada ~2,5 s); quieto, cada ~5 s
+  if (!S.pos || Date.now() - ultEnvio < ((S.vel || 0) > 3 ? 2400 : 4500)) return; ultEnvio = Date.now();
   try { const r = await api('/api/conductor/posicion', { lat: S.pos.lat, lng: S.pos.lng, vel: S.vel || 0 }); const pe = $('#pel'); if (pe) { pe.style.display = r.peligrosa ? 'block' : 'none'; pe.textContent = 'Estás en zona peligrosa: ' + (r.peligrosa || ''); } } catch { }
 }
 function gps() {
@@ -716,7 +797,7 @@ function gps() {
   setInterval(() => { if (!document.hidden && (!S.ultGps || Date.now() - S.ultGps > 20000)) S.gpsPedir(); }, 20000);
   // modo prueba: sin GPS, tocá el mapa para moverte
   setTimeout(() => { if (!real) { $('#demo').textContent = 'Sin GPS: tocá el mapa para moverte'; S.mapa.on('click', ev => { nuevaPos(ev.latlng.lat, ev.latlng.lng, 25); enviarPos(); }); } }, 4000);
-  setInterval(enviarPos, 5000);
+  setInterval(enviarPos, 2500);
 }
 // ofertas
 function mostrarOferta(v, abierta) {
@@ -733,7 +814,7 @@ function mostrarOferta(v, abierta) {
   if (!abierta) setTimeout(() => $('.cuenta div', el) && ($('.cuenta div', el).style.width = '0%', $('.cuenta div', el).style.transition = `width ${seg}s linear`), 50);
   const t = setTimeout(() => el.remove(), seg * 1000);
   $('#rech', el).onclick = async () => { clearTimeout(t); el.remove(); if (!abierta) await api(`/api/conductor/viaje/${v.id}/rechazar`, {}).catch(() => { }); };
-  $('#acep', el).onclick = async () => { clearTimeout(t); el.remove(); try { await api(`/api/conductor/viaje/${v.id}/${abierta ? 'postular' : 'aceptar'}`, {}); refrescar(); } catch (er) { toast(er.message, 'error'); } };
+  $('#acep', el).onclick = async () => { clearTimeout(t); el.remove(); try { await api(`/api/conductor/viaje/${v.id}/${abierta ? 'postular' : 'aceptar'}`, {}); refrescar(); } catch (er) { errBase(er); } };
 }
 function conectar() {
   S.socket = RODAR.tiempoReal(S.estado.canal, ['movil-' + S.estado.movil.id, 'flota', 'radio']);
@@ -742,6 +823,8 @@ function conectar() {
   S.socket.on('oferta_abierta', v => { if (!$('.oferta') && S.estado.movil.estado !== 'confirmado' && !S.ignorar?.[v.id]) { S.ignorar = { ...(S.ignorar || {}), [v.id]: 1 }; mostrarOferta({ ...v, segundos: 25 }, true); } });
   S.socket.on('oferta_cancelada', () => { $('.oferta') && $('.oferta').remove(); toast('El viaje fue reasignado o cancelado'); refrescar(); });
   S.socket.on('oferta_tomada', d => { const o = $('.oferta'); if (o && o.innerHTML.includes('#' + d.viajeId)) o.remove(); });
+  S.socket.on('pago_viaje', avisoPagoViaje);
+  { const q = new URLSearchParams(location.search); if (q.get('mp')) { q.get('mp') === 'vinculado' ? toast('✔ Tu cuenta de Mercado Pago quedó vinculada', 'ok') : toast('No se pudo vincular Mercado Pago: ' + (q.get('msg') || 'probá de nuevo'), 'error'); history.replaceState(null, '', location.pathname + location.hash); } }
   S.socket.on('pago_base', d => { beep(); vibrar(200); toast('Pago de base recibido: ' + pesos(d.monto), 'ok'); refrescar(); });
   S.socket.on('asignado', d => { if (d && d.id) S.avisoAsig = d.id; notificar('✅ Te asignaron un viaje', 'La central te asignó un viaje. Tocá para verlo', '', 'rodar-asignado'); beep(); toast('La central te asignó un viaje', 'ok'); refrescar(); });
   S.socket.on('viaje', v => { if (S.estado.viaje && S.estado.viaje.id === v.id && v.estado !== S.estado.viaje.estado) refrescar(); });
@@ -750,8 +833,10 @@ function conectar() {
   S.socket.on('forzar_salida', () => salir(true));
   S.socket.on('zonas', () => location.reload());
   S.socket.on('tarifas', refrescar);
+  // la central cambió el estado del móvil (libre, fuera de servicio, etc.): se ve al instante
+  S.socket.on('estado', () => { refrescar(); vibrar(120); });
   S.socket.on('connect', refrescar);
-  setInterval(() => { if (!S.socket.connected || Date.now() - (S.ultRef || 0) > 20000) refrescar(); }, 5000);
+  setInterval(() => { if (!S.socket.connected || Date.now() - (S.ultRef || 0) > 10000) refrescar(); }, 5000);
 }
 // radio
 function radio() {
@@ -827,10 +912,44 @@ function radio() {
   }
   b.addEventListener('contextmenu', e => e.preventDefault());
 }
+// ---- Bloqueo por deuda de base: anuncio sobre el mapa ----
+function baseBloqueada() {
+  const e = S.estado, v = e && e.viaje;
+  // con un viaje ya tomado o en curso no se interrumpe: se avisa al terminar
+  return !!(e && e.bloqueo_base && e.bloqueo_base.bloqueado && !(v && ['confirmado', 'en_curso'].includes(v.estado)));
+}
+function pintarBloqueo() {
+  const caja = $('#mapa') && $('#mapa').parentElement; if (!caja) return;
+  const bq = baseBloqueada(), ov = $('#bqOv'), pill = $('#bqPill');
+  if (!bq) { ov && ov.remove(); pill && pill.remove(); S.bqMin = false; return; }
+  const d = S.estado.bloqueo_base, k = String(d.deuda);
+  if (S.bqMin) { ov && ov.remove(); if (!pill) { const b = document.createElement('button'); b.className = 'bq-pill'; b.id = 'bqPill'; b.textContent = '🔒 Base impaga · Pagar'; b.onclick = () => { S.bqMin = false; pintarBloqueo(); }; caja.append(b); } return; }
+  pill && pill.remove();
+  if (ov && ov.dataset.k === k) return;
+  ov && ov.remove();
+  const el = document.createElement('div'); el.className = 'bq-ov'; el.id = 'bqOv'; el.dataset.k = k;
+  el.innerHTML = `<div class="bq-card" role="alertdialog" aria-labelledby="bqT"><div class="bq-ic">🔒</div><h2 id="bqT">Móvil BLOQUEADO</h2><div class="bq-sub">Tenés la base impaga</div>
+    ${d.deuda > 0 ? `<div class="bq-deuda"><small>Deuda de base</small><b>${pesos(d.deuda)}</b></div>` : ''}
+    <ul class="bq-no"><li>No te llegan pedidos de la central</li><li>No podés hacer viajes de calle</li><li>No podés ponerte Libre ni entrar a parada</li></ul>
+    <button class="bq-pagar" id="bqP">💳 Pagar la base ahora</button>
+    <div class="bq-sec"><button id="bqY">🔄 Ya pagué</button><button id="bqM">🗺️ Ver el mapa</button></div></div>`;
+  caja.append(el);
+  $('#bqP', el).onclick = () => irAPagarBase();
+  $('#bqM', el).onclick = () => { S.bqMin = true; pintarBloqueo(); };
+  $('#bqY', el).onclick = async ev => { ev.target.disabled = true; ev.target.textContent = '⏳ Revisando…'; await refrescar(); if (baseBloqueada()) { toast('Todavía figura la deuda. Si pagaste por transferencia, la central tiene que acreditarlo.', 'error'); const b = $('#bqY'); if (b) { b.disabled = false; b.textContent = '🔄 Ya pagué'; } } else toast('¡Listo! Ya podés trabajar', 'ok'); };
+}
+async function irAPagarBase() { try { await pagarBase(); } catch (er) { toast(er.message, 'error'); } }
+// Si el servidor rechaza una acción por la base impaga, se muestra el anuncio y se abre el pago
+function errBase(er) {
+  if (/BASE IMPAGA/i.test(er && er.message || '')) { S.bqMin = false; refrescar().then(() => { pintarBloqueo(); irAPagarBase(); }); }
+  else toast(er.message, 'error');
+}
 // ---- Pagar base ----
-const COLOR_BASE = { verde: '#2f9e57', amarillo: '#e2b007', rojo: '#d64545', azul: '#2f6fd6', gris: '#7b8a8b' };
+const COLOR_BASE = { verde: '#278449', amarillo: '#e2b007', rojo: '#d43d3d', azul: '#2f6fd6', gris: '#7b8a8b' };
 async function pagarBase() {
   const [b, r] = await Promise.all([api('/api/base'), api('/api/conductor/movimientos')]);
+  // bloqueado por deuda (aunque esté fuera de servicio): se muestra como tal y se propone pagar al menos toda la deuda
+  const bqb = S.estado && S.estado.bloqueo_base; if (bqb && bqb.bloqueado) { b.bloqueado = true; b.color = 'rojo'; b.texto = 'Bloqueado por deuda'; if (b.deuda > 0 && !(b.sugerido >= b.deuda)) b.sugerido = b.deuda; }
   const cuotaTxt = b.plan && b.cuota > 0 ? `${esc(b.plan.descripcion)}: <b>${pesos(b.cuota)}</b> ${b.plan.periodicidad === 'diaria' ? 'por día, se descuenta solo de tu cuenta' : '(' + esc(b.plan.periodicidad) + ')'}` : 'Tu móvil no tiene un plan con base fija.';
   const el = hoja('Pagar base', `<div class="tarifador"><div>Saldo de la cuenta · Móvil ${b.numero}</div><div class="monto" style="color:${b.saldo < 0 ? '#ff8a8a' : '#a6e06b'}">${pesos(b.saldo)}</div>
       <div style="margin-top:4px"><span style="background:${COLOR_BASE[b.color] || '#888'};border-radius:10px;padding:2px 10px;font-size:13px;font-weight:700">${esc(b.texto)}</span></div></div>
@@ -950,13 +1069,13 @@ function infoBg() {
     <ol style="line-height:1.7;padding-left:20px"><li>Permití la <b>ubicación</b> y las <b>notificaciones</b> cuando la app lo pida.</li>
     <li>Aceptá que la app funcione <b>sin restricciones de batería</b> (Ajustes → Aplicaciones → TOQUE! Conductor → Batería → Sin restricciones).</li>
     <li>Para salir de la app usá <b>Cerrar sesión</b>; con la tecla Atrás o el botón de inicio queda funcionando en segundo plano.</li></ol>
-    <p style="font-size:14px">${S.bgWatcher ? '<b style="color:#2f9e57">✓ GPS en segundo plano activo</b>' : '<b style="color:#d98a00">El GPS en segundo plano todavía no está activo</b>'}</p>
+    <p style="font-size:14px">${S.bgWatcher ? '<b style="color:#278449">✓ GPS en segundo plano activo</b>' : '<b style="color:#d98a00">El GPS en segundo plano todavía no está activo</b>'}</p>
     <button class="btn grande" onclick="S.gpsVigilar && S.gpsVigilar();cerrarHoja()">Activar ahora</button>`);
   hoja('Segundo plano', `<p>Para que la app siga recibiendo viajes y midiendo el recorrido con la pantalla apagada:</p>
     <ol style="line-height:1.7;padding-left:20px"><li><b>Instalá la app</b>: menú del navegador → <i>Agregar a pantalla de inicio</i>, y abrila desde ahí.</li>
     <li>Permiso de <b>Ubicación: «Permitir siempre»</b> (Ajustes del celular → Aplicaciones → esta app/Chrome → Permisos).</li>
     <li>Desactivá el <b>ahorro de batería</b> para esta app/Chrome (Batería → Sin restricciones).</li>
-    <li>Permití las <b>notificaciones</b>: los viajes y los mensajes de la central te llegan aunque el celular esté bloqueado o la app cerrada. ${S.pushOk ? '<b style="color:#2f9e57">✓ Activadas en este celular</b>' : '<b style="color:#d98a00">Todavía no están activadas</b>'}</li>
+    <li>Permití las <b>notificaciones</b>: los viajes y los mensajes de la central te llegan aunque el celular esté bloqueado o la app cerrada. ${S.pushOk ? '<b style="color:#278449">✓ Activadas en este celular</b>' : '<b style="color:#d98a00">Todavía no están activadas</b>'}</li>
     <li>Para que el <b>GPS</b> siga funcionando con la pantalla apagada, usá la <b>app Android</b> de Remises TOQUE! (pedila a la central).</li>
     <li>No cierres la app deslizándola desde las apps recientes.</li></ol>
     <p style="opacity:.8;font-size:13px">En iPhone el sistema suspende las páginas web al bloquear la pantalla: ahí conviene dejar la app abierta y la pantalla encendida. Aunque se suspenda, al volver a la app se actualiza sola y el viaje cobra el recorrido real registrado por el servidor.</p>
@@ -966,7 +1085,7 @@ function notificar(titulo, cuerpo, abrir, tag) {
   const LN = plug('LocalNotifications');
   if (LN) {
     if (!(S.enFondo || document.hidden)) return;
-    LN.schedule({ notifications: [{ id: idDeTag(tag), title: titulo, body: cuerpo || '', largeBody: cuerpo || '', channelId: 'toque-avisos', smallIcon: 'ic_stat_toque', iconColor: '#5fa52f', autoCancel: true, extra: { abrir: abrir || '' } }] }).catch(() => { });
+    LN.schedule({ notifications: [{ id: idDeTag(tag), title: titulo, body: cuerpo || '', largeBody: cuerpo || '', channelId: 'toque-avisos', smallIcon: 'ic_stat_toque', iconColor: '#4a8125', autoCancel: true, extra: { abrir: abrir || '' } }] }).catch(() => { });
     return;
   }
   if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
@@ -1081,20 +1200,20 @@ function pintarMenu() {
   const e = S.estado; if (!e) return;
   const m = e.movil, c = e.conductor || {}, [et, ec] = EST[m.estado] || [m.estado, '#888'], fuera = m.estado === 'fuera_servicio';
   const ini = ((c.nombre || '?')[0] + ((c.apellido || '')[0] || '')).toUpperCase();
+  // la foto de perfil se pide una sola vez (no viaja en cada actualización del estado)
+  if (S.foto === undefined) { S.foto = null; api('/api/conductor/perfil').then(p => { if (p && p.foto) { S.foto = p.foto; pintarMenu(); } }).catch(() => { }); }
   const it = (k, ico, t, sub, col) => `<a data-k="${k}"><span class="mi" style="background:${col}">${ico}</span><span class="mt"><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span>${k === 'soporte' ? '<span class="badge-n" id="chatn2"></span>' : ''}<span class="mc">›</span></a>`;
   $('#lat').innerHTML = `<div class="caja">
     <div class="mh"><button class="mx" aria-label="Cerrar menú">×</button>
-      <div class="mp"><span class="av">${esc(ini)}</span><div style="min-width:0"><b>${esc((c.nombre || '') + ' ' + (c.apellido || ''))}</b><small>Móvil ${m.numero}${m.patente ? ' · ' + esc(m.patente) : ''}</small></div></div>
+      <div class="mp"><span class="av">${S.foto ? FOTO_PERFIL.avatarHtml(S.foto, (c.nombre || '') + ' ' + (c.apellido || '')) : esc(ini)}</span><div style="min-width:0"><b>${esc((c.nombre || '') + ' ' + (c.apellido || ''))}</b><small>Móvil ${m.numero}${m.patente ? ' · ' + esc(m.patente) : ''}</small></div></div>
       <div class="mest"><span class="pill" style="background:${ec}">${et}</span><span class="ms">Saldo <b style="color:${e.saldo < 0 ? '#ffb3b3' : '#c9f29b'}">${pesos(e.saldo)}</b></span></div></div>
     <button class="mfs ${fuera ? 'lib' : ''}" data-k="fuera">${fuera ? '▶️ Ponerme libre' : '⏸️ Fuera de servicio'}</button>
     <div class="mg">Trabajo</div>
-    ${it('modo', '🛵', 'Modo de trabajo', 'Conductor o repartidor (moto / auto)', '#fff1e0')}${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}
-    <div class="mg">Mi plata</div>
-    ${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
+    ${it('modo', '🛵', 'Modo de trabajo', 'Conductor o repartidor (moto / auto)', '#fff1e0')}${it('viajes', '🧾', 'Mis viajes', 'Últimos 7 días', '#e8f1fb')}${it('saldo', '💲', 'Pagar base', 'Mercado Pago o transferencia', '#eaf7e2')}${it('billetera', '👛', 'Mi billetera', 'Saldo y movimientos', '#fff4dc')}
     <div class="mg">Ayuda</div>
-    ${it('soporte', '💬', 'Soporte con la central', 'Escribile a la central', '#e6f6f4')}${it('manual', '📘', 'Manual de uso', 'Cómo usar la app', '#eef0fb')}
+    ${it('soporte', '💬', 'Soporte con la central', 'Escribile a la central', '#e6f6f4')}${it('manual', '📘', 'Manual de uso', 'Cómo usar la app', '#eef0fb')}${it('tyc', '📜', 'Términos y condiciones', 'Condiciones de uso de la app', '#f3f4f6')}${it('arrep', '↩️', 'Botón de arrepentimiento', 'Revocar un servicio contratado', '#fff1e3')}${it('bajas', '⛔', 'Botón de baja de servicio', 'Dar de baja tu cuenta', '#fdecec')}
     <div class="mg">Mi cuenta</div>
-    ${it('perfil', '👤', 'Mi perfil', 'Datos y contacto', '#f1eefa')}${it('clave', '🔑', 'Cambiar clave', '', '#f3f4f6')}${ES_ANDROID && !NATIVO ? it('apk', '📲', 'Descargar app Android', 'Funciona con el celular bloqueado', '#e8f1fb') : ''}
+    ${it('perfil', '👤', 'Mi perfil', 'Datos y contacto', '#f1eefa')}${it('mp', '💳', 'Cobros con Mercado Pago', 'Recibí los pagos en tu cuenta', '#e5f4fc')}${it('clave', '🔑', 'Cambiar clave', '', '#f3f4f6')}${ES_ANDROID && !NATIVO ? it('apk', '📲', 'Descargar app Android', 'Funciona con el celular bloqueado', '#e8f1fb') : ''}
     <a data-k="cerrar" class="msal"><span class="mi" style="background:#fdecec">🚪</span><span class="mt"><b>Cerrar sesión</b></span></a>
     <div class="mpie">Remises TOQUE! · Conductor</div></div>`;
   $('.mx', $('#lat')).onclick = cerrarMenu;
@@ -1129,7 +1248,7 @@ function abrirMercadoPago() {
 // ---- Mis viajes (últimos 7 días) ----
 async function misViajesCond() {
   let vs; try { vs = await api('/api/conductor/viajes'); } catch (er) { return toast(er.message, 'error'); }
-  const EV = { finalizado: ['Finalizado', '#2f9e57'], anulado: ['Cancelado', '#d64545'], en_curso: ['En curso', '#e8892b'], confirmado: ['Asignado', '#2f6fd6'], ofrecido: ['Ofrecido', '#7b8a8b'], pendiente: ['Pendiente', '#7b8a8b'], reserva: ['Reserva', '#6c4fd6'] };
+  const EV = { finalizado: ['Finalizado', '#278449'], anulado: ['Cancelado', '#d43d3d'], en_curso: ['En curso', '#e8892b'], confirmado: ['Asignado', '#2f6fd6'], ofrecido: ['Ofrecido', '#7b8a8b'], pendiente: ['Pendiente', '#7b8a8b'], reserva: ['Reserva', '#6c4fd6'] };
   const fin = vs.filter(v => v.estado === 'finalizado'), total = fin.reduce((a, v) => a + (+v.monto || 0), 0), km = fin.reduce((a, v) => a + (+v.km || 0), 0);
   const dia = f => { const d = String(f || '').slice(0, 10), hoy = new Date(), ay = new Date(Date.now() - 864e5), iso = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
     if (d === iso(hoy)) return 'Hoy'; if (d === iso(ay)) return 'Ayer';
@@ -1144,7 +1263,7 @@ async function misViajesCond() {
     <p class="vjsub">Últimos 7 días · ${vs.length} viaje${vs.length === 1 ? '' : 's'} en total</p>
     ${grupos.length ? grupos.map(g => `<div class="vjg">${g.g}<span>${g.vs.filter(v => v.estado === 'finalizado').length ? pesos(g.vs.filter(v => v.estado === 'finalizado').reduce((a, v) => a + (+v.monto || 0), 0)) : ''}</span></div>${g.vs.map(tarjeta).join('')}`).join('') : '<div class="vjvac"><div style="font-size:42px">🚕</div><b>Todavía no hiciste viajes esta semana</b><p>Cuando termines un viaje lo vas a ver acá con su ticket.</p></div>'}`);
   el.classList.add('h-viajes');
-  $$('[data-tk]', el).forEach(b => b.onclick = () => ticket(+b.dataset.tk));
+  $$('[data-tk]', el).forEach(b => b.onclick = () => ticket(+b.dataset.tk, true));
 }
 // hojas / menú
 // Pantallas que se abren desde el menú: mismo estilo que el menú y "‹" para volver al menú con todas las opciones.
@@ -1160,12 +1279,39 @@ function hoja(t, html) {
 }
 function volverAlMenu() { cerrarHoja(); abrirMenu(); }
 function cerrarHoja() { $$('.hoja').forEach(x => x.remove()); }
+// ---------- Cobros con Mercado Pago: el pasajero paga y el dinero entra en la cuenta del conductor ----------
+async function cobrosMp() {
+  let e; try { e = await api('/api/conductor/mp?op=estado'); } catch (er) { return toast(er.message, 'error'); }
+  const base = e.base_pendiente > 0
+    ? `<div class="mpc-b ${e.bloqueado ? 'mal' : ''}"><b>Base pendiente: ${pesos(e.base_pendiente)}</b><span>${e.bloqueado ? 'Móvil bloqueado por deuda: pagá la base para volver a recibir viajes.' : e.vence ? 'Tenés tiempo hasta el ' + esc(e.vence) + '.' : ''}${e.cobra_base && e.vinculado ? ' Se descuenta sola de tus cobros con Mercado Pago (hasta el 90% de cada viaje).' : ''}</span></div>`
+    : '<div class="mpc-b ok"><b>Base del día pagada ✔</b></div>';
+  const el = hoja('Cobros con Mercado Pago', e.vinculado
+    ? `<div class="mpc"><div class="mpc-e ok">✔ Cuenta vinculada</div><p>Los pasajeros que pagan con Mercado Pago te depositan <b>directo en tu cuenta</b>. Te avisamos al instante cada pago.</p>${base}
+       <button class="btn sec" id="mpDes">Desvincular mi cuenta</button><small>Si la desvinculás, los pagos van a la cuenta de la central y te los rinde después.</small></div>`
+    : `<div class="mpc"><div class="mpc-e">Sin vincular</div><p>Vinculá tu Mercado Pago y el dinero de los pasajeros que paguen con Mercado Pago entra <b>directo a tu cuenta</b>.</p>${base}
+       <button class="btn grande mpc-btn" id="mpVin">Vincular Mercado Pago</button><small>Se abre Mercado Pago para que autorices. Tus claves nunca pasan por la app.</small></div>`);
+  if ($('#mpVin', el)) $('#mpVin', el).onclick = async ev => { ev.target.disabled = true;
+    try { const r = await api('/api/conductor/mp?op=vincular'); if (NATIVO) window.open(r.url, '_system'); else location.href = r.url; }
+    catch (er) { ev.target.disabled = false; toast(er.message, 'error'); } };
+  if ($('#mpDes', el)) $('#mpDes', el).onclick = async () => { if (!confirm('¿Desvincular tu cuenta de Mercado Pago?')) return;
+    try { await api('/api/conductor/mp?op=desvincular', {}); toast('Cuenta desvinculada', 'ok'); S.volverMenu = $('.hoja') && $('.hoja').dataset.menu === '1'; cobrosMp(); } catch (er) { toast(er.message, 'error'); } };
+}
+function avisoPagoViaje(d) {
+  if (!d) return;
+  let t = `💰 Viaje #${d.viaje_id} pagado con Mercado Pago: ${pesos(d.monto)}.`;
+  if (d.directo) t += ` Te llegan ${pesos(d.neto)} a tu cuenta${d.base_cobrada > 0 ? ` (la central cobró ${pesos(d.base_cobrada)} de base)` : ''}.`; else t += ' Te lo rinde la central.';
+  beep(); vibrar(300); toast(t, 'ok'); notificar('💰 Viaje pagado', t, '', 'rodar-pago-' + d.viaje_id); refrescar();
+}
 async function menu(k) {
   const e = S.estado;
   if (k === 'soporte') return abrirSoporte();
+  if (k === 'mp') return cobrosMp();
   if (k === 'perfil') {
     let p = {}; try { p = await api('/api/conductor/perfil'); } catch (er) { return toast(er.message, 'error'); }
-    const el = hoja('Mi perfil', `<p style="margin:0 0 10px"><b>DNI ${esc(p.documento || '')}</b> · Móvil ${e.movil.numero} · ${esc(e.movil.marca || '')} ${esc(e.movil.modelo || '')} · ${esc(e.movil.patente || '')}<br><small style="opacity:.75">El DNI y los datos del auto los cambia la central.</small></p>
+    const fotoHtml = () => `<div style="display:flex;gap:14px;align-items:center;margin:0 0 12px"><button type="button" id="fFoto" aria-label="Cambiar foto de perfil" style="width:84px;height:84px;border-radius:50%;border:3px solid #e7eef7;background:#64a135;color:#fff;font-weight:800;font-size:28px;padding:0;cursor:pointer;flex:none">${FOTO_PERFIL.avatarHtml(S.foto, (p.nombre || '') + ' ' + (p.apellido || ''))}</button>
+      <div><button type="button" class="btn sec" id="fFotoC" style="margin:0 0 6px">📷 ${S.foto ? 'Cambiar foto' : 'Agregar foto'}</button>${S.foto ? '<br><button type="button" id="fFotoQ" style="background:none;border:0;color:inherit;text-decoration:underline;padding:0;cursor:pointer;font:inherit;font-size:14px">Quitar foto</button>' : ''}<small style="display:block;opacity:.75;margin-top:4px">El pasajero la ve cuando le asignan tu móvil.</small></div></div>`;
+    if (p.foto) S.foto = p.foto;
+    const el = hoja('Mi perfil', `<div id="fFotoBox">${fotoHtml()}</div><p style="margin:0 0 10px"><b>DNI ${esc(p.documento || '')}</b> · Móvil ${e.movil.numero} · ${esc(e.movil.marca || '')} ${esc(e.movil.modelo || '')} · ${esc(e.movil.patente || '')}<br><small style="opacity:.75">El DNI y los datos del auto los cambia la central.</small></p>
       <form id="fp"><div class="grid g2">
         <div class="campo"><label>Nombre</label><input name="nombre" value="${esc(p.nombre || '')}" required></div>
         <div class="campo"><label>Apellido</label><input name="apellido" value="${esc(p.apellido || '')}"></div>
@@ -1175,9 +1321,27 @@ async function menu(k) {
         <div class="campo"><label>Email de recupero</label><input name="email_recupero" type="email" autocapitalize="none" value="${esc(p.email_recupero || '')}"></div>
       </div><button class="btn grande" style="margin-top:12px">Guardar mis datos</button></form>
       <p style="font-size:13px;opacity:.75;margin-top:10px">Tu alias y tu billetera se cargan en <b>Mi billetera virtual</b>.</p>`);
+    const guardarFoto = async f => { try { const r = await api('/api/conductor/foto', { foto: f }); S.foto = r.foto || null; toast(S.foto ? 'Foto de perfil actualizada' : 'Foto quitada', 'ok'); $('#fFotoBox', el).innerHTML = fotoHtml(); atarFoto(); pintarMenu(); } catch (er) { toast(er.message, 'error'); } };
+    const elegir = async () => { try { const f = await FOTO_PERFIL.elegirFotoPerfil(); if (f) guardarFoto(f); } catch (er) { toast(er.message, 'error'); } };
+    const atarFoto = () => { $('#fFoto', el).onclick = elegir; $('#fFotoC', el).onclick = elegir; const q = $('#fFotoQ', el); if (q) q.onclick = () => { if (confirm('¿Quitar tu foto de perfil?')) guardarFoto(''); }; };
+    atarFoto();
     $('#fp', el).onsubmit = async ev => { ev.preventDefault(); const btn = $('button', ev.target); btn.disabled = true;
       try { await api('/api/conductor/perfil', Object.fromEntries(new FormData(ev.target))); toast('Datos guardados', 'ok'); cerrarHoja(); await refrescar(); const n = $('.hd div div'); if (n && S.estado) n.textContent = S.estado.conductor.nombre + ' ' + S.estado.conductor.apellido; }
       catch (er) { toast(er.message, 'error'); btn.disabled = false; } };
+  }
+  if (k === 'modo') {
+    const md = await api('/api/conductor/modos'), rp = md.repartidor, d = md.datos || {};
+    const VEH = { moto: '🏍 Moto', auto: '🚗 Auto' };
+    const lista = md.moviles.map(x => `<button class="btn ${x.id === md.actual ? '' : 'sec'}" data-mv="${x.id}" ${x.id === md.actual ? 'disabled' : ''} style="width:100%;justify-content:flex-start;margin-bottom:8px;text-align:left"><span>${x.es_reparto ? '🛵 Repartidor' : '🚕 Conductor'} · Móvil <b>${x.numero}</b> · ${esc(x.patente || '')}${x.es_reparto ? ' · ' + (VEH[x.tipo_vehiculo] || '') : ''}${x.id === md.actual ? ' <small>(usando ahora)</small>' : ''}${x.es_reparto && rp && rp.estado !== 'aprobado' ? ' <small>(' + (rp.estado === 'pendiente' ? 'en revisión' : esc(rp.estado)) + ')</small>' : ''}</span></button>`).join('');
+    const pedir = !rp ? `<div class="fs-card" style="margin-top:12px"><h3 style="margin:0 0 6px">🛵 Quiero repartir también</h3><p style="margin:0 0 10px;color:#6b7a7b">Usás esta misma cuenta. La central revisa tu pedido y te habilita; ahí podés pasar a repartidor desde acá, sin cerrar sesión.</p>
+      <form id="rf"><div class="campo"><label>¿En qué vas a repartir?</label><select name="vehiculo"><option value="moto">🏍 Moto</option><option value="auto" ${d.tipo_vehiculo === 'auto' ? 'selected' : ''}>🚗 Auto</option></select></div>
+      <div class="campo"><label>Patente</label><input name="patente" value="${esc(d.patente || '')}" style="text-transform:uppercase" required></div><div class="campo"><label>Marca y modelo (opcional)</label><input name="marca" placeholder="Ej: Honda Wave"></div>
+      <button class="btn verde grande" style="width:100%">Enviar solicitud</button></form></div>`
+      : rp.estado === 'pendiente' ? '<div class="fs-card" style="margin-top:12px">⏳ <b>Tu solicitud de repartidor está en revisión.</b> Te avisamos cuando la central te habilite.</div>'
+      : rp.estado !== 'aprobado' ? `<div class="fs-card" style="margin-top:12px">⛔ Tu cuenta de repartidor está <b>${esc(rp.estado)}</b>.${rp.motivo ? '<br>' + esc(rp.motivo) : ''}</div>` : '';
+    const el = hoja('Modo de trabajo', `<p style="margin-top:0;color:#6b7a7b">Elegí con qué móvil trabajás. Para cambiar tenés que estar sin viaje o pedido en curso.</p>${lista}${pedir}<p style="text-align:center;margin-top:14px"><a href="repartidor.html" target="_blank">Abrir mi portal de repartidor (ganancias y entregas)</a></p>`);
+    $$('[data-mv]', el).forEach(b => b.onclick = async () => { if (!confirm('¿Cambiar de móvil? Vas a quedar conectado con el nuevo.')) return; try { await api('/api/conductor/cambiar-movil', { movil_id: +b.dataset.mv }); toast('Listo, cambiaste de móvil', 'ok'); location.reload(); } catch (er) { toast(er.message, 'error'); } });
+    const rf = $('#rf', el); if (rf) rf.onsubmit = async ev => { ev.preventDefault(); try { await api('/api/conductor/repartidor', Object.fromEntries(new FormData(rf))); toast('Solicitud enviada a la central', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
   }
   if (k === 'viajes') return misViajesCond();
   if (k === 'saldo') await pagarBase();
@@ -1195,22 +1359,11 @@ async function menu(k) {
     const el = hoja('Cambiar clave', '<form id="cf"><div class="campo"><label>Actual</label><input type="password" name="actual"></div><div class="campo"><label>Nueva</label><input type="password" name="nueva"></div><button class="btn grande">Guardar</button></form>');
     $('#cf', el).onsubmit = async ev => { ev.preventDefault(); try { await api('/api/me/password', Object.fromEntries(new FormData(ev.target))); toast('Clave actualizada', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
   }
-  if (k === 'modo') {
-    const md = await api('/api/conductor/modos'), rp = md.repartidor, d = md.datos || {};
-    const VEH = { moto: '🏍 Moto', auto: '🚗 Auto' };
-    const lista = md.moviles.map(x => `<button class="btn ${x.id === md.actual ? '' : 'sec'}" data-mv="${x.id}" ${x.id === md.actual ? 'disabled' : ''} style="width:100%;justify-content:flex-start;margin-bottom:8px;text-align:left"><span>${x.es_reparto ? '🛵 Repartidor' : '🚕 Conductor'} · Móvil <b>${x.numero}</b> · ${esc(x.patente || '')}${x.es_reparto ? ' · ' + (VEH[x.tipo_vehiculo] || '') : ''}${x.id === md.actual ? ' <small>(usando ahora)</small>' : ''}${x.es_reparto && rp && rp.estado !== 'aprobado' ? ' <small>(' + (rp.estado === 'pendiente' ? 'en revisión' : esc(rp.estado)) + ')</small>' : ''}</span></button>`).join('');
-    const pedir = !rp ? `<div class="fs-card" style="margin-top:12px"><h3 style="margin:0 0 6px">🛵 Quiero repartir también</h3><p style="margin:0 0 10px;color:#6b7a7b">Usás esta misma cuenta. La central revisa tu pedido y te habilita; ahí podés pasar a repartidor desde acá, sin cerrar sesión.</p>
-      <form id="rf"><div class="campo"><label>¿En qué vas a repartir?</label><select name="vehiculo"><option value="moto">🏍 Moto</option><option value="auto" ${d.tipo_vehiculo === 'auto' ? 'selected' : ''}>🚗 Auto</option></select></div>
-      <div class="campo"><label>Patente</label><input name="patente" value="${esc(d.patente || '')}" style="text-transform:uppercase" required></div><div class="campo"><label>Marca y modelo (opcional)</label><input name="marca" placeholder="Ej: Honda Wave"></div>
-      <button class="btn verde grande" style="width:100%">Enviar solicitud</button></form></div>`
-      : rp.estado === 'pendiente' ? '<div class="fs-card" style="margin-top:12px">⏳ <b>Tu solicitud de repartidor está en revisión.</b> Te avisamos cuando la central te habilite.</div>'
-      : rp.estado !== 'aprobado' ? `<div class="fs-card" style="margin-top:12px">⛔ Tu cuenta de repartidor está <b>${esc(rp.estado)}</b>.${rp.motivo ? '<br>' + esc(rp.motivo) : ''}</div>` : '';
-    const el = hoja('Modo de trabajo', `<p style="margin-top:0;color:#6b7a7b">Elegí con qué móvil trabajás. Para cambiar tenés que estar sin viaje o pedido en curso.</p>${lista}${pedir}<p style="text-align:center;margin-top:14px"><a href="repartidor.html" target="_blank">Abrir mi portal de repartidor (ganancias y entregas)</a></p>`);
-    $$('[data-mv]', el).forEach(b => b.onclick = async () => { if (!confirm('¿Cambiar de móvil? Vas a quedar conectado con el nuevo.')) return; try { await api('/api/conductor/cambiar-movil', { movil_id: +b.dataset.mv }); toast('Listo, cambiaste de móvil', 'ok'); location.reload(); } catch (er) { toast(er.message, 'error'); } });
-    const rf = $('#rf', el); if (rf) rf.onsubmit = async ev => { ev.preventDefault(); try { await api('/api/conductor/repartidor', Object.fromEntries(new FormData(rf))); toast('Solicitud enviada a la central', 'ok'); cerrarHoja(); } catch (er) { toast(er.message, 'error'); } };
-  }
   if (k === 'fuera') await fueraDeServicio();
   if (k === 'manual') window.open('manual-conductor.html', '_blank');
+  if (k === 'tyc') location.href = 'terminos.html?para=conductores&de=conductor.html';
+  if (k === 'arrep') location.href = 'baja.html?tipo=arrepentimiento&de=conductor.html';
+  if (k === 'bajas') location.href = 'baja.html?tipo=baja&de=conductor.html';
   if (k === 'apk') hoja('App Android', `<div class="fs-card"><div class="ic">📲</div><h2>App Android del conductor</h2><p>Con la app instalada, el GPS y los avisos de viajes siguen funcionando aunque bloquees el celular.</p></div>
     <ol style="line-height:1.7;padding-left:20px"><li>Tocá <b>Descargar</b> y abrí el archivo <b>toque-conductor.apk</b>.</li><li>Si el celular lo pide, permití <b>instalar apps de esta fuente</b>.</li><li>Abrí <b>TOQUE! Conductor</b>, ingresá y aceptá los permisos de ubicación, notificaciones y batería.</li></ol>
     <a class="btn verde grande" style="width:100%;text-align:center;display:block" href="${APK_URL}">⬇️ Descargar la app</a>`);

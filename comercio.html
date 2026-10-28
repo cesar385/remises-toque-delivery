@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#215181">
 <link rel="icon" type="image/png" href="img/pasajero-192.png">
 <title>Remises TOQUE! · Portal de comercios</title>
-<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
 <style>
 :root{--az:#215181;--ve:#2f9e57;--na:#e8892b;--ro:#d64545;--tx:#1d2a2b;--su:#6b7a7b;--bo:#e3e9ec;--fo:#f3f6f8}
 *{box-sizing:border-box}body{margin:0;background:var(--fo);color:var(--tx);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px}
@@ -34,10 +34,16 @@ table{width:100%;border-collapse:collapse}td,th{padding:8px 6px;border-bottom:1p
 </head>
 <body>
 <div id="raiz"></div><div id="toast"></div>
-<script src="config.js"></script>
+<script src="config.js?v=2026102801"></script>
 <script src="vendor/supabase/supabase.js"></script>
-<script src="vendor/leaflet/leaflet.js"></script>
-<script src="js/backend.js"></script>
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="js/mapa-gl.js?v=2026102540"></script>
+<script src="js/mapa-base.js?v=2026102401"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102801"></script>
+<script src="js/rodar/integraciones.js?v=2026102801"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
 <script>
 (function () {
 const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];

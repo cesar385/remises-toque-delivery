@@ -5,18 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Ticket de viaje · Remises TOQUE!</title>
-<link rel="icon" type="image/png" href="img/pasajero-192.png">
+<link rel="icon" type="image/png" href="img/pasajero-192.png?v=3">
 </head>
 <body style="font-family:system-ui,sans-serif">
 <p id="msg">Preparando ticket…</p>
-<script src="js/backend.js?v=2026101627"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/integraciones.js?v=2026102701"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
+<script src="js/tarifa.js?v=2026102701"></script>
+<script src="js/comprobante/estilos.js?v=2026102520"></script>
+<script src="js/comprobante/tarjeta.js?v=2026102701"></script>
+<script src="js/comprobante/compartir.js?v=2026102701"></script>
+<script src="js/comprobante/pantalla.js?v=2026102701"></script>
+<script src="js/pdf/librerias.js?v=2026102701"></script>
+<script src="js/pdf/membretado.js?v=2026102701"></script>
+<script src="js/pdf/visor.js?v=2026102520"></script>
+<script src="js/terminos-aceptacion.js?v=2026102520"></script>
 <script>
 // Muestra un ticket con los datos que vienen en el enlace (después del #, no se envían a ningún servidor).
 // Lo usa la app Android del conductor para imprimir o guardar el PDF desde Chrome.
+// Modo "compartir": la app Android sin el complemento para compartir archivos abre acá el comprobante para mandarlo en PDF.
+function compartirEnChrome(v) {
+  cpEstilos();
+  const num = !v._sinNumero, nombre = (num ? 'ticket-viaje-' + v.id : 'comprobante-viaje-' + String(v.fin_at || v.creado || '').slice(0, 10)) + '.pdf';
+  document.body.style.cssText = 'margin:0;background:#eef2f6;font-family:system-ui,sans-serif';
+  document.body.innerHTML = '<div style="max-width:420px;margin:0 auto;padding:14px">' + cpCardHtml(v, { numero: num, cliente: v._cliente, empresa: v.empresa }) +
+    '<div style="display:flex;flex-direction:column;gap:8px;margin:14px 0 24px"><button id="sh" style="border:0;border-radius:14px;padding:15px;background:#215181;color:#fff;font:800 17px system-ui">📤 Compartir PDF</button>' +
+    '<button id="dl" style="border:1px solid #c9d4df;border-radius:14px;padding:13px;background:#fff;color:#215181;font:700 15px system-ui">⬇ Descargar PDF</button>' +
+    '<p style="text-align:center;color:#627280;font-size:13px;margin:4px 0 0">Después volvé a la app con el botón Atrás.</p></div></div>';
+  const card = document.querySelector('.cp');
+  document.getElementById('sh').onclick = async function () { this.disabled = true; this.textContent = '⏳ Generando PDF…'; try { await compartirPdf(card, nombre, 'Comprobante de viaje', ''); } catch (e) { alert('No se pudo compartir: ' + e.message); } this.disabled = false; this.textContent = '📤 Compartir PDF'; };
+  document.getElementById('dl').onclick = async function () { const pdf = await comprobantePdf(card); pdf.save(nombre); };
+}
 window.addEventListener('load', function () {
   try {
     const b = location.hash.slice(1).replace(/-/g, '+').replace(/_/g, '/');
     const v = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4)))));
+    if (/compartir=1/.test(location.search)) return compartirEnChrome(v);
     const html = ticketHtml(v, { auto: true }).replace('Imprimir / Guardar PDF', '🖨 Imprimir / Guardar PDF');
     document.open(); document.write(html); document.close();
   } catch (e) { document.getElementById('msg').textContent = 'No se pudo abrir el ticket. Volvé a la app e intentá de nuevo.'; }

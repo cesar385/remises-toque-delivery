@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#215181">
 <title>Ayuda y reclamos · Remises TOQUE!</title>
 <meta name="description" content="Escribile a la central de Remises TOQUE!: consultas, reclamos, objetos olvidados y sugerencias.">
-<link rel="icon" type="image/png" href="img/pasajero-192.png">
-<link rel="stylesheet" href="css/app.css?v=2026101621">
+<link rel="icon" type="image/png" href="img/pasajero-192.png?v=3">
+<link rel="stylesheet" href="css/app.css?v=2026102560">
 <style>
   .login .caja{max-width:460px;display:flex;flex-direction:column;gap:10px}
   .sub-l{color:var(--suave);margin:0;text-align:center;font-size:14px}
@@ -49,12 +49,19 @@
     <div class="oculto-hp" aria-hidden="true"><label>No completar</label><input name="web" tabindex="-1" autocomplete="off"></div>
     <div class="login-err" id="err"></div>
     <button class="btn verde" id="env" style="width:100%;justify-content:center;min-height:48px;font-size:16px">Enviar a la central</button>
+    <p style="margin:2px 0 0;font-size:13.5px;color:var(--suave)">Usamos tus datos solo para responder esta consulta. Ver la <a href="terminos.html?para=privacidad">Política de privacidad</a>.</p>
   </form>
   <div class="otros-ingresos"><span>También podés</span><a href="pasajero.html">🙂 Pedir un remís</a><a href="manual-pasajero.html">📘 Manual del pasajero</a><a href="index.html">🏠 Página principal</a></div>
 </div></div>
 <script src="config.js?v=2026101621"></script>
 <script src="vendor/supabase/supabase.js"></script>
-<script src="js/backend.js?v=2026101627"></script>
+<script src="js/rodar/conexion.js?v=2026102701"></script>
+<script src="js/rodar/direcciones.js?v=2026102701"></script>
+<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/integraciones.js?v=2026102701"></script>
+<script src="js/rodar/archivos.js?v=2026102701"></script>
+<script src="js/pie-legal.js?v=2026102550"></script>
+<script src="js/accesibilidad.js?v=2026102520"></script>
 <script>
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
