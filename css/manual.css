@@ -1,9 +1,9 @@
 /* Manuales de uso (pasajero y conductor) */
-:root{--pri:#215181;--pri2:#183c62;--verde:#5fa52f;--verde2:#4a8a22;--txt:#1d2a2b;--suave:#5e6f70;--fondo:#f2f5f6;--borde:#dbe4e5}
+:root{--pri:#215181;--pri2:#183c62;--verde:#4a8125;--verde2:#3f7a1d;--txt:#1d2a2b;--suave:#5e6f70;--fondo:#f2f5f6;--borde:#dbe4e5}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
 body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--txt);background:var(--fondo);line-height:1.6;font-size:16px}
 a{color:var(--pri)}
-.cab{background:linear-gradient(135deg,#183c62,#215181 60%,#5fa52f);color:#fff;padding:28px 16px 34px;text-align:center}
+.cab{background:linear-gradient(135deg,#183c62,#215181 60%,#4a8125);color:#fff;padding:28px 16px 34px;text-align:center}
 .cab img{width:200px;max-width:60%}
 .cab h1{margin:10px 0 4px;font-size:clamp(24px,5vw,34px)}
 .cab p{margin:0 auto;max-width:560px;color:#dce9f6}
