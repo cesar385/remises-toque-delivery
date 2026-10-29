@@ -41,7 +41,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:8px 6px;border-bottom:1p
 <script src="js/mapa-base.js?v=2026102401"></script>
 <script src="js/rodar/conexion.js?v=2026102701"></script>
 <script src="js/rodar/direcciones.js?v=2026102701"></script>
-<script src="js/rodar/rutas-api.js?v=2026102801"></script>
+<script src="js/rodar/rutas-api.js?v=2026102902"></script>
 <script src="js/rodar/integraciones.js?v=2026102801"></script>
 <script src="js/rodar/archivos.js?v=2026102701"></script>
 <script>
@@ -74,7 +74,7 @@ async function iniciar() {
 try { S.d = await api('r_dlv_com_inicio'); } catch (e) { if (e.status !== 401) raiz.innerHTML = `<div class="vacio">${esc(e.message)}<br><button class="btn" onclick="location.reload()">Reintentar</button></div>`; return; }
 const n = S.d.negocio, c = S.d.config;
 raiz.innerHTML = `<header><img src="img/logo-blanco.png" alt=""><b>${esc(n.nombre)}</b><span class="sp"></span><span id="ab" style="font-size:13px"></span><button id="salir">Salir</button></header>
-<nav>${[['pedidos', 'Pedidos'], ['historial', 'Historial'], ...(c.solicitar_repartidor ? [['repartidor', 'Solicitar repartidor']] : []), ['menu', (S.d.negocio.vocab || {}).catalogo || 'Menú'], ['saldo', 'Saldo'], ['perfil', 'Mi negocio']].map(([k, l]) => `<button data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav><main id="m"></main>`;
+<nav>${[['pedidos', 'Pedidos'], ['historial', 'Historial'], ...(c.solicitar_repartidor ? [['repartidor', 'Solicitar repartidor']] : []), ['menu', (S.d.negocio.vocab || {}).catalogo || 'Menú'], ['saldo', 'Saldo'], ['promos', 'Mis promos'], ['perfil', 'Mi negocio']].map(([k, l]) => `<button data-t="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav><main id="m"></main>`;
 $('#salir').onclick = async () => { try { await api('r_dlv_com_logout'); } catch { } LS.del('dlv_com_token'); login(); };
 $$('nav button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; $$('nav button').forEach(x => x.classList.toggle('on', x === b)); pintar(); });
 pintar();
@@ -100,6 +100,7 @@ else if (S.tab === 'menu') menu(m);
 else if (S.tab === 'saldo') m.innerHTML = `<div class="card"><h3 style="margin-top:0">Saldo: <span style="color:${n.saldo < 0 ? 'var(--ro)' : 'var(--ve)'}">${pesos(n.saldo)}</span></h3><small style="color:var(--su)">Positivo: la central te debe ese monto. Negativo: adeudás envíos o comisiones.</small>
 <table style="margin-top:10px"><tr><th>Fecha</th><th>Detalle</th><th style="text-align:right">Monto</th></tr>${S.d.movimientos.map(x => `<tr><td>${esc(String(x.fecha).slice(0, 16))}</td><td>${esc(x.detalle || x.tipo)}</td><td style="text-align:right;color:${x.monto < 0 ? 'var(--ro)' : 'var(--ve)'}">${pesos(x.monto)}</td></tr>`).join('') || '<tr><td colspan="3" class="vacio">Sin movimientos</td></tr>'}</table></div>`;
 else if (S.tab === 'perfil') perfil(m);
+else if (S.tab === 'promos') promos(m);
 }
 function tarjeta(p) {
 const c = S.d.config, nuevo = p.estado === 'pendiente', V = S.d.negocio.vocab || {};
@@ -188,6 +189,45 @@ const fi = $('#pi', f).files[0]; if (fi) b.imagen = (await RODAR.archivoADataURL
 const r = await api('r_dlv_com_producto', {}, b); toast(r.pendiente ? 'Enviado a la central para aprobación' : 'Producto guardado'); f.remove(); iniciar(); } catch (e) { toast(e.message); } };
 });
 }
+}
+// ---------- Mis promos: se publican en la página de Anuncios después de que la central las aprueba ----------
+const EST_PROMO = { publicado: ['Publicada', 'var(--ve)'], pendiente: ['En revisión', 'var(--na)'], pausado: ['Pausada', 'var(--su)'], rechazado: ['Rechazada', 'var(--ro)'] };
+async function promos(m) {
+m.innerHTML = '<div class="card">Cargando…</div>';
+let l; try { l = await api('r_dlv_com_anuncios'); } catch (e) { m.innerHTML = `<div class="card">${esc(e.message)}</div>`; return; }
+m.innerHTML = `<div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><h3 style="margin:0">Mis promociones</h3><small style="color:var(--su)">Aparecen en la página de Anuncios de Remises TOQUE! con el botón para pedirte por delivery. Cada promo nueva o modificada la revisa la central antes de publicarse.</small></div><button class="btn ve" id="pn">+ Nueva promo</button></div></div>
+${l.length ? l.map(a => { const [et, col] = EST_PROMO[a.estado] || [a.estado, 'var(--su)']; return `<div class="card" style="display:flex;gap:12px;align-items:flex-start">
+<div style="font-size:30px;line-height:1">${esc(a.emoji || '🏷️')}</div><div style="flex:1;min-width:0"><b>${esc(a.titulo)}</b> <span style="font-size:12px;font-weight:700;color:${col}">● ${et}</span>${a.estado === 'publicado' && !a.vigente ? ' <small style="color:var(--su)">(fuera de fecha)</small>' : ''}
+${a.texto ? `<div style="color:var(--su);font-size:14px;margin-top:2px">${esc(a.texto)}</div>` : ''}
+<small style="color:var(--su)">${a.desde ? 'Desde ' + esc(String(a.desde).slice(0, 10)) : 'Desde que se aprueba'}${a.hasta ? ' · hasta ' + esc(String(a.hasta).slice(0, 10)) : ''}${a.codigo ? ' · cupón <b>' + esc(a.codigo) + '</b>' : ''}</small>
+${a.estado === 'rechazado' && a.nota ? `<div style="margin-top:6px;color:var(--ro);font-size:13px">Motivo: ${esc(a.nota)}</div>` : ''}</div>
+<div style="display:flex;flex-direction:column;gap:6px"><button class="btn" data-pe="${a.id}">Editar</button><button class="btn ro" data-pb="${a.id}">Eliminar</button></div></div>`; }).join('')
+ : '<div class="card" style="text-align:center;color:var(--su)">Todavía no cargaste promociones.</div>'}`;
+$('#pn').onclick = () => promoForm({}, () => promos(m));
+$$('[data-pe]', m).forEach(b => b.onclick = () => promoForm(l.find(x => x.id === +b.dataset.pe), () => promos(m)));
+$$('[data-pb]', m).forEach(b => b.onclick = async () => { if (!confirm('¿Eliminar esta promoción?')) return; try { await api('r_dlv_com_anuncio_borrar', { id: +b.dataset.pb }); toast('Promoción eliminada'); promos(m); } catch (e) { toast(e.message); } });
+}
+function promoForm(a, listo) {
+const f = modal(`<h3 style="margin-top:0">${a.id ? 'Editar promoción' : 'Nueva promoción'}</h3>
+<div class="campo"><label>Título *</label><input id="pt" maxlength="90" value="${esc(a.titulo || '')}" placeholder="Ej: 2x1 en empanadas los martes"></div>
+<div class="campo"><label>Texto</label><textarea id="px" rows="3" maxlength="600" placeholder="Detalles, condiciones, días…">${esc(a.texto || '')}</textarea></div>
+<div class="g2"><div class="campo"><label>Tipo</label><select id="py">${[['promo', '🏷️ Promoción'], ['comercio', '🏪 Novedad del comercio'], ['evento', '🎉 Evento']].map(([v, t]) => `<option value="${v}" ${a.tipo === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+<div class="campo"><label>Emoji</label><input id="pm" maxlength="8" value="${esc(a.emoji || '')}" placeholder="🥟"></div></div>
+<div class="g2"><div class="campo"><label>Desde</label><input id="pd" type="date" value="${esc(a.desde ? String(a.desde).slice(0, 10) : '')}"></div>
+<div class="campo"><label>Hasta (vacío = sin vencimiento)</label><input id="ph" type="date" value="${esc(a.hasta ? String(a.hasta).slice(0, 10) : '')}"></div></div>
+<div class="g2"><div class="campo"><label>Cupón (opcional)</label><input id="pc" maxlength="24" value="${esc(a.codigo || '')}" placeholder="TOQUE10" style="text-transform:uppercase"></div>
+<div class="campo"><label>Texto del botón</label><input id="pa" maxlength="30" value="${esc(a.cta || '')}" placeholder="Pedir ahora"></div></div>
+<small style="color:var(--su);display:block;margin-bottom:10px">Al guardar, la promo queda <b>en revisión</b> hasta que la central la apruebe.</small>
+<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" style="background:var(--su)" id="pcan">Cancelar</button><button class="btn ve" id="pok">Guardar</button></div>`);
+$('#pcan', f).onclick = () => f.remove();
+$('#pok', f).onclick = async () => {
+  const b = $('#pok', f); b.disabled = true;
+  try {
+    await api('r_dlv_com_anuncio_guardar', {}, { id: a.id || null, titulo: $('#pt', f).value.trim(), texto: $('#px', f).value.trim(), tipo: $('#py', f).value, emoji: $('#pm', f).value.trim(),
+      desde: $('#pd', f).value || null, hasta: $('#ph', f).value || null, codigo: $('#pc', f).value.trim(), cta: $('#pa', f).value.trim() });
+    f.remove(); toast('Promoción enviada a revisión'); listo && listo();
+  } catch (e) { b.disabled = false; toast(e.message); }
+};
 }
 function perfil(m) {
 const n = S.d.negocio, hor = n.horario || {}, DIAS = [[1, 'Lunes'], [2, 'Martes'], [3, 'Miércoles'], [4, 'Jueves'], [5, 'Viernes'], [6, 'Sábado'], [0, 'Domingo']];

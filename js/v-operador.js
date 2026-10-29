@@ -27,6 +27,7 @@ function formViaje(cont, opts = {}) {
     <div class="bloque"><div class="tt">Momento del viaje</div><div class="in">
       <div class="fila"><label class="check" style="border:1px solid var(--borde);padding:8px;border-radius:8px"><input type="checkbox" id="oferta"> <span><b>A oferta</b><br><small>Sin móvil automático</small></span></label>
       <label class="check" style="border:1px solid #f0c27b;padding:8px;border-radius:8px"><input type="checkbox" id="pin"> <span><b>PIN seguridad</b><br><small>Pedir PIN al abordar</small></span></label>
+      <div class="campo"><label>Vehículo</label><select id="veh"><option value="">🚗 Remís (auto)</option><option value="moto">🏍 Moto (1 pasajero)</option></select></div>
       <div class="campo"><label>Cantidad de móviles</label><select id="cant">${[1, 2, 3, 4, 5].map(n => `<option value="${n}">${n} móvil${n > 1 ? 'es' : ''}</option>`).join('')}</select></div>
       <div class="campo"><label>Canal</label><select id="canal">${R.cat.canales.filter(c => c.codigo !== 'movil').map(c => `<option value="${c.codigo}" ${c.codigo === (opts.canal || 'centralita') ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></div></div>
       <div class="fila"><span id="momento" style="flex:1;color:var(--suave)">Ahora</span><button class="btn azul" id="fh">📅 Fecha y hora</button><button class="btn verde" id="ingresar">▶ Ingresar viaje</button></div></div></div>
@@ -141,7 +142,7 @@ function formViaje(cont, opts = {}) {
   // estimación
   async function estimar() {
     if (!st.origen) { q('#total').textContent = '—'; q('#detalle').textContent = 'Ingresá origen y destino para calcular'; return; }
-    const r = await api('/api/estimar', { body: { origen_lat: st.origen.lat, origen_lng: st.origen.lng, destino_lat: st.destino && st.destino.lat, destino_lng: st.destino && st.destino.lng, metros_ruta: st.rutaM || undefined, canal: q('#canal').value, medio_pago: q('#medio').value } });
+    const r = await api('/api/estimar', { body: { origen_lat: st.origen.lat, origen_lng: st.origen.lng, destino_lat: st.destino && st.destino.lat, destino_lng: st.destino && st.destino.lng, metros_ruta: st.rutaM || undefined, canal: q('#canal').value, medio_pago: q('#medio').value, vehiculo: (q('#veh') && q('#veh').value) || undefined } });
     st.est = r;
     if (!r) return;
     q('#total').textContent = r.monto != null ? pesos(r.monto) : 'Bajada ' + pesos(r.bajada);
@@ -150,6 +151,7 @@ function formViaje(cont, opts = {}) {
   }
   const verCC = () => { q('#ccBox').style.display = q('#medio').value === 'cuenta_corriente' ? '' : 'none'; };
   q('#medio').onchange = () => { verCC(); estimar(); }; q('#canal').onchange = estimar; verCC();
+  if (q('#veh')) q('#veh').onchange = () => { if (q('#veh').value === 'moto') q('#cant').value = '1'; estimar(); };
 
   function limpiar() {
     Object.assign(st, { cliente: null, origen: null, destino: null, programado: null, repetir: null, est: null });
@@ -224,7 +226,7 @@ function formViaje(cont, opts = {}) {
       origen_dir: RODAR.enTexto(q('#oDir').value).dir, origen_loc: q('#oLoc').value, origen_prov: q('#oProv').value, origen_ref: q('#oRef').value, origen_lat: st.origen && st.origen.lat, origen_lng: st.origen && st.origen.lng,
       destino_dir: RODAR.enTexto(q('#dDir').value).dir || null, destino_loc: q('#dLoc').value, destino_prov: q('#dProv').value, destino_lat: st.destino && st.destino.lat, destino_lng: st.destino && st.destino.lng, metros_ruta: st.rutaM || undefined,
       datos_movil: q('#datosMovil').value, canal: q('#canal').value, medio_pago: q('#medio').value, a_oferta: q('#oferta').checked, pin_requerido: q('#pin').checked || null,
-      cantidad_moviles: +q('#cant').value, programado: st.programado, repetir: st.repetir, monto_fijo: q('#fijo').value ? +q('#fijo').value : undefined, confirmar_peligrosa: confirmarPeligrosa, conv_id: opts.convId && opts.convId(),
+      cantidad_moviles: +q('#cant').value, vehiculo: (q('#veh') && q('#veh').value) || undefined, programado: st.programado, repetir: st.repetir, monto_fijo: q('#fijo').value ? +q('#fijo').value : undefined, confirmar_peligrosa: confirmarPeligrosa, conv_id: opts.convId && opts.convId(),
       corporativo_id: esCC ? +q('#ccEmp').value : undefined, centro_costo: esCC ? (q('#ccCentro').value.trim() || undefined) : undefined,
     };
     try {

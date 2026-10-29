@@ -235,7 +235,7 @@
 <script src="js/mapa-base.js?v=2026102401"></script>
 <script src="js/rodar/conexion.js?v=2026102701"></script>
 <script src="js/rodar/direcciones.js?v=2026102701"></script>
-<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/rutas-api.js?v=2026102902"></script>
 <script src="js/rodar/integraciones.js?v=2026102701"></script>
 <script src="js/rodar/archivos.js?v=2026102701"></script>
 <script src="js/tarifa.js?v=2026102701"></script>
@@ -437,6 +437,8 @@ async function arrancar() {
   if (S.cli) await revisarTyc();
   nativoIniciar(); activarPush(false);
   { const qs = new URLSearchParams(location.search); // vuelta de Mercado Pago: ?viaje=ID&k=…&pago=ok|pendiente|error
+    // desde la guía o los anuncios: ?servicio=moto y/o ?destino=texto
+    st.servicioPref = qs.get('servicio') === 'moto' ? 'moto' : ''; st.destinoTxt = (qs.get('destino') || '').slice(0, 160);
     if (qs.get('viaje') && qs.get('k')) history.replaceState({}, '', location.pathname + `#/seguimiento/${+qs.get('viaje')}?k=${encodeURIComponent(qs.get('k'))}${qs.get('pago') ? '&pago=' + encodeURIComponent(qs.get('pago')) : ''}`); }
   if (location.hash === '#/perfil' && S.cli) { history.replaceState({}, '', location.pathname); setTimeout(() => ir('perfil'), 300); }
   if (location.hash === '#ayuda') { history.replaceState({}, '', location.pathname); setTimeout(() => abrirAyuda(), 400); } // volvió de los Términos abiertos desde Ayuda
@@ -487,6 +489,8 @@ async function pedido(pre) {
   if (!S.cli && !corp) return ir('ingresar');
   mostrarMapa(true);
   limpiarMapa(); st.o = st.d = null; st.prog = null;
+  const motoOk = !!(st.cfg.moto && st.cfg.moto.activo && !corp);
+  st.veh = motoOk && st.servicioPref === 'moto' ? 'moto' : ''; st.servicioPref = '';
   const nombre = S.cli ? S.cli.nombre : (LS.get('rodar_nombre') || ''), tel = S.cli ? S.cli.telefono : (LS.get('rodar_tel') || '');
   const conocido = nombre && tel; const l = listaChips();
   const medioPref = (S.cli && S.cli.medio_pago_pref) || LS.get('rodar_medio') || 'efectivo';
@@ -497,13 +501,15 @@ async function pedido(pre) {
     <div class="campo"><input id="or" placeholder="Referencias (opcional): portón verde, timbre 2…"></div>
     <div class="campo rel"><label class="paso">2. ¿A dónde vas?</label><input id="dd" placeholder="Destino — calle y altura, localidad, provincia" autocomplete="off"><div class="sug oculto" id="sd"></div><input type="hidden" id="dl" value="${esc(st.cfg.localidad || '')}"><input type="hidden" id="dp" value="${esc(st.cfg.provincia || '')}"><div class="ubic" id="ubicD"></div>${chips('d', l)}
       ${S.cli ? '<button class="linkito oculto" id="favD">Guardar este lugar</button>' : ''}</div>
+    ${motoOk ? `<div class="campo"><label class="paso">¿En qué viajás?</label><div class="seg" id="vehSel"><button type="button" data-v="" class="${st.veh ? '' : 'on'}">🚗 Remís</button><button type="button" data-v="moto" class="${st.veh ? 'on' : ''}">🏍 Moto</button></div>
+      <small id="vehInfo" style="color:var(--suave);display:block;margin-top:4px">${st.veh ? esc(st.cfg.moto.texto || '') + (+st.cfg.moto.libres > 0 ? '' : ' · Ahora no hay motos libres: te avisamos apenas una tome tu viaje.') : ''}</small></div>` : ''}
     <div class="campo"><label class="paso">3. ¿Cuándo?</label><div class="seg"><button type="button" class="on" data-c="ahora">Ahora</button><button type="button" data-c="prog">Programar</button></div>
       <div id="progBox" class="oculto" style="margin-top:8px">${S.cli ? `<input type="datetime-local" id="prog"><div class="res-pol" id="resPol"></div>` : `<div class="banner">Para reservar un viaje para más tarde <a id="bannerCta">creá tu cuenta gratis</a> (lleva un minuto).</div>`}</div></div>
     ${conocido ? `<div class="quien" id="quien">Pedís como <b>${esc(nombre)}</b> · ${esc(tel)}${S.cli ? '' : '<a id="cambiar">cambiar</a>'}</div>` : '<div class="paso">4. Tus datos</div>'}
     <div class="grid g2" id="datos" ${conocido ? 'style="display:none"' : ''}><div class="campo"><label>Tu nombre</label><input id="n" autocomplete="given-name" value="${esc(nombre)}"></div><div class="campo"><label>Celular</label><input id="t" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3454 123456" value="${esc(tel)}"></div></div>
     ${corp ? '' : `<div class="campo"><label for="mp">Forma de pago</label><select id="mp">${st.cfg.medios.map(x => `<option value="${x.codigo}" ${x.codigo === medioPref ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></div>`}
     <div class="kpi" style="text-align:center"><div class="l">Precio estimado</div><div class="v" id="est">—</div><small id="estd" style="color:var(--suave)">Marcá origen y destino</small></div>
-    <button class="btn grande verde" id="pedir">Pedir remís</button><div class="res-pol" id="cancPol" style="display:none"></div>
+    <button class="btn grande verde" id="pedir">${st.veh === 'moto' ? 'Pedir moto' : 'Pedir remís'}</button><div class="res-pol" id="cancPol" style="display:none"></div>
     ${S.cli || corp ? '' : `<div class="banner"><a id="bannerCta2">Creá tu cuenta</a> para ver tus viajes, guardar Casa/Trabajo y reservar. ¿Ya tenés? <a id="bannerIng">Ingresá</a>.</div>`}
     <p style="font-size:12px;color:var(--suave);text-align:center">Al subir, decile al conductor el PIN que te mostramos. Tocá el mapa para marcar dónde estás; mantenelo apretado para marcar el destino.</p>
     <div id="inst2" style="display:flex;justify-content:center"></div>`;
@@ -525,7 +531,7 @@ async function pedido(pre) {
     $$('.seg [data-c]').forEach(x => x.classList.toggle('on', x === b));
     const pr = b.dataset.c === 'prog'; $('#progBox').classList.toggle('oculto', !pr);
     if ($('#prog')) { const min = new Date(Date.now() + 20 * 60000); $('#prog').min = localISO(min); if (!$('#prog').value) $('#prog').value = localISO(new Date(Math.ceil((Date.now() + 60 * 60000) / 9e5) * 9e5)); }
-    $('#pedir').textContent = pr ? 'Reservar viaje' : 'Pedir remís';
+    $('#pedir').textContent = pr ? 'Reservar viaje' : (st.veh === 'moto' ? 'Pedir moto' : 'Pedir remís');
     if (pr && $('#resPol')) politicaReservas().then(c => { if (c && $('#resPol')) $('#resPol').innerHTML = `ℹ️ Cancelás sin cargo hasta <b>${minTxt(c.sin_cargo_min)} antes</b>. <a href="#" id="verPol">Ver condiciones</a>`; const vp = $('#verPol'); if (vp) vp.onclick = e => { e.preventDefault(); cpDialogo({ icono: '📅', titulo: 'Cancelación de reservas', html: politicaHtml(c, st.estimado), si: 'Entendido', no: false }); }; });
   });
   avisoCargos();
@@ -539,6 +545,14 @@ async function pedido(pre) {
   if ($('#mp')) $('#mp').onchange = estimar;
   $('#gps').onclick = () => ubicar(false);
   $('#pedir').onclick = pedir;
+  $$('#vehSel [data-v]').forEach(b => b.onclick = () => {
+    st.veh = b.dataset.v; $$('#vehSel [data-v]').forEach(x => x.classList.toggle('on', x === b));
+    const m = st.cfg.moto || {}; $('#vehInfo').textContent = st.veh ? (m.texto || '') + (+m.libres > 0 ? '' : ' · Ahora no hay motos libres: te avisamos apenas una tome tu viaje.') : '';
+    const pr = $('.seg [data-c="prog"]') && $('.seg [data-c="prog"]').classList.contains('on');
+    $('#pedir').textContent = pr ? 'Reservar viaje' : (st.veh === 'moto' ? 'Pedir moto' : 'Pedir remís');
+    estimar();
+  });
+  if (st.destinoTxt) { const dd = $('#dd'); dd.value = st.destinoTxt; st.destinoTxt = ''; setTimeout(() => dd.dispatchEvent(new Event('input')), 600); }
   botonInstalar($('#inst2'), 'btn sec');
   if (pre && pre.o) { await fijar('o', pre.o.lat, pre.o.lng, { direccion: pre.o.dir }); if (pre.o.ref) $('#or').value = pre.o.ref; if (pre.d) fijar('d', pre.d.lat, pre.d.lng, { direccion: pre.d.dir }); }
   else ubicar(true);
@@ -587,7 +601,7 @@ async function estimar() {
     st.ruta = L.polyline(rt ? rt.coords : [[st.o.lat, st.o.lng], [st.d.lat, st.d.lng]], rt ? { color: '#1d6fe0', weight: 5, opacity: .8 } : { color: '#555', weight: 3, dashArray: '6' }).addTo(mapa);
     mapa.fitBounds(st.ruta.getBounds().pad(.15));
   }
-  const r = await api('/api/pub/estimar', { origen_lat: st.o.lat, origen_lng: st.o.lng, destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, medio_pago: $('#mp') && $('#mp').value, metros_ruta: st.rutaM }).catch(() => null);
+  const r = await api('/api/pub/estimar', { origen_lat: st.o.lat, origen_lng: st.o.lng, destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, medio_pago: $('#mp') && $('#mp').value, metros_ruta: st.rutaM, vehiculo: st.veh || undefined }).catch(() => null);
   st.estimado = r && r.monto != null ? +r.monto : null;
   if (!r || !$('#est')) return;
   $('#est').textContent = r.monto != null ? pesos(r.monto) : 'Desde ' + pesos(r.bajada);
@@ -639,7 +653,7 @@ async function pedir() {
   if (programar && !S.cli) return ir('ingresar', 'crear');
   const txtO = $('#od').value.trim(), txtD = $('#dd').value.trim();
   if (!RODAR.partirDir(txtO).altura && !confirm('La dirección de origen no tiene altura (número). ¿Pedir igual? Podés agregarla en Referencias o en el campo de dirección.')) return;
-  const base = { origen_dir: RODAR.enTexto(txtO).dir || st.o.dir, origen_loc: ($('#ol') && $('#ol').value.trim()) || st.o.loc, origen_prov: ($('#op') && $('#op').value.trim()) || st.o.prov, origen_ref: $('#or').value, origen_lat: st.o.lat, origen_lng: st.o.lng, destino_dir: st.d && (RODAR.enTexto(txtD).dir || st.d.dir), destino_loc: st.d && (($('#dl') && $('#dl').value.trim()) || st.d.loc), destino_prov: st.d && (($('#dp') && $('#dp').value.trim()) || st.d.prov), destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, metros_ruta: st.rutaM || undefined, medio_pago: $('#mp') ? $('#mp').value : 'cuenta_corriente' };
+  const base = { origen_dir: RODAR.enTexto(txtO).dir || st.o.dir, origen_loc: ($('#ol') && $('#ol').value.trim()) || st.o.loc, origen_prov: ($('#op') && $('#op').value.trim()) || st.o.prov, origen_ref: $('#or').value, origen_lat: st.o.lat, origen_lng: st.o.lng, destino_dir: st.d && (RODAR.enTexto(txtD).dir || st.d.dir), destino_loc: st.d && (($('#dl') && $('#dl').value.trim()) || st.d.loc), destino_prov: st.d && (($('#dp') && $('#dp').value.trim()) || st.d.prov), destino_lat: st.d && st.d.lat, destino_lng: st.d && st.d.lng, metros_ruta: st.rutaM || undefined, medio_pago: $('#mp') ? $('#mp').value : 'cuenta_corriente', vehiculo: st.veh || undefined };
   $('#pedir').disabled = true;
   try {
     let r;

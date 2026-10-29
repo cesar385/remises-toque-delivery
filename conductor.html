@@ -224,7 +224,7 @@
 <script src="js/mapa-base.js?v=2026102401"></script>
 <script src="js/rodar/conexion.js?v=2026102701"></script>
 <script src="js/rodar/direcciones.js?v=2026102701"></script>
-<script src="js/rodar/rutas-api.js?v=2026102570"></script>
+<script src="js/rodar/rutas-api.js?v=2026102902"></script>
 <script src="js/rodar/integraciones.js?v=2026102701"></script>
 <script src="js/rodar/archivos.js?v=2026102701"></script>
 <script src="js/tarifa.js?v=2026102701"></script>
@@ -363,7 +363,7 @@ function pantallaLogin() {
       </div>
     </div>
     <p class="tyc-l">Al ingresar aceptás los <a href="terminos.html?para=conductores&de=conductor.html">Términos y condiciones</a> y la <a href="terminos.html?para=privacidad&de=conductor.html">Política de privacidad</a>.</p></div></div>`;
-  api('/api/pub/config').then(c => { if (c && c.nombre) $('#emp').textContent = c.nombre; }).catch(() => { });
+  api('/api/pub/config').then(c => { if (c && c.nombre) $('#emp').textContent = c.nombre; if (c && c.moto) S.moto = c.moto; }).catch(() => { });
   botonInstalar($('#inst'), 'btn sec');
   const err = m => { const e = $('#err'); e.textContent = m || ''; e.style.display = m ? 'block' : 'none'; };
   (rec ? $('#pw') : $('[name=usuario]')).focus();
@@ -413,6 +413,7 @@ function formAlta() {
         <div style="grid-column:1/-1">${campo('email', 'Email', { tipo: 'email', ac: 'email', cap: 'none', err: 'El email no parece válido' })}</div>
       </div></div>
       <div class="paso"><h3><i>2</i>Tu vehículo</h3>
+        <div class="campo" data-c="tipo_vehiculo"><label>¿Con qué vas a trabajar?</label><select name="tipo_vehiculo"><option value="auto">🚗 Auto (remís)</option><option value="moto">🏍 Moto (Remis TOQUE! Moto y delivery)</option></select></div>
         <label class="chk"><input type="checkbox" id="sinAuto"> No tengo vehículo propio (quiero manejar un auto de la empresa)</label>
         <div class="grid g2" id="auto">
           ${campo('patente', 'Patente', { cap: 'characters', max: 9, ph: 'AB123CD', err: 'Patente no válida (ej: AB123CD o ABC123)' })}
@@ -432,6 +433,9 @@ function formAlta() {
   $('[name=dni]', f).oninput = e => { e.target.value = e.target.value.replace(/\D/g, ''); };
   const docsAuto = () => { const sin = $('#sinAuto', f).checked; $$('.doc[data-req=auto]', f).forEach(lb => { lb.classList.toggle('nreq', sin); if (sin) lb.classList.remove('mal'); if (!lb.classList.contains('ok')) $('small', lb).textContent = sin ? 'No hace falta: no tenés vehículo propio' : 'Obligatorio si tenés vehículo propio'; }); };
   $('#sinAuto', f).onchange = e => { $('#auto', f).style.display = e.target.checked ? 'none' : ''; docsAuto(); };
+  $('[name=tipo_vehiculo]', f).onchange = e => { const moto = e.target.value === 'moto';
+    $('[name=marca]', f).placeholder = moto ? 'Ej: Honda' : 'Ej: Chevrolet'; $('[name=modelo]', f).placeholder = moto ? 'Ej: Wave 110' : 'Ej: Prisma';
+    $('[name=patente]', f).placeholder = moto ? 'A123BCD' : 'AB123CD'; };
   $$('input', f).forEach(i => i.addEventListener('input', () => { const c = i.closest('.campo'); c && c.classList.remove('mal'); }));
   $$('.doc input', f).forEach(inp => inp.onchange = async () => {
     const lb = inp.closest('.doc'), fi = inp.files[0]; if (!fi) return;
@@ -446,7 +450,8 @@ function formAlta() {
     let primero = null; const chk = (k, malo) => { if (mal(k, malo) && !primero) primero = k; };
     chk('nombre', !d.nombre); chk('apellido', !d.apellido); chk('dni', !/^\d{7,8}$/.test(d.dni)); chk('telefono', tel.length < 10 || tel.length > 13);
     chk('email', d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email));
-    chk('patente', !sinAuto && d.patente && !/^([A-Z]{3}\d{3}|[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]\d{3}[A-Z]{3})$/.test(d.patente));
+    // patentes de auto (ABC123, AB123CD) y de moto (123ABC, A123BCD)
+    chk('patente', !sinAuto && d.patente && !/^([A-Z]{3}\d{3}|[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]\d{3}[A-Z]{3}|\d{3}[A-Z]{3})$/.test(d.patente));
     if (primero) { const c = $(`[data-c="${primero}"] input`, f); c && c.focus(); c && c.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('Revisá los datos marcados en rojo', 'error'); }
     // Documentación obligatoria
     const faltan = DOCS.filter(([k, , , req]) => (req === 1 || (req === 'auto' && !sinAuto)) && !archivos[k]);
@@ -717,7 +722,10 @@ function cobroPendiente() { try { const p = JSON.parse(localStorage.getItem(COBR
 // tarifador
 function calcMonto() {
   const t = S.estado.tarifa; if (!t || !S.tarif) return 0;
-  return montoTarifa(t, metrosCorregidos(t, S.tarif.metros), S.tarif.espera, (S.estado.viaje && S.estado.viaje.indice) || 1);
+  const m = montoTarifa(t, metrosCorregidos(t, S.tarif.metros), S.tarif.espera, (S.estado.viaje && S.estado.viaje.indice) || 1);
+  // Remis TOQUE! Moto: mismo cálculo que rodar.monto_moto en la base (% del remís, con mínima)
+  if (S.estado.viaje && S.estado.viaje.vehiculo_req === 'moto') { const mc = S.moto || {}; return Math.max(Math.round(m * (+mc.pct || 70) / 100), +mc.minima || 0); }
+  return m;
 }
 function actualizarTarif() { if (!$('#tm') || !S.tarif) return; $('#tm').textContent = pesos(calcMonto()); $('#td').textContent = `${(Math.round(metrosCorregidos(S.estado.tarifa, S.tarif.metros) / 100) / 10).toFixed(1)} km · espera ${Math.floor(S.tarif.espera / 60)}:${String(Math.floor(S.tarif.espera % 60)).padStart(2, '0')}`; }
 function guardarTarif(id) { const v = id || (S.estado.viaje && S.estado.viaje.id); if (v && S.tarif) localStorage.setItem('rodar_tarif_' + v, JSON.stringify(S.tarif)); }
@@ -807,7 +815,7 @@ function mostrarOferta(v, abierta) {
   const seg = v.segundos || 20;
   const d = S.pos && v.origen_lat ? (dist(S.pos.lat, S.pos.lng, v.origen_lat, v.origen_lng) / 1000).toFixed(1) + ' km' : '';
   const el = document.createElement('div'); el.className = 'oferta';
-  el.innerHTML = `<div class="c"><h2 style="margin:0">${abierta ? 'Viaje a oferta' : 'Nuevo viaje'} #${v.id}</h2><div class="cuenta"><div style="width:100%"></div></div>
+  el.innerHTML = `<div class="c"><h2 style="margin:0">${abierta ? 'Viaje a oferta' : 'Nuevo viaje'} #${v.id}</h2>${v.vehiculo_req === 'moto' ? '<div style="font-weight:800;color:#1fae5b">🏍 Viaje en moto · 1 pasajero</div>' : ''}<div class="cuenta"><div style="width:100%"></div></div>
     <div style="font-size:17px"><b>${esc(v.origen_dir)}</b> <small>${d}</small></div>${v.zona ? `<div>Zona ${esc(v.zona)}</div>` : ''}${v.destino_dir ? `<div>${esc(v.destino_dir)}</div>` : ''}${v.monto_estimado ? `<div>Estimado ${pesos(v.monto_estimado)}</div>` : ''}${v.datos_movil ? `<div class="nota" style="margin-top:6px">${esc(v.datos_movil)}</div>` : ''}
     <div class="dos"><button class="btn rojo grande" id="rech">Rechazar</button><button class="btn verde grande" id="acep">${abierta ? 'Postularme' : 'Aceptar'}</button></div></div>`;
   document.body.append(el);

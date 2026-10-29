@@ -36,6 +36,7 @@
     ['GET', '/api/mp/saldos', 'r_mp_saldos'], ['GET', '/api/mp/saldos/:id', 'r_mp_saldo'], ['POST', '/api/mp/saldos/:id/aplicar', 'r_mp_saldo_aplicar'], ['POST', '/api/mp/saldos/:id/retiro', 'r_mp_saldo_retiro'],
     ['GET', '/api/medios-pago', 'r_medios'], ['POST', '/api/medios-pago', 'r_medios_guardar'], ['GET', '/api/modulos', 'r_modulos'], ['POST', '/api/modulos', 'r_modulos_guardar'],
     ['GET', '/api/planes', 'r_planes'], ['POST', '/api/planes', 'r_plan_guardar'], ['DELETE', '/api/planes/:id', 'r_plan_borrar'],
+    ['GET', '/api/moto', 'r_moto_cfg'], ['POST', '/api/moto', 'r_moto_cfg_guardar'],
     ['GET', '/api/tarifas', 'r_tarifas'], ['POST', '/api/tarifas', 'r_tarifa_guardar'], ['DELETE', '/api/tarifas/:id', 'r_tarifa_borrar'], ['POST', '/api/tarifas/:id/tabla', 'r_tarifa_tabla'],
     ['GET', '/api/usuarios', 'r_usuarios'], ['POST', '/api/usuarios', 'r_usuario_guardar'], ['POST', '/api/usuarios/:id/reset', 'r_usuario_reset'],
     ['GET', '/api/corporativos', 'r_corporativos'], ['POST', '/api/corporativos', 'r_corporativo_guardar'], ['POST', '/api/corporativos/:id/estado', 'r_corporativo_estado'], ['GET', '/api/corp-cuentas', 'r_corp_cuentas'], ['GET', '/api/corp-cuentas/:id', 'r_corp_cuenta'], ['POST', '/api/corp-cuentas/:id/liquidar', 'r_corp_liquidar'], ['POST', '/api/corp-cuentas/:id/:op', 'r_corp_cuenta_op'], ['GET', '/api/emp/cuenta', 'r_emp_cuenta'], ['GET', '/api/cc-sin-empresa', 'r_cc_sin_empresa'], ['POST', '/api/cc-sin-empresa', 'r_cc_sin_empresa'],

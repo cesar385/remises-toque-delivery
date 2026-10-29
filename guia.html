@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b4fa8">
+<title>Guía Federal · Remises TOQUE!</title>
+<meta name="description" content="Guía local de Federal, Entre Ríos. Encontrá lugares y pedí tu remis a un click.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --azul:#0b4fa8; --azul-osc:#083a7c; --verde:#1fae5b; --verde-osc:#178a48;
+    --bg:#f3f6fb; --card:#ffffff; --txt:#14213d; --muted:#5d6b82; --borde:#dde4ef;
+    --chip:#e8eef8; --acento:#0b4fa8; --sombra:0 2px 10px rgba(11,79,168,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1420; --card:#151f2f; --txt:#e8eef8; --muted:#9aa8bf; --borde:#24324a;
+      --chip:#1d2a40; --acento:#7fb2ff; --sombra:0 2px 10px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1420; --card:#151f2f; --txt:#e8eef8; --muted:#9aa8bf; --borde:#24324a;
+    --chip:#1d2a40; --acento:#7fb2ff; --sombra:0 2px 10px rgba(0,0,0,.3);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:'Nunito',system-ui,sans-serif;background:var(--bg);color:var(--txt);-webkit-tap-highlight-color:transparent}
+  a{color:inherit}
+  .wrap{max-width:980px;margin:0 auto}
+
+  /* Header */
+  header{background:linear-gradient(135deg,var(--azul) 0%,var(--azul-osc) 55%,var(--verde-osc) 140%);color:#fff;padding:18px 16px 70px;position:relative;overflow:hidden}
+  header::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(31,174,91,.25)}
+  .barra{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1}
+  .marca{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1.2rem}
+  .marca .logo{width:40px;height:40px;border-radius:12px;background:var(--verde);display:grid;place-items:center;font-size:1.3rem;box-shadow:0 3px 10px rgba(0,0,0,.2)}
+  .marca small{display:block;font-weight:600;font-size:.78rem;opacity:.85}
+  .tema{background:rgba(255,255,255,.15);border:0;color:#fff;width:40px;height:40px;border-radius:12px;font-size:1.1rem;cursor:pointer}
+  h1{margin:18px 0 4px;font-size:1.8rem;font-weight:900;position:relative;z-index:1}
+  .sub{margin:0;opacity:.9;position:relative;z-index:1}
+
+  /* Buscador flotante */
+  .panel-busqueda{margin:-50px 16px 0;position:relative;z-index:5}
+  .caja{background:var(--card);border-radius:18px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:12px;max-width:948px;margin:0 auto}
+  .buscar{position:relative}
+  .buscar input{width:100%;padding:13px 40px 13px 42px;border-radius:12px;border:1px solid var(--borde);font:inherit;font-size:1rem;background:var(--bg);color:var(--txt)}
+  .buscar input:focus{outline:2px solid var(--azul);border-color:transparent}
+  .buscar .lupa{position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.6}
+  .buscar .limpiar{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);font-size:1.1rem;cursor:pointer;display:none}
+  .rapidos{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .rapido{border:0;background:var(--chip);color:var(--txt);font:inherit;font-weight:700;font-size:.85rem;padding:7px 12px;border-radius:999px;cursor:pointer}
+  .rapido.on{background:var(--verde);color:#fff}
+
+  main{padding:16px}
+  section{margin-top:20px}
+  h2{font-size:1.15rem;margin:0 0 10px;font-weight:900}
+
+  /* Destacados */
+  .destacados{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media (max-width:620px){.destacados{grid-template-columns:repeat(2,1fr)}}
+  .dest{background:var(--card);border:1px solid var(--borde);border-radius:16px;padding:14px 10px;text-align:center;text-decoration:none;box-shadow:var(--sombra);display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:800;font-size:.9rem}
+  .dest .e{font-size:1.6rem}
+  .dest small{color:var(--verde);font-weight:800;font-size:.75rem}
+
+  /* Pestañas y categorías */
+  .vista{display:flex;background:var(--chip);border-radius:12px;padding:4px;gap:4px;margin-bottom:12px}
+  .vista button{flex:1;border:0;background:none;color:var(--txt);font:inherit;font-weight:800;padding:9px;border-radius:9px;cursor:pointer}
+  .vista button.on{background:var(--card);box-shadow:var(--sombra);color:var(--acento)}
+  .cats{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+  .cats::-webkit-scrollbar{display:none}
+  .cat{flex:0 0 auto;border:1px solid var(--borde);background:var(--card);color:var(--txt);padding:8px 14px;border-radius:999px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}
+  .cat.on{background:var(--azul);border-color:var(--azul);color:#fff}
+  .cat .n{opacity:.6;font-size:.8em;margin-left:3px}
+  .info{color:var(--muted);font-size:.9rem;margin:10px 2px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+  /* Tarjetas */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+  .lugar{background:var(--card);border:1px solid var(--borde);border-radius:16px;padding:14px;box-shadow:var(--sombra);display:flex;flex-direction:column;gap:8px;animation:entra .25s ease}
+  @keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .top{display:flex;gap:10px;align-items:flex-start}
+  .ico{width:44px;height:44px;flex:0 0 44px;border-radius:12px;background:var(--chip);display:grid;place-items:center;font-size:1.35rem}
+  .lugar h3{margin:0;font-size:1.05rem;font-weight:800;line-height:1.25}
+  .tag{font-size:.72rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+  .badges{display:flex;gap:6px;flex-wrap:wrap}
+  .badge{font-size:.72rem;font-weight:800;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--muted)}
+  .badge.v{background:rgba(31,174,91,.15);color:var(--verde-osc)}
+  :root[data-theme="dark"] .badge.v{color:#5fd892}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .badge.v{color:#5fd892}}
+  .fav{margin-left:auto;background:none;border:0;font-size:1.3rem;cursor:pointer;line-height:1;color:var(--muted);padding:2px}
+  .fav.on{color:#f5b301}
+  .desc{margin:0;color:var(--muted);font-size:.93rem}
+  .dato{font-size:.9rem;display:flex;gap:6px}
+  .dato.falta{color:var(--muted);font-style:italic}
+  .dato a{color:var(--acento);font-weight:700;text-decoration:none}
+  .acc{display:flex;gap:6px;margin-top:auto;padding-top:4px}
+  .btn{flex:1;text-align:center;text-decoration:none;font-weight:800;padding:10px 6px;border-radius:12px;font-size:.9rem;border:0;cursor:pointer;font-family:inherit}
+  .btn.pedir{background:var(--verde);color:#fff;flex:1.6}
+  .btn.pedir:hover{background:var(--verde-osc)}
+  .btn.sec{background:var(--chip);color:var(--txt);flex:0 0 44px}
+  .vacio{text-align:center;color:var(--muted);padding:30px 10px;grid-column:1/-1}
+
+  /* Mapa */
+  #mapa{height:440px;border-radius:16px;border:1px solid var(--borde);display:none;z-index:1}
+  .mapa-nota{font-size:.82rem;color:var(--muted);margin-top:6px;display:none}
+  .leaflet-popup-content{font-family:'Nunito',sans-serif;margin:12px 14px}
+  .pop b{display:block;font-size:1rem;margin-bottom:2px}
+  .pop a{display:inline-block;margin-top:8px;background:#1fae5b;color:#fff !important;text-decoration:none;font-weight:800;padding:7px 12px;border-radius:10px}
+
+  /* Viajes a otras ciudades */
+  .ciudades{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .ciudad{background:var(--card);border:1px solid var(--borde);border-radius:14px;padding:12px;text-decoration:none;box-shadow:var(--sombra)}
+  .ciudad b{display:block}
+  .ciudad span{font-size:.82rem;color:var(--muted)}
+  .ciudad em{display:block;font-style:normal;color:var(--verde);font-weight:800;font-size:.82rem;margin-top:6px}
+
+  /* Emergencias */
+  .nums{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  .num{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--borde);padding:12px;border-radius:12px;text-decoration:none;font-weight:700}
+  .num b{font-size:1.2rem;color:#d63031}
+
+  /* Sugerir */
+  .sugerir{background:var(--card);border:1px dashed var(--azul);border-radius:16px;padding:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .sugerir p{margin:0;flex:1;min-width:200px;color:var(--muted)}
+  .sugerir button{background:var(--azul);color:#fff;border:0;font:inherit;font-weight:800;padding:11px 16px;border-radius:12px;cursor:pointer}
+
+  /* Modal */
+  dialog{border:0;border-radius:18px;padding:0;width:min(440px,calc(100% - 32px));background:var(--card);color:var(--txt);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  dialog::backdrop{background:rgba(10,20,40,.55)}
+  .modal{padding:18px}
+  .modal h3{margin:0 0 12px}
+  .modal label{display:block;font-weight:700;font-size:.85rem;margin:10px 0 4px}
+  .modal input,.modal select,.modal textarea{width:100%;padding:10px;border-radius:10px;border:1px solid var(--borde);background:var(--bg);color:var(--txt);font:inherit}
+  .modal .fila{display:flex;gap:8px;margin-top:14px}
+
+  .flotante{position:fixed;right:16px;bottom:16px;background:var(--verde);color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:999px;box-shadow:0 6px 18px rgba(31,174,91,.45);z-index:50}
+  .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);background:#14213d;color:#fff;padding:10px 16px;border-radius:12px;font-weight:700;opacity:0;transition:.25s;pointer-events:none;z-index:60}
+  .toast.ver{opacity:1;transform:translateX(-50%)}
+  footer{text-align:center;color:var(--muted);font-size:.85rem;padding:24px 16px 96px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="barra">
+      <div class="marca"><div class="logo">🚕</div><div>Remises TOQUE!<small>Tu remis a un click</small></div></div>
+      <button class="tema" id="tema" aria-label="Cambiar tema">🌙</button>
+    </div>
+    <h1>Guía de Federal</h1>
+    <p class="sub">Encontrá lo que buscás en la ciudad y pedí tu remis directo hasta ahí.</p>
+  </div>
+</header>
+
+<div class="panel-busqueda">
+  <div class="caja">
+    <div class="buscar">
+      <span class="lupa">🔍</span>
+      <input id="q" type="search" placeholder="¿A dónde vas? Hospital, terminal, plaza..." autocomplete="off">
+      <button class="limpiar" id="limpiar" aria-label="Borrar">✕</button>
+    </div>
+    <div class="rapidos">
+      <button class="rapido" id="btnCerca">📍 Cerca mío</button>
+      <button class="rapido" id="btn24">🕐 Abierto 24 hs</button>
+      <button class="rapido" id="btnFavs">⭐ Favoritos</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section>
+    <h2>🚀 Destinos más pedidos</h2>
+    <div class="destacados" id="destacados"></div>
+  </section>
+
+  <section id="explorar">
+    <h2>🗂️ Explorá la ciudad</h2>
+    <div class="vista">
+      <button class="on" data-v="lista">📋 Lista</button>
+      <button data-v="mapa">🗺️ Mapa</button>
+    </div>
+    <div class="cats" id="cats"></div>
+    <div class="info"><span id="info"></span><span id="estadoGeo"></span></div>
+    <div class="grid" id="grid"></div>
+    <div id="mapa"></div>
+    <div class="mapa-nota" id="mapaNota">Las ubicaciones se buscan automáticamente a partir de la dirección y pueden ser aproximadas.</div>
+  </section>
+
+  <section>
+    <h2>🛣️ Viajes a otras ciudades</h2>
+    <div class="ciudades" id="ciudades"></div>
+  </section>
+
+  <section>
+    <h2>📞 Emergencias</h2>
+    <div class="nums">
+      <a class="num" href="tel:911">Emergencias <b>911</b></a>
+      <a class="num" href="tel:107">Ambulancia <b>107</b></a>
+      <a class="num" href="tel:100">Bomberos <b>100</b></a>
+      <a class="num" href="tel:101">Policía <b>101</b></a>
+    </div>
+  </section>
+
+  <section>
+    <div class="sugerir">
+      <p><b style="color:var(--txt)">¿Falta un lugar o hay un dato mal?</b><br>Mandanos la info y lo sumamos a la guía.</p>
+      <button id="abrirSugerir">➕ Sugerir lugar</button>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <form class="modal" method="dialog" id="formSug">
+    <h3>Sugerir un lugar</h3>
+    <label for="sNom">Nombre</label><input id="sNom" required placeholder="Ej: Farmacia Central">
+    <label for="sCat">Categoría</label><select id="sCat"></select>
+    <label for="sDir">Dirección</label><input id="sDir" placeholder="Calle y número">
+    <label for="sObs">Comentario (opcional)</label><textarea id="sObs" rows="2" placeholder="Horario, teléfono, corrección..."></textarea>
+    <div class="fila">
+      <button class="btn sec" style="flex:1" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn pedir" style="flex:1" id="enviarSug" value="ok">Enviar por Telegram</button>
+    </div>
+  </form>
+</dialog>
+
+<a class="flotante" href="pasajero.html">🚕 Pedir remis</a>
+<div class="toast" id="toast"></div>
+<footer>Remises TOQUE! · Federal, Entre Ríos<br>Datos de referencia: confirmá horarios antes de viajar.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="config.js"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<script>
+/* =====================================================================
+   CONFIGURACIÓN
+   ===================================================================== */
+const CONFIG = {
+  ciudad: "Federal, Entre Ríos",
+  centro: [-30.952, -58.783],                // centro aproximado de Federal
+  paginaPedido: "pasajero.html",             // app de pasajeros del mismo repo
+  telegramBot: "RemisesToque_bot",           // para sugerencias
+  paginaDelivery: "delivery.html"            // tienda de Delivery TOQUE! (#/n/ID abre un comercio)
+};
+// Conexión con la central (config.js): los lugares se cargan desde el panel (Delivery → Guía de la ciudad)
+// y los comercios de delivery activos se suman solos. Si no hay conexión se usa la lista de abajo.
+const SB = (window.RODAR_CONFIG && window.supabase && window.RODAR_CONFIG.supabaseUrl) ?
+  window.supabase.createClient(window.RODAR_CONFIG.supabaseUrl, window.RODAR_CONFIG.supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+async function rpc(fn, b) {
+  if (!SB) throw new Error("Sin conexión con la central");
+  const { data, error } = await SB.rpc(fn, { p_token: null, p_q: {}, p_b: b || {} });
+  if (error) throw new Error(error.message); return data;
+}
+let MOTO = null;   // servicio de moto (se activa desde el panel)
+
+const CATEGORIAS = [
+  {id:"comercios",  nombre:"Comercios con delivery", ico:"🛍️"},
+  {id:"transporte", nombre:"Transporte",        ico:"🚌"},
+  {id:"salud",      nombre:"Salud",             ico:"🏥"},
+  {id:"farmacias",  nombre:"Farmacias",         ico:"💊"},
+  {id:"tramites",   nombre:"Trámites",          ico:"🏛️"},
+  {id:"turismo",    nombre:"Paseos y cultura",  ico:"🌳"},
+  {id:"educacion",  nombre:"Educación",         ico:"🎓"},
+  {id:"comidas",    nombre:"Comidas",           ico:"🍔"},
+  {id:"compras",    nombre:"Compras",           ico:"🛒"},
+  {id:"hoteles",    nombre:"Alojamiento",       ico:"🛏️"},
+  {id:"bancos",     nombre:"Bancos y cajeros",  ico:"🏧"},
+  {id:"deportes",   nombre:"Clubes y deportes", ico:"⚽"},
+  {id:"otros",      nombre:"Otros",             ico:"📍"}
+];
+
+/* LUGARES de respaldo (se usan solo si no hay conexión con la central). Campos:
+   nombre, cat, dir (vacío = "a confirmar"), desc, tel, horario (texto libre),
+   h24 (true si abre 24 hs), destacado (true = aparece en "más pedidos"),
+   lat/lng (opcional: si los ponés, no se busca la ubicación automáticamente),
+   delivery (id del comercio en Delivery TOQUE!), abierto (true/false) */
+let LUGARES = [
+  {nombre:"Terminal de Ómnibus", cat:"transporte", dir:"Av. Belgrano 557", desc:"Micros a Paraná, Concordia, Villaguay, Buenos Aires y más.", destacado:true},
+  {nombre:"Hospital Justo José de Urquiza", cat:"salud", dir:"", desc:"Hospital público de Federal. Guardia.", h24:true, destacado:true},
+  {nombre:"Hospital Colonia Dr. Raúl Camino", cat:"salud", dir:"", desc:"Hospital provincial de salud mental."},
+  {nombre:"Municipalidad de Federal", cat:"tramites", dir:"Antelo 505", desc:"Palacio Municipal.", horario:"Días hábiles por la mañana", destacado:true},
+  {nombre:"SENASA – Oficina Federal", cat:"tramites", dir:"Donovan y Anderson", desc:"Funciona en la Sociedad Rural.", tel:"03454421191"},
+  {nombre:"Sociedad Rural de Federal", cat:"tramites", dir:"Donovan y Anderson"},
+  {nombre:"Plaza principal", cat:"turismo", dir:"", desc:"El corazón de la ciudad, rodeada de edificios públicos.", destacado:true},
+  {nombre:"Parroquia Santa Rosa de Lima", cat:"turismo", dir:"", desc:"Templo principal de Federal, frente a la plaza."},
+  {nombre:"Vieja Estación del Ferrocarril", cat:"turismo", dir:"", desc:"Edificio histórico del ferrocarril."},
+  {nombre:"Predio de la Fiesta Nacional del Chamamé", cat:"turismo", dir:"", desc:"Sede de la fiesta más tradicional de Federal."},
+  {nombre:"Comisaría", cat:"tramites", dir:"", h24:true},
+  {nombre:"Registro Civil", cat:"tramites", dir:""},
+  {nombre:"Correo Argentino", cat:"tramites", dir:""},
+  {nombre:"Banco Entre Ríos", cat:"bancos", dir:"", desc:"Cajero automático."}
+  // Sumá farmacias, escuelas, comercios, hoteles, clubes...
+];
+
+/* Viajes a otras ciudades (km opcional) */
+const CIUDADES = [
+  {nombre:"Concordia", km:107},
+  {nombre:"Paraná"},
+  {nombre:"Villaguay"},
+  {nombre:"Sauce de Luna"},
+  {nombre:"Conscripto Bernardi"},
+  {nombre:"San José de Feliciano"},
+  {nombre:"Chajarí"},
+  {nombre:"La Paz"}
+];
+
+/* =====================================================================
+   LÓGICA (no hace falta tocar de acá para abajo)
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const norm = s => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ls = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+};
+const catDe = id => CATEGORIAS.find(c=>c.id===id) || {nombre:"Otros",ico:"📍"};
+
+let estado = { cat:"todas", q:"", soloFavs:false, solo24:false, cerca:false, vista:"lista" };
+let favs = ls.get("toque_guia_favs", []);
+let geoCache = ls.get("toque_guia_geo", {});
+let miPos = null, mapa = null, capa = null;
+
+function toast(t){ const el=$("#toast"); el.textContent=t; el.classList.add("ver"); clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove("ver"),2200); }
+
+/* --- Tema --- */
+function aplicarTema(t){ if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme;
+  const oscuro = t ? t==="dark" : matchMedia("(prefers-color-scheme: dark)").matches; $("#tema").textContent = oscuro?"☀️":"🌙"; }
+aplicarTema(ls.get("toque_tema", null));
+$("#tema").onclick = ()=>{ const actual = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+  const nuevo = actual==="dark"?"light":"dark"; ls.set("toque_tema",nuevo); aplicarTema(nuevo); };
+
+/* --- Links --- */
+const destinoTexto = l => [l.nombre, l.dir].filter(Boolean).join(", ");
+const linkPedido = txt => `${CONFIG.paginaPedido}?destino=${encodeURIComponent(txt + ", " + CONFIG.ciudad)}`;
+const linkMapa = l => { const p = coords(l);
+  return p ? `https://www.google.com/maps/search/?api=1&query=${p[0]},${p[1]}`
+           : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([l.nombre,l.dir,CONFIG.ciudad].filter(Boolean).join(", "))}`; };
+const clave = l => l.nombre + "|" + (l.dir||"");
+const coords = l => (l.lat!=null && l.lng!=null) ? [l.lat,l.lng] : (geoCache[clave(l)]||null);
+
+/* --- Distancia --- */
+function km(a,b){ const R=6371, r=x=>x*Math.PI/180, dLa=r(b[0]-a[0]), dLo=r(b[1]-a[1]);
+  const h=Math.sin(dLa/2)**2+Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(dLo/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+const fmtDist = d => d<1 ? `${Math.round(d*1000/10)*10} m` : `${d.toFixed(1)} km`;
+
+/* --- Geocodificación automática (OpenStreetMap, con caché) --- */
+let geocodificando = false;
+async function geocodificar(){
+  if(geocodificando) return; geocodificando = true;
+  const pendientes = LUGARES.filter(l => !coords(l) && geoCache[clave(l)]!==false);
+  let i = 0;
+  for(const l of pendientes){
+    i++; $("#estadoGeo").textContent = `Ubicando ${i}/${pendientes.length}…`;
+    const q = [l.dir || l.nombre, "Federal", "Entre Ríos", "Argentina"].join(", ");
+    const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&bounded=1&viewbox=-58.86,-30.90,-58.70,-31.00&q=" + encodeURIComponent(q);
+    try{
+      const r = await fetch(url, {headers:{"Accept-Language":"es"}});
+      const j = await r.json();
+      geoCache[clave(l)] = j[0] ? [parseFloat(j[0].lat), parseFloat(j[0].lon)] : false;
+    }catch(e){ /* sin conexión: se reintenta otra vez */ }
+    ls.set("toque_guia_geo", geoCache);
+    render();
+    await new Promise(r=>setTimeout(r,1100)); // respeta el límite de 1 consulta por segundo
+  }
+  $("#estadoGeo").textContent = ""; geocodificando = false;
+}
+
+/* --- Filtro --- */
+function filtrados(){
+  const q = norm(estado.q);
+  let lista = LUGARES.filter(l=>{
+    if(estado.soloFavs && !favs.includes(l.nombre)) return false;
+    if(estado.solo24 && !l.h24) return false;
+    if(estado.cat!=="todas" && l.cat!==estado.cat) return false;
+    if(!q) return true;
+    return norm([l.nombre,l.dir,l.desc,catDe(l.cat).nombre].join(" ")).includes(q);
+  });
+  if(estado.cerca && miPos){
+    lista = lista.map(l=>({l,d:coords(l)?km(miPos,coords(l)):Infinity})).sort((a,b)=>a.d-b.d).map(x=>x.l);
+  }
+  return lista;
+}
+
+/* --- Render --- */
+function renderCats(){
+  const cuenta = id => LUGARES.filter(l=>l.cat===id).length;
+  const cats = [{id:"todas",nombre:"Todas",ico:"📍"}, ...CATEGORIAS.filter(c=>cuenta(c.id))];
+  $("#cats").innerHTML = cats.map(c=>`<button class="cat ${c.id===estado.cat?'on':''}" data-c="${c.id}">${c.ico} ${c.nombre}<span class="n">${c.id==="todas"?LUGARES.length:cuenta(c.id)}</span></button>`).join("");
+}
+
+function renderDestacados(){
+  const d = LUGARES.filter(l=>l.destacado).slice(0,8);
+  $("#destacados").innerHTML = d.map(l=>`<a class="dest" href="${linkPedido(destinoTexto(l))}"><span class="e">${catDe(l.cat).ico}</span>${esc(l.nombre)}<small>Pedir remis →</small></a>`).join("");
+}
+
+function renderCiudades(){
+  $("#ciudades").innerHTML = CIUDADES.map(c=>`<a class="ciudad" href="${CONFIG.paginaPedido}?destino=${encodeURIComponent(c.nombre+", Entre Ríos")}">
+    <b>${esc(c.nombre)}</b><span>${c.km?`≈ ${c.km} km`:"Viaje de larga distancia"}</span><em>Consultar viaje →</em></a>`).join("");
+}
+
+function tarjeta(l){
+  const c = catDe(l.cat), fav = favs.includes(l.nombre), p = coords(l);
+  const dist = (miPos && p) ? fmtDist(km(miPos,p)) : null;
+  const badges = [
+    l.delivery ? (l.abierto ? `<span class="badge v">Abierto ahora</span>` : `<span class="badge">Cerrado</span>`) : "",
+    l.h24 ? `<span class="badge v">24 hs</span>` : "",
+    dist ? `<span class="badge">📍 a ${dist}</span>` : ""
+  ].join("");
+  return `<article class="lugar">
+    <div class="top">
+      <div class="ico">${c.ico}</div>
+      <div><div class="tag">${esc(c.nombre)}</div><h3>${esc(l.nombre)}</h3></div>
+      <button class="fav ${fav?'on':''}" data-f="${esc(l.nombre)}" aria-label="Favorito">${fav?'★':'☆'}</button>
+    </div>
+    ${badges.trim()?`<div class="badges">${badges}</div>`:""}
+    ${l.desc?`<p class="desc">${esc(l.desc)}</p>`:""}
+    <div class="dato ${l.dir?'':'falta'}">📍 ${l.dir?esc(l.dir):"Dirección a confirmar"}</div>
+    ${l.horario?`<div class="dato">🕐 ${esc(l.horario)}</div>`:""}
+    ${l.tel?`<div class="dato">📞 <a href="tel:${esc(l.tel)}">${esc(l.tel)}</a></div>`:""}
+    ${l.delivery ? `<div class="acc"><a class="btn pedir" style="background:var(--azul)" href="${CONFIG.paginaDelivery}#/n/${encodeURIComponent(l.delivery)}">🛍️ Pedir delivery</a></div>` : ""}
+    <div class="acc">
+      <a class="btn pedir" href="${linkPedido(destinoTexto(l))}">🚕 Ir en remis</a>
+      ${MOTO && MOTO.activo ? `<a class="btn sec" href="${linkPedido(destinoTexto(l))}&servicio=moto" title="Ir en moto">🏍</a>` : ""}
+      <a class="btn sec" href="${linkMapa(l)}" target="_blank" rel="noopener" title="Ver en Google Maps">🗺️</a>
+      <button class="btn sec" data-share="${esc(l.nombre)}" title="Compartir">📤</button>
+    </div>
+  </article>`;
+}
+
+function render(){
+  const lista = filtrados();
+  $("#info").textContent = (lista.length===1 ? "1 lugar" : `${lista.length} lugares`) + (estado.cerca&&miPos ? " · ordenados por cercanía" : "");
+  if(estado.vista==="lista"){
+    $("#grid").innerHTML = lista.length ? lista.map(tarjeta).join("")
+      : `<div class="vacio">${estado.soloFavs ? "Todavía no marcaste favoritos. Tocá la ☆ de un lugar." : "No encontramos ese lugar.<br><br><a class='btn pedir' style='display:inline-block;padding:10px 16px' href='"+linkPedido(estado.q||"")+"'>🚕 Pedir remis a \""+esc(estado.q)+"\" igual</a>"}</div>`;
+  } else renderMapa(lista);
+}
+
+/* --- Mapa --- */
+function renderMapa(lista){
+  if(typeof L==="undefined"){ $("#mapa").innerHTML="<div class='vacio'>No se pudo cargar el mapa. Revisá la conexión.</div>"; return; }
+  if(!mapa){
+    mapa = L.map("mapa").setView(CONFIG.centro, 14);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(mapa);
+    capa = L.layerGroup().addTo(mapa);
+  }
+  capa.clearLayers();
+  const pts = [];
+  lista.forEach(l=>{
+    const p = coords(l); if(!p) return; pts.push(p);
+    const icon = L.divIcon({className:"",html:`<div style="font-size:24px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))">${catDe(l.cat).ico}</div>`,iconSize:[28,28],iconAnchor:[14,14]});
+    L.marker(p,{icon}).addTo(capa).bindPopup(`<div class="pop"><b>${esc(l.nombre)}</b>${esc(l.dir||"")}<br><a href="${linkPedido(destinoTexto(l))}">🚕 Ir en remis</a></div>`);
+  });
+  if(miPos){ pts.push(miPos); L.circleMarker(miPos,{radius:9,color:"#fff",weight:3,fillColor:"#0b4fa8",fillOpacity:1}).addTo(capa).bindPopup("Estás acá"); }
+  if(pts.length>1) mapa.fitBounds(pts,{padding:[30,30],maxZoom:16});
+  setTimeout(()=>mapa.invalidateSize(),50);
+}
+
+function cambiarVista(v){
+  estado.vista = v;
+  document.querySelectorAll(".vista button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  $("#grid").style.display = v==="lista" ? "" : "none";
+  $("#mapa").style.display = v==="mapa" ? "block" : "none";
+  $("#mapaNota").style.display = v==="mapa" ? "block" : "none";
+  if(v==="mapa") geocodificar();
+  render();
+}
+
+/* --- Eventos --- */
+$("#cats").onclick = e=>{ const b=e.target.closest(".cat"); if(!b) return; estado.cat=b.dataset.c; renderCats(); render(); };
+document.querySelectorAll(".vista button").forEach(b=>b.onclick=()=>cambiarVista(b.dataset.v));
+$("#q").oninput = e=>{ estado.q=e.target.value; $("#limpiar").style.display=estado.q?"block":"none"; render(); };
+$("#q").onkeydown = e=>{ if(e.key==="Enter") $("#explorar").scrollIntoView(); };
+$("#limpiar").onclick = ()=>{ $("#q").value=""; estado.q=""; $("#limpiar").style.display="none"; render(); };
+
+$("#btnFavs").onclick = ()=>{ estado.soloFavs=!estado.soloFavs; $("#btnFavs").classList.toggle("on",estado.soloFavs); render(); };
+$("#btn24").onclick = ()=>{ estado.solo24=!estado.solo24; $("#btn24").classList.toggle("on",estado.solo24); render(); };
+$("#btnCerca").onclick = ()=>{
+  if(estado.cerca){ estado.cerca=false; $("#btnCerca").classList.remove("on"); render(); return; }
+  if(!navigator.geolocation){ toast("Tu dispositivo no permite ubicación"); return; }
+  toast("Buscando tu ubicación…");
+  navigator.geolocation.getCurrentPosition(p=>{
+    miPos=[p.coords.latitude,p.coords.longitude]; estado.cerca=true; $("#btnCerca").classList.add("on");
+    geocodificar(); render(); $("#explorar").scrollIntoView();
+  }, ()=>toast("No pudimos acceder a tu ubicación"), {enableHighAccuracy:true,timeout:10000});
+};
+
+$("#grid").onclick = async e=>{
+  const f = e.target.closest(".fav");
+  if(f){ const n=f.dataset.f; favs = favs.includes(n)?favs.filter(x=>x!==n):[...favs,n]; ls.set("toque_guia_favs",favs);
+    toast(favs.includes(n)?"Agregado a favoritos ⭐":"Quitado de favoritos"); render(); return; }
+  const s = e.target.closest("[data-share]");
+  if(s){
+    const l = LUGARES.find(x=>x.nombre===s.dataset.share);
+    const texto = `${l.nombre}${l.dir?" – "+l.dir:""} (${CONFIG.ciudad}). ¿Vas para allá? Pedí tu remis con Remises TOQUE!`;
+    const url = new URL(linkPedido(destinoTexto(l)), location.href).href;
+    if(navigator.share){ try{ await navigator.share({title:l.nombre,text:texto,url}); }catch(err){} }
+    else { window.open(`https://wa.me/?text=${encodeURIComponent(texto+" "+url)}`,"_blank"); }
+  }
+};
+
+/* --- Sugerir lugar --- */
+$("#sCat").innerHTML = CATEGORIAS.map(c=>`<option value="${c.id}">${c.ico} ${c.nombre}</option>`).join("");
+$("#abrirSugerir").onclick = ()=>$("#dlg").showModal();
+$("#formSug").addEventListener("submit", e=>{
+  if(e.submitter && e.submitter.value!=="ok") return;
+  const msg = `📍 Sugerencia para la Guía Federal\nNombre: ${$("#sNom").value}\nCategoría: ${catDe($("#sCat").value).nombre}\nDirección: ${$("#sDir").value||"-"}\nComentario: ${$("#sObs").value||"-"}`;
+  try{ navigator.clipboard.writeText(msg); }catch(err){}
+  window.open(`https://t.me/${CONFIG.telegramBot}`,"_blank");
+  toast("Mensaje copiado: pegalo en el chat de Telegram");
+  e.target.reset();
+});
+
+/* --- Carga de datos externos (opcional) --- */
+async function iniciar(){
+  try{
+    const [g, cfg] = await Promise.all([rpc("r_pub_guia"), rpc("r_pub_config").catch(() => null)]);
+    MOTO = cfg && cfg.moto;
+    const lugares = (g.lugares || []).map(l => ({ nombre:l.nombre, cat:l.cat, dir:l.dir || "", desc:l.desc, tel:l.tel, horario:l.horario,
+      h24:l.h24, destacado:l.destacado, lat:l.lat ?? undefined, lng:l.lng ?? undefined }));
+    const comercios = (g.comercios || []).map(c => ({ nombre:c.nombre, cat:"comercios", dir:c.dir || "", desc:c.desc || c.rubro, tel:c.tel,
+      lat:c.lat ?? undefined, lng:c.lng ?? undefined, delivery:c.id, abierto:!!c.abierto }));
+    if(lugares.length || comercios.length) LUGARES = [...lugares, ...comercios];
+  }catch(e){ /* sin conexión con la central: se usa la lista interna */ }
+  renderCats(); renderDestacados(); renderCiudades(); render();
+  const qInicial = new URLSearchParams(location.search).get("q");
+  if(qInicial){ $("#q").value=qInicial; estado.q=qInicial; render(); }
+}
+iniciar();
+</script>
+</body>
+</html>

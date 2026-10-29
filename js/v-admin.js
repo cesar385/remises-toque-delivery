@@ -62,7 +62,7 @@ ruta('solicitudes-conductor', {
       `<div class="card"><div class="body fila"><div class="campo"><label>Estado</label><select id="e"><option value="pendientes">Pendientes</option><option value="observadas">Observadas</option><option value="precargadas">Precargadas</option><option value="rechazadas">Rechazadas</option><option value="">Todas</option></select></div><div class="campo"><label>Conductor</label><input id="c"></div><div class="campo"><label>DNI</label><input id="d"></div><div class="campo"><label>Patente</label><input id="p"></div><button class="btn" id="bu">Buscar</button></div><div id="tb"></div></div>`;
     const t = tabla($('#tb'), {
       vacio: 'No hay solicitudes.',
-      cols: [{ t: 'ID', k: 'id' }, { t: 'Estado', f: s => `<span class="pill">${esc(s.estado)}</span>` }, { t: 'Conductor', f: s => `${esc(s.nombre)} ${esc(s.apellido || '')}<br><small>DNI ${esc(s.dni)}</small>` }, { t: 'Contacto', f: s => `${esc(s.telefono)}<br><small>${esc(s.email || '')}</small>` }, { t: 'Vehículo', f: s => esc([s.marca, s.modelo, s.anio, s.patente].filter(Boolean).join(' ')) }, { t: 'Fecha', f: s => fechaLarga(s.fecha) }, { t: 'Docs', f: s => JSON.parse(s.docs || '[]').map(d => linkDoc(d)).join(', ') || '—' }],
+      cols: [{ t: 'ID', k: 'id' }, { t: 'Estado', f: s => `<span class="pill">${esc(s.estado)}</span>` }, { t: 'Conductor', f: s => `${esc(s.nombre)} ${esc(s.apellido || '')}<br><small>DNI ${esc(s.dni)}</small>` }, { t: 'Contacto', f: s => `${esc(s.telefono)}<br><small>${esc(s.email || '')}</small>` }, { t: 'Vehículo', f: s => (s.tipo_vehiculo === 'moto' ? '🏍 ' : '🚗 ') + esc([s.marca, s.modelo, s.anio, s.patente].filter(Boolean).join(' ')) }, { t: 'Fecha', f: s => fechaLarga(s.fecha) }, { t: 'Docs', f: s => JSON.parse(s.docs || '[]').map(d => linkDoc(d)).join(', ') || '—' }],
       cargar: () => api('/api/solicitudes?' + qs({ estado: $('#e').value, conductor: $('#c').value, dni: $('#d').value, patente: $('#p').value })),
       acciones: s => [
         { t: 'Precargar usuario (y móvil)', ico: '📥', a: async () => { const r = await pedir('Precargar', [{ t: 'html', html: '<p>Se crea el usuario conductor (clave inicial: últimos 6 dígitos del DNI). Si indicás número de móvil, se crea inhabilitado o se vincula al existente.</p>' }, { k: 'numero', l: 'Número de móvil (opcional)', t: 'number' }]); if (r) { await api(`/api/solicitudes/${s.id}/precargar`, { body: r }); toast('Precargado', 'ok'); t.refrescar(); } } },
@@ -152,7 +152,31 @@ ruta('tarifas', {
     main.innerHTML = cabecera('Gestión de tarifas', 'Administrá bandera, fichas y tipo fija o dinámica. El índice muestra cómo está la demanda ahora.', '<button class="btn" id="nueva">+ Nueva</button><button class="btn sec" id="ac">⟳ Actualizar</button>') +
       `<div class="nota"><b>Tarifa dinámica, en simple:</b> arranca de la tarifa de siempre (bandera + fichas). Si hay más pedidos de lo habitual, pocos autos libres o lluvia, el precio sube de a 5% sin pasar la <i>suba máxima</i>. No baja por defecto. Destino, canal y medio de pago no entran en esa cuenta.</div>
       <div class="grid g2"><div class="card"><div class="head"><h3>📈 Índice ahora</h3><button class="btn sec chico" id="ref">Refrescar</button></div><div class="body" id="ind"></div></div><div class="card"><div class="head"><h3>🧮 Simulador de precio</h3></div><div class="body fila"><div class="campo"><label>Km</label><input type="number" id="sk" value="3" step="0.1"></div><div class="campo"><label>Minutos de espera</label><input type="number" id="se" value="0"></div><b id="sr" style="font-size:20px;margin-left:auto">—</b></div></div></div>
+      <div class="card" id="motoCard"></div>
       <div class="card" id="tb"></div>`;
+    // Remis TOQUE! Moto: precio = % del remís (con mínima). Solo reciben estos viajes los móviles marcados como moto.
+    async function cargarMoto() {
+      const c = await api('/api/moto').catch(() => null); if (!c) { $('#motoCard').innerHTML = ''; return; }
+      $('#motoCard').innerHTML = `<div class="head"><h3>🏍 ${esc(c.nombre || 'Remis TOQUE! Moto')}</h3><button class="btn sec chico" id="motoCfg">Configurar</button></div>
+        <div class="body"><div class="grid g3">
+          <div class="kpi"><div class="l">Servicio</div><div class="v" style="font-size:16px;color:${c.activo ? 'var(--ok, #1fae5b)' : 'var(--suave)'}">${c.activo ? 'Activo' : 'Apagado'}</div><small>${c.activo ? 'Los pasajeros ven la opción Moto' : 'Los pasajeros no ven la opción'}</small></div>
+          <div class="kpi"><div class="l">Precio</div><div class="v">${+c.pct}%</div><small>del remís · mínima ${pesos(+c.minima || 0)}</small></div>
+          <div class="kpi"><div class="l">Motos</div><div class="v">${c.libres} libres</div><small>${c.habilitadas} habilitadas de ${c.motos}</small></div>
+        </div>${+c.motos === 0 ? '<div class="nota" style="margin-top:8px">Todavía no hay móviles de tipo moto. En <b>Móviles</b>, al modificar uno elegí <b>Tipo de vehículo: Moto</b>. Las motos no reciben viajes de remís común.</div>' : ''}</div>`;
+      $('#motoCfg').onclick = async () => {
+        const r = await pedir('Remis TOQUE! Moto', [
+          { k: 'activo', l: 'Servicio', t: 'select', op: [['true', 'Activo: los pasajeros pueden pedir moto'], ['false', 'Apagado']] },
+          { k: 'nombre', l: 'Nombre que ve el pasajero' },
+          { k: 'pct', l: 'Precio (% del remís)', t: 'number', min: 1, max: 200, ayuda: 'Ej: 70 = la moto cuesta el 70% de lo que costaría el mismo viaje en remís' },
+          { k: 'minima', l: 'Tarifa mínima ($)', t: 'number', min: 0 },
+          { k: 'texto', l: 'Texto para el pasajero', w: 'full', ph: 'Viaje rápido en moto · 1 pasajero · casco para vos' }
+        ], { ...c, activo: String(!!c.activo) });
+        if (!r) return;
+        try { await api('/api/moto', { body: { ...r, activo: r.activo === 'true', pct: +r.pct, minima: +r.minima || 0 } }); toast('Configuración de moto guardada', 'ok'); cargarMoto(); }
+        catch (e) { toast(e.message, 'error'); }
+      };
+    }
+    cargarMoto();
     let datos;
     async function cargarInd() {
       datos = await api('/api/tarifas');

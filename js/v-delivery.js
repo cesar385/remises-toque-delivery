@@ -50,7 +50,7 @@ const it = h(`<div class="item" data-g="delivery"><button>${ICO_DLV}<span>Delive
 const cols = $('.dd-cols', it);
 const pintar = () => {
 cols.innerHTML = '';
-items.filter(x => !x.roles || tiene(...x.roles)).forEach(x => {
+[...items, ...(window.DLV_MENU_EXTRA || [])].filter(x => !x.roles || tiene(...x.roles)).forEach(x => {
 if (x.si && D.cfg && !(x.si === 'aprob' ? (D.cfg.aprob_menu || D.cfg.aprob_negocio || D.pend) : D.cfg[x.si])) return;
 if (x.sep) return cols.append(h('<div class="sep"></div>'));
 if (x.tit) return cols.append(h(`<div class="dd-tit">${esc(x.tit)}</div>`));

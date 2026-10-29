@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b4fa8">
+<title>Anuncios · Remises TOQUE!</title>
+<meta name="description" content="Novedades, promociones y comercios de Federal, Entre Ríos. Remises TOQUE!, tu remis a un click.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --azul:#0b4fa8; --azul-osc:#083a7c; --verde:#1fae5b; --verde-osc:#178a48;
+    --bg:#f3f6fb; --card:#ffffff; --txt:#14213d; --muted:#5d6b82; --borde:#dde4ef;
+    --chip:#e8eef8; --acento:#0b4fa8; --sombra:0 2px 10px rgba(11,79,168,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1420; --card:#151f2f; --txt:#e8eef8; --muted:#9aa8bf; --borde:#24324a;
+      --chip:#1d2a40; --acento:#7fb2ff; --sombra:0 2px 10px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1420; --card:#151f2f; --txt:#e8eef8; --muted:#9aa8bf; --borde:#24324a;
+    --chip:#1d2a40; --acento:#7fb2ff; --sombra:0 2px 10px rgba(0,0,0,.3);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Nunito',system-ui,sans-serif;background:var(--bg);color:var(--txt);-webkit-tap-highlight-color:transparent}
+  a{color:inherit}
+  .wrap{max-width:980px;margin:0 auto}
+
+  header{background:linear-gradient(135deg,var(--azul) 0%,var(--azul-osc) 55%,var(--verde-osc) 140%);color:#fff;padding:18px 16px 26px;position:relative;overflow:hidden}
+  header::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(31,174,91,.25)}
+  .barra{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:1}
+  .marca{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1.2rem;text-decoration:none}
+  .marca .logo{width:40px;height:40px;border-radius:12px;background:var(--verde);display:grid;place-items:center;font-size:1.3rem;box-shadow:0 3px 10px rgba(0,0,0,.2)}
+  .marca small{display:block;font-weight:600;font-size:.78rem;opacity:.85}
+  .nav{display:flex;gap:6px}
+  .nav a,.nav button{background:rgba(255,255,255,.15);border:0;color:#fff;height:40px;min-width:40px;padding:0 12px;border-radius:12px;font:inherit;font-weight:800;font-size:.9rem;cursor:pointer;text-decoration:none;display:grid;place-items:center}
+  h1{margin:18px 0 4px;font-size:1.8rem;font-weight:900;position:relative;z-index:1}
+  .sub{margin:0;opacity:.9;position:relative;z-index:1}
+
+  main{padding:16px}
+  section{margin-top:22px}
+  section:first-child{margin-top:4px}
+  h2{font-size:1.15rem;margin:0 0 10px;font-weight:900;display:flex;align-items:center;gap:8px}
+
+  /* Carrusel destacados */
+  .carrusel{position:relative}
+  .pista{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:4px}
+  .pista::-webkit-scrollbar{display:none}
+  .slide{flex:0 0 100%;scroll-snap-align:start;border-radius:20px;padding:22px 20px;color:#fff;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;position:relative;overflow:hidden;box-shadow:0 8px 22px rgba(11,79,168,.2)}
+  @media (min-width:760px){.slide{flex-basis:calc(50% - 6px)}}
+  .slide .emoji{position:absolute;right:14px;top:8px;font-size:4.2rem;opacity:.9}
+  .slide .etq{align-self:flex-start;background:rgba(255,255,255,.22);font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;padding:4px 10px;border-radius:999px}
+  .slide h3{margin:0;font-size:1.35rem;font-weight:900;line-height:1.15;max-width:80%}
+  .slide p{margin:0;opacity:.92;font-size:.95rem;max-width:90%}
+  .slide a.cta{align-self:flex-start;margin-top:6px;background:#fff;color:#14213d;text-decoration:none;font-weight:900;padding:9px 14px;border-radius:12px;font-size:.9rem}
+  .puntos{display:flex;justify-content:center;gap:6px;margin-top:10px}
+  .puntos button{width:8px;height:8px;border-radius:50%;border:0;background:var(--borde);padding:0;cursor:pointer}
+  .puntos button.on{background:var(--azul);width:20px;border-radius:999px}
+
+  /* Filtros */
+  .filtros{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+  .filtros::-webkit-scrollbar{display:none}
+  .f{flex:0 0 auto;border:1px solid var(--borde);background:var(--card);color:var(--txt);padding:8px 14px;border-radius:999px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}
+  .f.on{background:var(--azul);border-color:var(--azul);color:#fff}
+  .buscar{margin:10px 0 4px;position:relative}
+  .buscar input{width:100%;padding:12px 14px 12px 40px;border-radius:12px;border:1px solid var(--borde);font:inherit;background:var(--card);color:var(--txt)}
+  .buscar input:focus{outline:2px solid var(--azul);border-color:transparent}
+  .buscar span{position:absolute;left:13px;top:50%;transform:translateY(-50%);opacity:.6}
+
+  /* Tarjetas */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px}
+  .anuncio{background:var(--card);border:1px solid var(--borde);border-radius:16px;overflow:hidden;box-shadow:var(--sombra);display:flex;flex-direction:column;animation:entra .25s ease}
+  @keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .banda{height:92px;display:grid;place-items:center;font-size:2.8rem;position:relative}
+  .banda img{width:100%;height:100%;object-fit:cover}
+  .banda .tipo{position:absolute;left:10px;top:10px;background:rgba(255,255,255,.92);color:#14213d;font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:999px}
+  .banda .nuevo{position:absolute;right:10px;top:10px;background:#f5b301;color:#14213d;font-size:.7rem;font-weight:900;padding:3px 9px;border-radius:999px}
+  .cuerpo{padding:14px;display:flex;flex-direction:column;gap:8px;flex:1}
+  .anuncio h3{margin:0;font-size:1.05rem;font-weight:800;line-height:1.25}
+  .anuncio .de{font-size:.8rem;color:var(--muted);font-weight:700}
+  .anuncio p{margin:0;color:var(--muted);font-size:.93rem}
+  .meta{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:.75rem;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--chip);color:var(--muted)}
+  .chip.alerta{background:rgba(214,48,49,.12);color:#d63031}
+  .codigo{display:flex;align-items:center;gap:8px;border:2px dashed var(--verde);border-radius:12px;padding:8px 10px}
+  .codigo b{font-family:ui-monospace,monospace;font-size:1rem;letter-spacing:.06em;flex:1}
+  .codigo button{border:0;background:var(--verde);color:#fff;font:inherit;font-weight:800;padding:6px 10px;border-radius:9px;cursor:pointer;font-size:.8rem}
+  .acc{display:flex;gap:6px;margin-top:auto;padding-top:4px}
+  .btn{flex:1;text-align:center;text-decoration:none;font-weight:800;padding:10px 6px;border-radius:12px;font-size:.9rem;border:0;cursor:pointer;font-family:inherit}
+  .btn.prim{background:var(--verde);color:#fff}
+  .btn.prim:hover{background:var(--verde-osc)}
+  .btn.sec{background:var(--chip);color:var(--txt);flex:0 0 44px}
+  .btn.az{background:var(--azul);color:#fff}
+  .vacio{text-align:center;color:var(--muted);padding:30px 10px;grid-column:1/-1}
+
+  /* Planes para anunciantes */
+  .anunciate{background:linear-gradient(135deg,var(--verde-osc),var(--verde));color:#fff;border-radius:20px;padding:20px;display:grid;gap:14px}
+  .anunciate h2{color:#fff;margin:0}
+  .anunciate p{margin:0;opacity:.95}
+  .planes{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+  .plan{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:14px}
+  .plan b{display:block;font-size:1.05rem}
+  .plan ul{margin:8px 0 0;padding-left:18px;font-size:.88rem;opacity:.95}
+  .anunciate .btn{background:#fff;color:#14213d;justify-self:start;padding:11px 18px}
+
+  /* Modal */
+  dialog{border:0;border-radius:18px;padding:0;width:min(460px,calc(100% - 32px));background:var(--card);color:var(--txt);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  dialog::backdrop{background:rgba(10,20,40,.55)}
+  .modal{padding:18px}
+  .modal h3{margin:0 0 4px}
+  .modal .ayuda{margin:0 0 6px;color:var(--muted);font-size:.88rem}
+  .modal label{display:block;font-weight:700;font-size:.85rem;margin:10px 0 4px}
+  .modal input,.modal select,.modal textarea{width:100%;padding:10px;border-radius:10px;border:1px solid var(--borde);background:var(--bg);color:var(--txt);font:inherit}
+  .modal .fila{display:flex;gap:8px;margin-top:14px}
+
+  .flotante{position:fixed;right:16px;bottom:16px;background:var(--verde);color:#fff;text-decoration:none;font-weight:900;padding:14px 20px;border-radius:999px;box-shadow:0 6px 18px rgba(31,174,91,.45);z-index:50}
+  .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);background:#14213d;color:#fff;padding:10px 16px;border-radius:12px;font-weight:700;opacity:0;transition:.25s;pointer-events:none;z-index:60;text-align:center;max-width:90%}
+  .toast.ver{opacity:1;transform:translateX(-50%)}
+  footer{text-align:center;color:var(--muted);font-size:.85rem;padding:24px 16px 96px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="barra">
+      <a class="marca" href="index.html"><div class="logo">🚕</div><div>Remises TOQUE!<small>Tu remis a un click</small></div></a>
+      <div class="nav">
+        <a href="guia.html" title="Guía de Federal">🗺️ Guía</a>
+        <button id="tema" aria-label="Cambiar tema">🌙</button>
+      </div>
+    </div>
+    <h1>Anuncios</h1>
+    <p class="sub">Novedades de TOQUE!, promos y comercios de Federal.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <div class="carrusel">
+      <div class="pista" id="pista"></div>
+      <div class="puntos" id="puntos"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>📢 Todos los anuncios</h2>
+    <div class="filtros" id="filtros"></div>
+    <div class="buscar"><span>🔍</span><input id="q" type="search" placeholder="Buscar promo, comercio, rubro..." autocomplete="off"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section>
+    <div class="anunciate">
+      <h2>🚀 Anunciá tu comercio</h2>
+      <p>Tu negocio frente a los pasajeros de Remises TOQUE! en Federal. Elegí cómo querés aparecer:</p>
+      <div class="planes" id="planes"></div>
+      <button class="btn" id="abrirForm">Quiero anunciar</button>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <form class="modal" method="dialog" id="form">
+    <h3>Pedí tu anuncio</h3>
+    <p class="ayuda">Completá los datos y te contactamos por Telegram.</p>
+    <label for="fNeg">Comercio</label><input id="fNeg" required placeholder="Nombre del negocio">
+    <label for="fRub">Rubro</label><input id="fRub" placeholder="Ej: rotisería, ferretería, peluquería">
+    <label for="fPlan">Plan</label><select id="fPlan"></select>
+    <label for="fTel">Teléfono / WhatsApp</label><input id="fTel" type="tel" placeholder="3454...">
+    <label for="fTxt">¿Qué querés anunciar?</label><textarea id="fTxt" rows="3" placeholder="Promo, horario, novedad..."></textarea>
+    <div class="fila">
+      <button class="btn sec" style="flex:1" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn prim" style="flex:1" value="ok">Enviar</button>
+    </div>
+  </form>
+</dialog>
+
+<a class="flotante" href="pasajero.html">🚕 Pedir remis</a>
+<script src="config.js"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<div class="toast" id="toast"></div>
+<footer>Remises TOQUE! · Federal, Entre Ríos<br>Los anuncios de comercios son responsabilidad de cada anunciante.</footer>
+
+<script>
+/* =====================================================================
+   CONFIGURACIÓN
+   ===================================================================== */
+const CONFIG = {
+  ciudad: "Federal, Entre Ríos",
+  paginaPedido: "pasajero.html",
+  telegramBot: "RemisesToque_bot",
+  paginaDelivery: "delivery.html",   // tienda de Delivery TOQUE! (#/n/ID abre un comercio)
+  diasNuevo: 7                       // un anuncio se marca "NUEVO" durante estos días
+};
+// Conexión con la central (config.js): los anuncios se cargan desde el panel (Delivery → Anuncios)
+// y los comercios cargan sus promos desde su portal. Si no hay conexión se usa la lista de abajo.
+const SB = (window.RODAR_CONFIG && window.supabase && window.RODAR_CONFIG.supabaseUrl) ?
+  window.supabase.createClient(window.RODAR_CONFIG.supabaseUrl, window.RODAR_CONFIG.supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+async function rpc(fn, b) {
+  if (!SB) throw new Error("Sin conexión con la central");
+  const { data, error } = await SB.rpc(fn, { p_token: null, p_q: {}, p_b: b || {} });
+  if (error) throw new Error(error.message); return data;
+}
+const waNum = t => { t = String(t || "").replace(/\D/g, ""); return !t ? "" : t.startsWith("54") ? t : "549" + t; };
+
+const TIPOS = [
+  {id:"novedad",   nombre:"Novedades TOQUE!", ico:"📣"},
+  {id:"promo",     nombre:"Promos",           ico:"🏷️"},
+  {id:"comercio",  nombre:"Comercios",        ico:"🏪"},
+  {id:"evento",    nombre:"Eventos",          ico:"🎉"},
+  {id:"aviso",     nombre:"Avisos",           ico:"⚠️"}
+];
+
+/* ANUNCIOS — campos:
+   titulo, tipo (id de TIPOS), texto, anunciante, emoji, color (fondo de la banda),
+   imagen (URL opcional; reemplaza al emoji), desde / hasta ("AAAA-MM-DD"; fuera de fecha no se muestra),
+   destacado (true = va al carrusel), codigo (cupón opcional),
+   destino (dirección para el botón "Ir en remis"), tel (WhatsApp, solo números con código de área),
+   link (web externa), cta (texto del botón principal) */
+/* Lista de respaldo: se usa solo si no hay conexión con la central */
+let ANUNCIOS = [
+  {titulo:"Llega Remis TOQUE! Moto", tipo:"novedad", anunciante:"Remises TOQUE!", emoji:"🛵",
+   color:"linear-gradient(135deg,#0b4fa8,#1fae5b)",
+   texto:"Viajes rápidos en moto por la ciudad. Muy pronto vas a poder pedirlo desde la app.",
+   desde:"2026-10-29", destacado:true, cta:"Próximamente"},
+  {titulo:"Delivery TOQUE!", tipo:"novedad", anunciante:"Remises TOQUE!", emoji:"📦",
+   color:"linear-gradient(135deg,#178a48,#0b4fa8)",
+   texto:"Mandados, paquetes y pedidos de comercios, llevados por nuestra flota. Próximamente.",
+   desde:"2026-10-29", destacado:true, cta:"Próximamente"},
+  {titulo:"Nueva guía de Federal", tipo:"novedad", anunciante:"Remises TOQUE!", emoji:"🗺️",
+   color:"linear-gradient(135deg,#083a7c,#0b4fa8)",
+   texto:"Encontrá hospital, terminal, trámites y más, y pedí tu remis directo hasta ahí.",
+   desde:"2026-10-29", destacado:true, link:"guia.html", cta:"Abrir la guía"},
+  {titulo:"Tu comercio puede estar acá", tipo:"comercio", anunciante:"Espacio disponible", emoji:"🏪",
+   color:"#e8eef8",
+   texto:"Mostrá tus promos a los pasajeros de Federal. Tocá «Quiero anunciar» para sumarte.",
+   desde:"2026-10-29", cta:"Quiero anunciar", accion:"anunciar"}
+  // Ejemplo de promo de un comercio:
+  // {titulo:"2x1 en empanadas los martes", tipo:"promo", anunciante:"Nombre del comercio", emoji:"🥟",
+  //  color:"#fff3d6", texto:"Pedí en el local o llevalo a casa.", desde:"2026-11-01", hasta:"2026-11-30",
+  //  codigo:"TOQUE2X1", destino:"Calle 123", tel:"543454000000"}
+];
+
+const PLANES = [
+  {nombre:"Básico",     ico:"🌱", items:["Tarjeta en Anuncios","Botón para ir en remis","1 mes"]},
+  {nombre:"Destacado",  ico:"⭐", items:["Todo lo del Básico","Lugar en el carrusel principal","Cupón de descuento"]},
+  {nombre:"En la guía", ico:"🗺️", items:["Tu negocio en la Guía de Federal","Ubicación en el mapa","Se suma a cualquier plan"]}
+];
+
+/* =====================================================================
+   LÓGICA
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const norm = s => (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ls = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+};
+const tipoDe = id => TIPOS.find(t=>t.id===id) || {nombre:"Anuncio",ico:"📌"};
+let filtro = "todos", busqueda = "";
+
+function toast(t){ const el=$("#toast"); el.textContent=t; el.classList.add("ver"); clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove("ver"),2400); }
+
+/* Tema (comparte la preferencia con la guía) */
+function aplicarTema(t){ if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme;
+  const oscuro = t ? t==="dark" : matchMedia("(prefers-color-scheme: dark)").matches; $("#tema").textContent = oscuro?"☀️":"🌙"; }
+aplicarTema(ls.get("toque_tema", null));
+$("#tema").onclick = ()=>{ const a = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+  const n = a==="dark"?"light":"dark"; ls.set("toque_tema",n); aplicarTema(n); };
+
+/* Fechas */
+const hoy = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
+const fecha = s => { if(!s) return null; const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
+const vigente = a => { const h=hoy(), d=fecha(a.desde), f=fecha(a.hasta); return (!d||d<=h) && (!f||f>=h); };
+const esNuevo = a => { const d=fecha(a.desde); return d && (hoy()-d)/864e5 <= CONFIG.diasNuevo; };
+const diasRestantes = a => { const f=fecha(a.hasta); return f ? Math.round((f-hoy())/864e5) : null; };
+const fmt = s => fecha(s).toLocaleDateString("es-AR",{day:"numeric",month:"short"});
+
+/* Links y acciones */
+const linkPedido = dir => `${CONFIG.paginaPedido}?destino=${encodeURIComponent(dir + ", " + CONFIG.ciudad)}`;
+function botonPrincipal(a, clase){
+  if(a.accion==="anunciar") return `<button class="btn ${clase}" data-anunciar>${esc(a.cta||"Quiero anunciar")}</button>`;
+  if(a.link) return `<a class="btn ${clase}" href="${esc(a.link)}">${esc(a.cta||"Ver más")}</a>`;
+  if(a.destino) return `<a class="btn ${clase}" href="${linkPedido((a.anunciante?a.anunciante+", ":"")+a.destino)}">🚕 ${esc(a.cta||"Ir en remis")}</a>`;
+  if(a.tel) return `<a class="btn ${clase}" href="https://wa.me/${esc(a.tel)}" target="_blank" rel="noopener">💬 ${esc(a.cta||"Escribir")}</a>`;
+  return a.cta ? `<span class="btn ${clase}" style="opacity:.8;cursor:default">${esc(a.cta)}</span>` : "";
+}
+
+/* Carrusel */
+function renderCarrusel(){
+  const d = ANUNCIOS.filter(a=>a.destacado && vigente(a));
+  const sec = $("#pista").closest("section");
+  if(!d.length){ sec.style.display="none"; return; }
+  $("#pista").innerHTML = d.map(a=>`<div class="slide" style="background:${esc(a.color||"var(--azul)")}">
+      <span class="emoji">${esc(a.emoji||tipoDe(a.tipo).ico)}</span>
+      <span class="etq">${esc(tipoDe(a.tipo).nombre)}</span>
+      <h3>${esc(a.titulo)}</h3><p>${esc(a.texto)}</p>
+      ${a.link||a.destino||a.tel||a.accion ? botonPrincipal(a,"cta").replace('class="btn cta"','class="cta"') : (a.cta?`<span class="etq" style="margin-top:6px">${esc(a.cta)}</span>`:"")}
+    </div>`).join("");
+  $("#puntos").innerHTML = d.length>1 ? d.map((_,i)=>`<button data-i="${i}" aria-label="Anuncio ${i+1}"></button>`).join("") : "";
+  marcarPunto();
+}
+function marcarPunto(){
+  const p=$("#pista"), s=p.querySelector(".slide"); if(!s) return;
+  const i = Math.round(p.scrollLeft / (s.offsetWidth+12));
+  document.querySelectorAll("#puntos button").forEach((b,j)=>b.classList.toggle("on",j===i));
+}
+$("#pista").addEventListener("scroll", ()=>{ clearTimeout(marcarPunto._t); marcarPunto._t=setTimeout(marcarPunto,60); });
+$("#puntos").onclick = e=>{ const b=e.target.closest("button"); if(!b) return; const s=$("#pista .slide");
+  $("#pista").scrollTo({left:b.dataset.i*(s.offsetWidth+12),behavior:"smooth"}); };
+let pausa = false;
+$("#pista").addEventListener("pointerdown", ()=>pausa=true);
+setInterval(()=>{ if(pausa || document.hidden) return; const p=$("#pista"), s=p.querySelector(".slide"); if(!s) return;
+  const fin = p.scrollLeft + p.clientWidth >= p.scrollWidth - 5;
+  p.scrollTo({left: fin ? 0 : p.scrollLeft + s.offsetWidth + 12, behavior:"smooth"}); }, 6000);
+
+/* Filtros y grilla */
+function renderFiltros(){
+  const vig = ANUNCIOS.filter(vigente);
+  const n = id => vig.filter(a=>a.tipo===id).length;
+  const lista = [{id:"todos",nombre:"Todos",ico:"📌"}, ...TIPOS.filter(t=>n(t.id))];
+  $("#filtros").innerHTML = lista.map(t=>`<button class="f ${t.id===filtro?'on':''}" data-t="${t.id}">${t.ico} ${t.nombre}</button>`).join("");
+}
+function tarjeta(a){
+  const t = tipoDe(a.tipo), dr = diasRestantes(a);
+  const chips = [
+    a.hasta ? `<span class="chip ${dr<=3?'alerta':''}">${dr===0?"¡Último día!":dr<=3?`Quedan ${dr} días`:`Hasta el ${fmt(a.hasta)}`}</span>` : "",
+    a.destino ? `<span class="chip">📍 ${esc(a.destino)}</span>` : ""
+  ].join("");
+  const banda = a.imagen ? `<img src="${esc(a.imagen)}" alt="" loading="lazy">` : esc(a.emoji||t.ico);
+  return `<article class="anuncio">
+    <div class="banda" style="background:${esc(a.color||"var(--chip)")}">${banda}
+      <span class="tipo">${t.ico} ${esc(t.nombre)}</span>${esNuevo(a)?'<span class="nuevo">NUEVO</span>':""}</div>
+    <div class="cuerpo">
+      ${a.anunciante?`<div class="de">${esc(a.anunciante)}</div>`:""}
+      <h3>${esc(a.titulo)}</h3>
+      ${a.texto?`<p>${esc(a.texto)}</p>`:""}
+      ${chips.trim()?`<div class="meta">${chips}</div>`:""}
+      ${a.codigo?`<div class="codigo">🎟️ <b>${esc(a.codigo)}</b><button data-copiar="${esc(a.codigo)}">Copiar</button></div>`:""}
+      <div class="acc">${botonPrincipal(a,"prim")}<button class="btn sec" data-share="${esc(a.titulo)}" title="Compartir">📤</button></div>
+    </div></article>`;
+}
+function render(){
+  const q = norm(busqueda);
+  const lista = ANUNCIOS.filter(vigente)
+    .filter(a=>filtro==="todos" || a.tipo===filtro)
+    .filter(a=>!q || norm([a.titulo,a.texto,a.anunciante,tipoDe(a.tipo).nombre].join(" ")).includes(q))
+    .sort((a,b)=>(fecha(b.desde)||0)-(fecha(a.desde)||0));
+  $("#grid").innerHTML = lista.length ? lista.map(tarjeta).join("") : `<div class="vacio">No hay anuncios para mostrar.</div>`;
+}
+
+$("#filtros").onclick = e=>{ const b=e.target.closest(".f"); if(!b) return; filtro=b.dataset.t; renderFiltros(); render(); };
+$("#q").oninput = e=>{ busqueda=e.target.value; render(); };
+
+document.addEventListener("click", async e=>{
+  if(e.target.closest("[data-anunciar]")){ abrirForm(); return; }
+  const c = e.target.closest("[data-copiar]");
+  if(c){ try{ await navigator.clipboard.writeText(c.dataset.copiar); toast("Código copiado ✔"); }catch(err){ toast("Código: "+c.dataset.copiar); } return; }
+  const s = e.target.closest("[data-share]");
+  if(s){
+    const a = ANUNCIOS.find(x=>x.titulo===s.dataset.share);
+    const texto = `${a.titulo}${a.anunciante?" – "+a.anunciante:""}. ${a.texto||""}${a.codigo?" Código: "+a.codigo:""}`;
+    const url = location.href.split("#")[0];
+    if(navigator.share){ try{ await navigator.share({title:a.titulo,text:texto,url}); }catch(err){} }
+    else window.open(`https://wa.me/?text=${encodeURIComponent(texto+" "+url)}`,"_blank");
+  }
+});
+
+/* Anunciantes */
+$("#planes").innerHTML = PLANES.map(p=>`<div class="plan"><b>${p.ico} ${esc(p.nombre)}</b><ul>${p.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
+$("#fPlan").innerHTML = PLANES.map(p=>`<option>${esc(p.nombre)}</option>`).join("") + "<option>No sé, quiero consultar</option>";
+function abrirForm(){ $("#dlg").showModal(); }
+$("#abrirForm").onclick = abrirForm;
+$("#form").addEventListener("submit", async e=>{
+  if(e.submitter && e.submitter.value!=="ok") return;
+  const d = { negocio: $("#fNeg").value.trim(), rubro: $("#fRub").value.trim(), plan: $("#fPlan").value, telefono: $("#fTel").value.trim(), texto: $("#fTxt").value.trim() };
+  try{
+    await rpc("r_pub_anuncio_solicitud", d);
+    toast("¡Listo! Recibimos tu pedido y te contactamos pronto");
+  }catch(err){
+    // validaciones de la central: se muestran tal cual; sin conexión: se ofrece Telegram
+    if (SB && !/conexi|fetch|network/i.test(err.message)) { e.preventDefault(); $("#dlg").showModal(); toast(err.message); return; }
+    const msg = `📢 Quiero anunciar en Remises TOQUE!\nComercio: ${d.negocio}\nRubro: ${d.rubro||"-"}\nPlan: ${d.plan}\nContacto: ${d.telefono||"-"}\nAnuncio: ${d.texto||"-"}`;
+    try{ navigator.clipboard.writeText(msg); }catch(er){}
+    window.open(`https://t.me/${CONFIG.telegramBot}`,"_blank");
+    toast("Mensaje copiado: pegalo en el chat de Telegram");
+  }
+  e.target.reset();
+});
+
+/* Inicio: usa anuncios.json si existe */
+async function iniciar(){
+  try{
+    const l = await rpc("r_pub_anuncios");
+    ANUNCIOS = (l || []).map(a => ({ ...a, desde: a.desde ? String(a.desde).slice(0,10) : null, hasta: a.hasta ? String(a.hasta).slice(0,10) : null,
+      tel: waNum(a.tel) || undefined,
+      // promo de un comercio con delivery: el botón abre su tienda
+      link: a.link || (a.negocio_id && a.tiene_delivery ? `${CONFIG.paginaDelivery}#/n/${a.negocio_id}` : undefined),
+      cta: a.cta || (!a.link && a.negocio_id && a.tiene_delivery ? "🛍️ Pedir delivery" : undefined) }));
+  }catch(e){ /* sin conexión: lista de respaldo */ }
+  renderCarrusel(); renderFiltros(); render();
+}
+iniciar();
+</script>
+</body>
+</html>
