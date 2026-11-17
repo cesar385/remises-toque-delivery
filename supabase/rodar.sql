@@ -10168,10 +10168,12 @@ create table if not exists rodar.licencia (
   vence date,
   suspende date,
   mensaje text,
+  pago_url text,                      -- link de Mercado Pago para pagar la suscripción
   verificada timestamptz,             -- última respuesta de la central
   pedido bigint                       -- último pedido HTTP enviado (pg_net)
 );
 alter table rodar.licencia enable row level security;
+alter table rodar.licencia add column if not exists pago_url text;
 
 -- Estado actual: 'propia' si no hay licencia configurada
 create or replace function rodar.licencia_estado() returns text language sql stable
@@ -10222,6 +10224,7 @@ begin
             vence = nullif(j->>'vence','')::date,
             suspende = nullif(j->>'suspende','')::date,
             mensaje = j->>'mensaje',
+            pago_url = j->>'pago_url',
             verificada = now()
           where id = 1;
         end if;
@@ -10280,6 +10283,7 @@ create or replace function public.r_licencia(p_token text default null, p_q json
 language sql stable security definer set search_path = rodar, pg_temp as $$
   select case when l.id is null then jsonb_build_object('estado', 'propia')
     else jsonb_build_object('estado', l.estado, 'plan', l.plan, 'max_moviles', l.max_moviles, 'moviles', rodar.licencia_moviles(),
-                            'vence', l.vence, 'suspende', l.suspende, 'mensaje', l.mensaje, 'verificada', l.verificada) end
+                            'vence', l.vence, 'suspende', l.suspende, 'mensaje', l.mensaje, 'verificada', l.verificada,
+                            'pago_url', l.pago_url) end
   from (select 1) x left join rodar.licencia l on l.id = 1 $$;
 grant execute on function public.r_licencia(text, jsonb, jsonb) to anon, authenticated;

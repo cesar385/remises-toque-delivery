@@ -151,6 +151,24 @@ Cada remisería cliente tiene **su propio proyecto de Supabase** (sus datos qued
    Con `marca`, todas las páginas muestran el nombre, el logo y el color de la remisería en lugar de los de Remises TOQUE!.
 6. Entrá a su dirección con **admin / admin123**, cambiá la contraseña y seguí los pasos de *Antes de operar de verdad* de arriba.
 
+### Cobro mensual automático con Mercado Pago
+
+Cada remisería puede pagar la suscripción con débito automático de Mercado Pago. El cobro llega a **tu** cuenta y cada pago aprobado se registra solo en la central (extiende el servicio un mes).
+
+**Configuración (una sola vez):**
+
+1. En [Mercado Pago Developers](https://www.mercadopago.com.ar/developers/panel/app) creá una aplicación (o usá una que ya tengas) y copiá el **Access Token de producción**.
+2. En Supabase → *Edge Functions → Secrets*, agregá `MP_SAAS_ACCESS_TOKEN` con ese token. Nunca lo pegues en una página ni en config.js.
+3. En la aplicación de Mercado Pago → *Webhooks*, cargá la URL `https://TU-PROYECTO.supabase.co/functions/v1/saas-mp` y marcá los eventos **Planes y suscripciones** (y **Pagos**). Guardá y copiá la **clave secreta**: cargala en Supabase como `MP_SAAS_WEBHOOK_SECRET` (valida que los avisos vengan de Mercado Pago).
+4. La función `saas-mp` (en `supabase/functions/saas-mp`) ya está desplegada.
+
+**Con cada cliente:**
+
+1. En la ficha del cliente cargá el **email de su cuenta de Mercado Pago** (*Editar datos*). Mercado Pago solo deja suscribirse a esa cuenta.
+2. Tocá **Generar link de suscripción** y mandáselo (botón *Enviar por WhatsApp*). Si está en prueba o tiene meses pagos, el primer débito es cuando terminan.
+3. Cuando la remisería se suscribe, el estado pasa a *Débito activo*. Cada mes, el pago aparece solo en *Pagos*.
+4. Si queda vencida, su panel muestra el botón **Pagar con Mercado Pago** junto al aviso.
+
 > **Importante:** GitHub Pages no permite usarse para vender software como servicio. Antes de cobrarle a la primera remisería, mudá la página a un hosting que lo permita (Firebase Hosting, Cloudflare Pages o Netlify) y pasá Supabase al plan Pro: en el plan gratis los proyectos se pausan tras una semana sin uso y hay un máximo de 2.
 
 ## Integraciones
