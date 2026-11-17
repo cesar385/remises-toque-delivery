@@ -262,11 +262,17 @@ function construirNav() {
   const u = R.yo;
   const ini = (u.nombre[0] + (u.apellido || ' ')[0]).toUpperCase();
   const us = h(`<div class="item" style="margin-left:auto"><button class="usuario-btn">${u.foto ? `<img src="${esc(u.foto)}" alt="Foto de perfil">` : `<span class="avatar">${ini}</span>`}<span>${esc(u.nombre + ' ' + (u.apellido || ''))}</span></button>
-    <div class="dropdown" style="left:auto;right:0"><a data-r="ayuda">Centro de ayuda</a><a data-r="mis-reportes">Mis reportes <span class="badge ${u.reportesAbiertos ? '' : 'gris'}">${u.reportesAbiertos || 0}</span></a><a data-x="pass">Cambiar contraseña</a><a data-r="perfil">Editar perfil</a><div class="sep"></div><a data-x="salir">Salir</a></div></div>`);
+    <div class="dropdown" style="left:auto;right:0"><a data-r="ayuda">Centro de ayuda</a><a data-r="mis-reportes">Mis reportes <span class="badge ${u.reportesAbiertos ? '' : 'gris'}">${u.reportesAbiertos || 0}</span></a><a data-x="pass">Cambiar contraseña</a><a data-r="perfil">Editar perfil</a><a data-x="superadmin" href="superadmin.html" target="_blank" rel="noopener" class="oculto">Central de clientes <span class="ext" title="Se abre en otra ventana">↗</span></a><div class="sep"></div><a data-x="salir">Salir</a></div></div>`);
   $('button', us).onclick = e => { e.stopPropagation(); const ab = us.classList.contains('abierto'); cerrarMenus(); if (!ab) us.classList.add('abierto'); };
   $$('a[data-r]', us).forEach(a => a.onclick = () => { cerrarMenus(); ir(a.dataset.r); });
   $('a[data-x=pass]', us).onclick = () => { cerrarMenus(); cambiarPassword(); };
   $('a[data-x=salir]', us).onclick = async () => { try { await api('/api/logout', { body: {} }); } catch { } localStorage.removeItem('rodar_token'); R.yo = null; location.hash = '#/login'; location.reload(); };
+  // Acceso a la central de clientes (superadmin): solo administradores y solo en la central propia
+  // (sin licencia cargada). Las remiserías clientes no lo ven.
+  if (u.roles.includes('admin') && window.RODAR && RODAR.SB) {
+    RODAR.SB.rpc('r_licencia', {}).then(r => { if (r.data && r.data.estado === 'propia') $('a[data-x=superadmin]', us).classList.remove('oculto'); }).catch(() => { });
+    $('a[data-x=superadmin]', us).addEventListener('click', () => cerrarMenus());
+  }
   nav.append(us);
 }
 // ---------- Cierre de sesión por inactividad del panel ----------
