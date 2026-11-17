@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Central de clientes · Superadministrador</title>
+<link rel="icon" type="image/png" href="img/pasajero-192.png?v=3">
+<script src="config.js?v=2026111701"></script>
+<script src="vendor/supabase/supabase.js"></script>
+<style>
+:root{--pri:#215181;--pri-2:#183c62;--pri-claro:#e7eef7;--verde:#278449;--verde-claro:#e4f3ea;--rojo:#c93535;--rojo-claro:#fbe9e9;
+  --amarillo:#a87a00;--amarillo-claro:#fdf3d6;--azul:#2f6fd6;--azul-claro:#e6eefc;--gris:#6b7a7b;--gris-claro:#eef1f2;
+  --fondo:#f2f5f6;--panel:#fff;--texto:#1d2a2b;--suave:#5e6f70;--borde:#dbe4e5;--radio:10px;--sombra:0 1px 3px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05)}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;background:var(--fondo);color:var(--texto);font-size:14px}
+button,input,select,textarea{font:inherit;color:inherit}
+.oculto{display:none!important}
+h1,h2,h3{margin:0}
+/* ingreso */
+.ingreso{min-height:100vh;display:grid;place-items:center;padding:20px}
+.ingreso form{background:var(--panel);border-radius:14px;box-shadow:var(--sombra);padding:28px;width:100%;max-width:380px;display:grid;gap:14px}
+.ingreso h1{font-size:20px;color:var(--pri)}
+.ingreso p{margin:0;color:var(--suave)}
+/* estructura */
+.top{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--borde);display:flex;align-items:center;gap:8px;padding:0 16px;height:56px}
+.top .titulo{font-weight:700;color:var(--pri);font-size:17px;margin-right:12px;white-space:nowrap}
+.tabs{display:flex;gap:2px;flex:1;overflow-x:auto}
+.tabs button{background:none;border:0;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:500;white-space:nowrap}
+.tabs button:hover{background:var(--gris-claro)}
+.tabs button.activa{background:var(--pri-claro);color:var(--pri)}
+.usuario{display:flex;align-items:center;gap:8px;color:var(--suave);white-space:nowrap}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+.cabecera{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.cabecera h2{font-size:20px}
+/* componentes */
+.btn{border:1px solid var(--borde);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--gris-claro)}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.pri:hover{background:var(--pri-2)}
+.btn.peligro{color:var(--rojo);border-color:#f0c4c4}
+.btn.peligro:hover{background:var(--rojo-claro)}
+.btn.chico{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:default}
+label.campo{display:grid;gap:5px;font-weight:500;color:var(--suave);font-size:13px}
+input,select,textarea{border:1px solid var(--borde);border-radius:8px;padding:9px 11px;background:#fff;width:100%;font-size:14px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--pri-claro);border-color:var(--pri)}
+textarea{min-height:70px;resize:vertical}
+.grilla{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.tarjetas{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:18px}
+.tarjeta{background:var(--panel);border-radius:var(--radio);box-shadow:var(--sombra);padding:14px 16px}
+.tarjeta .num{font-size:24px;font-weight:700;margin-top:4px}
+.tarjeta .eti{color:var(--suave);font-size:13px}
+.tarjeta .sub{color:var(--suave);font-size:12px;margin-top:2px}
+.caja{background:var(--panel);border-radius:var(--radio);box-shadow:var(--sombra);padding:16px;margin-bottom:16px}
+.caja h3{font-size:15px;margin-bottom:10px}
+.vacio{color:var(--suave);padding:8px 0}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--suave);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--borde);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--gris-claro);vertical-align:middle}
+tr.clic{cursor:pointer}
+tr.clic:hover td{background:#f8fafb}
+.tabla{overflow-x:auto}
+.der{text-align:right}
+.chip{display:inline-block;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.e-activo{background:var(--verde-claro);color:var(--verde)}
+.e-prueba{background:var(--azul-claro);color:var(--azul)}
+.e-moroso{background:var(--amarillo-claro);color:var(--amarillo)}
+.e-suspendido{background:var(--rojo-claro);color:var(--rojo)}
+.e-baja{background:var(--gris-claro);color:var(--gris)}
+.suave{color:var(--suave)}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filtros input{max-width:280px}
+.filtros select{max-width:200px}
+/* panel lateral */
+.fondo-modal{position:fixed;inset:0;background:rgba(15,25,30,.35);z-index:40;display:flex;justify-content:flex-end}
+.lateral{background:var(--fondo);width:100%;max-width:640px;height:100%;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,.12)}
+.lateral .enc{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--borde);padding:14px 18px;display:flex;align-items:center;gap:10px;z-index:2}
+.lateral .enc h2{font-size:18px;flex:1}
+.lateral .cuerpo{padding:16px 18px}
+.acciones{display:flex;gap:8px;flex-wrap:wrap}
+.dialogo{position:fixed;inset:0;background:rgba(15,25,30,.4);z-index:60;display:grid;place-items:center;padding:16px}
+.dialogo .ventana{background:#fff;border-radius:12px;box-shadow:var(--sombra);width:100%;max-width:460px;padding:20px;display:grid;gap:12px;max-height:90vh;overflow-y:auto}
+.dialogo h3{font-size:17px}
+pre.codigo{background:#14212b;color:#d9f2e0;border-radius:8px;padding:12px;font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0}
+.aviso{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2a2b;color:#fff;padding:10px 18px;border-radius:8px;z-index:80;box-shadow:var(--sombra);max-width:90vw}
+.aviso.error{background:var(--rojo)}
+.error-txt{color:var(--rojo);font-size:13px}
+.linea{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--gris-claro)}
+.linea:last-child{border-bottom:0}
+@media (max-width:700px){.top{height:auto;flex-wrap:wrap;padding:8px 12px}.tabs{order:3;width:100%}.ocultar-movil{display:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ Ingreso ============ -->
+<section id="v-ingreso" class="ingreso oculto">
+  <form id="f-ingreso" autocomplete="on">
+    <h1>Central de clientes</h1>
+    <p>Panel de superadministrador para gestionar las remiserías que usan el sistema.</p>
+    <label class="campo">Usuario <input name="usuario" autocomplete="username" required></label>
+    <label class="campo">Contraseña <input name="clave" type="password" autocomplete="current-password" required></label>
+    <div class="error-txt" id="e-ingreso"></div>
+    <button class="btn pri" type="submit">Ingresar</button>
+  </form>
+</section>
+
+<!-- ============ Cambio de contraseña obligatorio ============ -->
+<section id="v-clave" class="ingreso oculto">
+  <form id="f-clave">
+    <h1>Elegí tu contraseña</h1>
+    <p>Estás usando una contraseña temporal. Elegí una nueva de al menos 10 caracteres para seguir.</p>
+    <label class="campo">Contraseña actual <input name="actual" type="password" autocomplete="current-password" required></label>
+    <label class="campo">Contraseña nueva <input name="nueva" type="password" autocomplete="new-password" minlength="10" required></label>
+    <label class="campo">Repetí la contraseña nueva <input name="nueva2" type="password" autocomplete="new-password" minlength="10" required></label>
+    <div class="error-txt" id="e-clave"></div>
+    <button class="btn pri" type="submit">Guardar y entrar</button>
+  </form>
+</section>
+
+<!-- ============ Aplicación ============ -->
+<div id="v-app" class="oculto">
+  <header class="top">
+    <div class="titulo">Central de clientes</div>
+    <nav class="tabs" id="tabs">
+      <button data-v="inicio" class="activa">Inicio</button>
+      <button data-v="clientes">Clientes</button>
+      <button data-v="pagos">Pagos</button>
+      <button data-v="planes">Planes</button>
+      <button data-v="config">Configuración</button>
+    </nav>
+    <div class="usuario"><span id="nombre-admin" class="ocultar-movil"></span><button class="btn chico" id="b-salir">Salir</button></div>
+  </header>
+  <main id="contenido"></main>
+</div>
+
+<div id="capa"></div>
+
+<script>
+(function () {
+  'use strict';
+  const CFG = window.RODAR_CONFIG || {};
+  // La central puede estar en otro proyecto de Supabase: saasUrl / saasKey en config.js. Si no, usa el mismo.
+  const URL_CENTRAL = (CFG.saasUrl || CFG.supabaseUrl || '').replace(/\/$/, '');
+  const KEY_CENTRAL = CFG.saasKey || CFG.supabaseKey || '';
+  const SB = window.supabase.createClient(URL_CENTRAL, KEY_CENTRAL, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pesos = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+  const fecha = d => { if (!d) return '—'; const [a, m, dd] = String(d).slice(0, 10).split('-'); return `${dd}/${m}/${a}`; };
+  const fechaHora = d => d ? new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  const hoyISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+  const ESTADOS = { activo: 'Activo', prueba: 'En prueba', moroso: 'Vencido (gracia)', suspendido: 'Suspendido', baja: 'De baja' };
+  const chip = e => `<span class="chip e-${esc(e)}">${esc(ESTADOS[e] || e)}</span>`;
+  const MEDIOS = { mercadopago: 'Mercado Pago', transferencia: 'Transferencia', efectivo: 'Efectivo', otro: 'Otro' };
+
+  let token = sessionStorage.getItem('saas_token');
+  let planesCache = [];
+
+  // ---------- llamadas ----------
+  async function api(fn, args = {}) {
+    const { data, error } = await SB.rpc(fn, token ? { p_token: token, ...args } : args);
+    if (error) {
+      if (/SESION_VENCIDA/.test(error.message)) { salir(true); throw new Error('Tu sesión venció. Volvé a ingresar.'); }
+      if (/Failed to fetch|NetworkError/i.test(error.message)) throw new Error('Sin conexión. Revisá internet.');
+      throw new Error(error.message);
+    }
+    return data;
+  }
+
+  function aviso(msg, error) {
+    const d = document.createElement('div');
+    d.className = 'aviso' + (error ? ' error' : '');
+    d.textContent = msg; d.setAttribute('role', 'status');
+    document.body.appendChild(d); setTimeout(() => d.remove(), error ? 5000 : 2600);
+  }
+
+  function mostrar(id) { ['v-ingreso', 'v-clave', 'v-app'].forEach(v => $('#' + v).classList.toggle('oculto', v !== id)); }
+
+  function salir(silencioso) {
+    if (token && !silencioso) SB.rpc('saas_salir', { p_token: token });
+    token = null; sessionStorage.removeItem('saas_token'); cerrarCapa();
+    mostrar('v-ingreso');
+  }
+
+  // ---------- ingreso ----------
+  $('#f-ingreso').addEventListener('submit', async e => {
+    e.preventDefault(); const f = e.target; $('#e-ingreso').textContent = '';
+    const b = f.querySelector('button'); b.disabled = true; token = null;
+    try {
+      const r = await api('saas_login', { p_usuario: f.usuario.value, p_clave: f.clave.value });
+      token = r.token; sessionStorage.setItem('saas_token', token);
+      $('#nombre-admin').textContent = r.nombre;
+      f.reset();
+      if (r.debe_cambiar) mostrar('v-clave'); else iniciar();
+    } catch (err) { $('#e-ingreso').textContent = err.message; }
+    b.disabled = false;
+  });
+
+  $('#f-clave').addEventListener('submit', async e => {
+    e.preventDefault(); const f = e.target; $('#e-clave').textContent = '';
+    if (f.nueva.value !== f.nueva2.value) { $('#e-clave').textContent = 'Las contraseñas nuevas no coinciden.'; return; }
+    try {
+      await api('saas_cambiar_clave', { p_actual: f.actual.value, p_nueva: f.nueva.value });
+      f.reset(); aviso('Contraseña actualizada.'); iniciar();
+    } catch (err) { $('#e-clave').textContent = err.message; }
+  });
+
+  $('#b-salir').addEventListener('click', () => salir());
+
+  // ---------- navegación ----------
+  let vista = 'inicio';
+  $('#tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    vista = b.dataset.v; $$('#tabs button').forEach(x => x.classList.toggle('activa', x === b)); render();
+  });
+
+  async function iniciar() { mostrar('v-app'); try { planesCache = await api('saas_planes'); } catch { } render(); }
+
+  async function render() {
+    const c = $('#contenido');
+    c.innerHTML = '<p class="suave">Cargando…</p>';
+    try { await ({ inicio, clientes, pagos, planes, config })[vista](c); }
+    catch (err) { c.innerHTML = `<p class="error-txt">${esc(err.message)}</p>`; }
+  }
+
+  // ---------- Inicio ----------
+  async function inicio(c) {
+    const r = await api('saas_resumen');
+    c.innerHTML = `
+      <div class="cabecera"><h2>Resumen</h2><button class="btn pri" id="b-nuevo">+ Nuevo cliente</button></div>
+      <div class="tarjetas">
+        <div class="tarjeta"><div class="eti">Ingreso mensual</div><div class="num">${pesos(r.ingreso_mensual)}</div><div class="sub">Clientes pagos y en gracia</div></div>
+        <div class="tarjeta"><div class="eti">Cobrado este mes</div><div class="num">${pesos(r.cobrado_mes)}</div></div>
+        <div class="tarjeta"><div class="eti">Clientes</div><div class="num">${r.clientes}</div><div class="sub">${r.activos} activos · ${r.prueba} en prueba</div></div>
+        <div class="tarjeta"><div class="eti">Vencidos / suspendidos</div><div class="num">${r.morosos} / ${r.suspendidos}</div></div>
+        <div class="tarjeta"><div class="eti">Móviles en uso</div><div class="num">${r.moviles}</div><div class="sub">Sumando todas las remiserías</div></div>
+        <div class="tarjeta"><div class="eti">En prueba (potencial)</div><div class="num">${pesos(r.potencial_prueba)}</div><div class="sub">Si todos se suscriben</div></div>
+      </div>
+      <div class="grilla">
+        <div class="caja"><h3>Vencen pronto o están vencidos</h3>${r.vencen_7_dias.length ? r.vencen_7_dias.map(v =>
+          `<div class="linea clic-cliente" data-id="${v.id}" style="cursor:pointer"><span>${esc(v.nombre)}</span><span>${chip(v.estado)} <span class="suave">${fecha(v.vence)}</span></span></div>`).join('')
+          : '<div class="vacio">Nadie vence en los próximos 7 días.</div>'}</div>
+        <div class="caja"><h3>Sin conexión hace más de un día</h3>${r.sin_conexion.length ? r.sin_conexion.map(v =>
+          `<div class="linea clic-cliente" data-id="${v.id}" style="cursor:pointer"><span>${esc(v.nombre)}</span><span class="suave">${v.ultima ? fechaHora(v.ultima) : 'Nunca se conectó'}</span></div>`).join('')
+          : '<div class="vacio">Todas las remiserías conectadas consultaron su licencia.</div>'}</div>
+      </div>`;
+    $('#b-nuevo').onclick = () => formCliente();
+    $$('.clic-cliente', c).forEach(el => el.onclick = () => verCliente(+el.dataset.id));
+  }
+
+  // ---------- Clientes ----------
+  async function clientes(c) {
+    const lista = await api('saas_clientes');
+    c.innerHTML = `
+      <div class="cabecera"><h2>Clientes</h2><button class="btn pri" id="b-nuevo">+ Nuevo cliente</button></div>
+      <div class="filtros">
+        <input id="q" placeholder="Buscar por nombre, ciudad o titular" aria-label="Buscar">
+        <select id="fe" aria-label="Filtrar por estado"><option value="">Todos los estados</option>${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      </div>
+      <div class="caja tabla"><table><thead><tr><th>Remisería</th><th>Estado</th><th>Plan</th><th class="der">Precio</th><th>Vence</th><th class="der">Móviles</th><th>Última conexión</th></tr></thead><tbody id="tb"></tbody></table></div>`;
+    const pintar = () => {
+      const q = $('#q').value.trim().toLowerCase(), fe = $('#fe').value;
+      const filas = lista.filter(x => (!fe || x.estado === fe) && (!q || [x.nombre, x.ciudad, x.titular, x.slug].join(' ').toLowerCase().includes(q)));
+      $('#tb').innerHTML = filas.length ? filas.map(x => `
+        <tr class="clic" data-id="${x.id}">
+          <td><b>${esc(x.nombre)}</b><div class="suave">${esc(x.ciudad || '')}${x.titular ? ' · ' + esc(x.titular) : ''}</div></td>
+          <td>${chip(x.estado)}</td>
+          <td>${esc(x.plan || '—')}</td>
+          <td class="der">${pesos(x.precio)}</td>
+          <td>${fecha(x.pagado_hasta && x.pagado_hasta > (x.prueba_hasta || '') ? x.pagado_hasta : x.prueba_hasta)}</td>
+          <td class="der">${x.moviles_en_uso ?? '—'}${x.max_moviles ? ' / ' + x.max_moviles : ''}</td>
+          <td class="suave">${x.supabase_url ? fechaHora(x.ultima_conexion) : 'Sin instalar'}</td>
+        </tr>`).join('') : `<tr><td colspan="7" class="vacio">${lista.length ? 'Ningún cliente coincide con la búsqueda.' : 'Todavía no cargaste clientes. Tocá «Nuevo cliente».'}</td></tr>`;
+      $$('#tb tr.clic').forEach(tr => tr.onclick = () => verCliente(+tr.dataset.id));
+    };
+    $('#q').oninput = pintar; $('#fe').onchange = pintar; pintar();
+    $('#b-nuevo').onclick = () => formCliente();
+  }
+
+  // ---------- Detalle de cliente ----------
+  function cerrarCapa() { $('#capa').innerHTML = ''; }
+  function capaLateral(html) {
+    $('#capa').innerHTML = `<div class="fondo-modal" id="fm"><aside class="lateral" role="dialog" aria-modal="true">${html}</aside></div>`;
+    $('#fm').addEventListener('click', e => { if (e.target.id === 'fm') cerrarCapa(); });
+    const x = $('#capa .cerrar'); if (x) x.onclick = cerrarCapa;
+  }
+
+  async function verCliente(id) {
+    const x = await api('saas_cliente', { p_id: id }).catch(err => { aviso(err.message, true); });
+    if (!x) return;
+    const vence = x.pagado_hasta && x.pagado_hasta > (x.prueba_hasta || '') ? x.pagado_hasta : x.prueba_hasta;
+    capaLateral(`
+      <div class="enc"><h2>${esc(x.nombre)}</h2>${chip(x.estado)}<button class="btn chico cerrar" aria-label="Cerrar">✕</button></div>
+      <div class="cuerpo">
+        <div class="acciones" style="margin-bottom:14px">
+          <button class="btn pri" id="a-pago">Registrar pago</button>
+          <button class="btn" id="a-editar">Editar datos</button>
+          <button class="btn" id="a-sql">Conectar su sistema</button>
+          ${x.bloqueo_manual ? '<button class="btn" id="a-reactivar">Reactivar</button>' : '<button class="btn peligro" id="a-suspender">Suspender</button>'}
+          ${x.baja ? '<button class="btn" id="a-alta">Reincorporar</button>' : '<button class="btn peligro" id="a-baja">Dar de baja</button>'}
+        </div>
+        <div class="caja">
+          <div class="linea"><span class="suave">Plan</span><span>${esc(x.plan || 'Sin plan')} · ${pesos(x.precio)} por mes${x.precio_especial != null ? ' (precio especial)' : ''}</span></div>
+          <div class="linea"><span class="suave">Prueba hasta</span><span>${fecha(x.prueba_hasta)}</span></div>
+          <div class="linea"><span class="suave">Pagado hasta</span><span>${fecha(x.pagado_hasta)}</span></div>
+          <div class="linea"><span class="suave">Vence</span><span>${fecha(vence)}</span></div>
+          ${x.bloqueo_manual ? `<div class="linea"><span class="suave">Suspendido a mano</span><span>${esc(x.motivo_bloqueo || 'Sin motivo')}</span></div>` : ''}
+          <div class="linea"><span class="suave">Móviles</span><span>${x.moviles_en_uso ?? '—'}${x.max_moviles ? ' de ' + x.max_moviles : ' (sin límite)'}</span></div>
+          <div class="linea"><span class="suave">Última conexión</span><span>${x.supabase_url ? fechaHora(x.ultima_conexion) : 'Todavía no conectaste su sistema'}</span></div>
+        </div>
+        <div class="caja">
+          <h3>Contacto</h3>
+          <div class="linea"><span class="suave">Titular</span><span>${esc(x.titular || '—')}</span></div>
+          <div class="linea"><span class="suave">Teléfono</span><span>${x.telefono ? `<a href="https://wa.me/${esc(String(x.telefono).replace(/\D/g, ''))}" target="_blank" rel="noopener">${esc(x.telefono)}</a>` : '—'}</span></div>
+          <div class="linea"><span class="suave">Email</span><span>${x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : '—'}</span></div>
+          <div class="linea"><span class="suave">CUIT</span><span>${esc(x.cuit || '—')}</span></div>
+          <div class="linea"><span class="suave">Ciudad</span><span>${esc(x.ciudad || '—')}</span></div>
+          <div class="linea"><span class="suave">Dirección del sistema</span><span>${x.dominio ? `<a href="${esc(/^https?:/.test(x.dominio) ? x.dominio : 'https://' + x.dominio)}" target="_blank" rel="noopener">${esc(x.dominio)}</a>` : '—'}</span></div>
+          ${x.notas ? `<p class="suave" style="white-space:pre-wrap;margin:10px 0 0">${esc(x.notas)}</p>` : ''}
+        </div>
+        <div class="caja tabla">
+          <h3>Pagos</h3>
+          ${x.pagos.length ? `<table><thead><tr><th>Fecha</th><th class="der">Monto</th><th>Cubre</th><th>Medio</th><th></th></tr></thead><tbody>
+            ${x.pagos.map(p => `<tr style="${p.anulado ? 'opacity:.5;text-decoration:line-through' : ''}">
+              <td>${fecha(p.fecha)}</td><td class="der">${pesos(p.monto)}</td><td>${fecha(p.desde)} → ${fecha(p.hasta)}</td>
+              <td>${esc(MEDIOS[p.medio] || p.medio)}${p.referencia ? `<div class="suave">${esc(p.referencia)}</div>` : ''}</td>
+              <td class="der">${p.anulado ? 'Anulado' : `<button class="btn chico peligro" data-anular="${p.id}">Anular</button>`}</td></tr>`).join('')}
+          </tbody></table>` : '<div class="vacio">Sin pagos registrados.</div>'}
+        </div>
+        <div class="caja">
+          <h3>Historial</h3>
+          ${x.eventos.length ? x.eventos.map(ev => `<div class="linea"><span>${esc(ev.tipo.replace(/_/g, ' '))}${ev.detalle ? ' · <span class="suave">' + esc(ev.detalle) + '</span>' : ''}</span><span class="suave">${fechaHora(ev.fecha)}</span></div>`).join('') : '<div class="vacio">Sin movimientos.</div>'}
+        </div>
+      </div>`);
+    const recargar = async () => { await verCliente(id); render(); };
+    $('#a-pago').onclick = () => formPago(x, recargar);
+    $('#a-editar').onclick = () => formCliente(x);
+    $('#a-sql').onclick = () => sqlLicencia(x);
+    if ($('#a-suspender')) $('#a-suspender').onclick = () => dialogo({
+      titulo: 'Suspender ' + x.nombre,
+      html: '<p class="suave" style="margin:0">El sistema de la remisería deja de funcionar en los próximos 10 minutos y muestra el motivo. Podés reactivarlo cuando quieras.</p><label class="campo">Motivo (lo ve la remisería) <input name="motivo" placeholder="Ej.: falta de pago de octubre"></label>',
+      boton: 'Suspender', peligro: true,
+      ok: async f => { await api('saas_cliente_bloquear', { p_id: id, p_bloquear: true, p_motivo: f.motivo.value }); aviso('Cliente suspendido.'); recargar(); }
+    });
+    if ($('#a-reactivar')) $('#a-reactivar').onclick = async () => { try { await api('saas_cliente_bloquear', { p_id: id, p_bloquear: false }); aviso('Cliente reactivado. Vuelve a funcionar en hasta 10 minutos.'); recargar(); } catch (e) { aviso(e.message, true); } };
+    if ($('#a-baja')) $('#a-baja').onclick = () => dialogo({
+      titulo: 'Dar de baja a ' + x.nombre, html: '<p class="suave" style="margin:0">Su sistema deja de funcionar. Los datos se conservan por si vuelve.</p>', boton: 'Dar de baja', peligro: true,
+      ok: async () => { await api('saas_cliente_baja', { p_id: id, p_baja: true }); aviso('Cliente dado de baja.'); recargar(); }
+    });
+    if ($('#a-alta')) $('#a-alta').onclick = async () => { try { await api('saas_cliente_baja', { p_id: id, p_baja: false }); aviso('Cliente reincorporado.'); recargar(); } catch (e) { aviso(e.message, true); } };
+    $$('[data-anular]').forEach(b => b.onclick = () => dialogo({
+      titulo: 'Anular pago', html: '<p class="suave" style="margin:0">Se recalcula hasta cuándo está pago con los pagos que quedan.</p>', boton: 'Anular pago', peligro: true,
+      ok: async () => { await api('saas_pago_anular', { p_pago: +b.dataset.anular }); aviso('Pago anulado.'); recargar(); }
+    }));
+  }
+
+  // ---------- diálogos ----------
+  function dialogo({ titulo, html, boton = 'Guardar', peligro = false, ok, ancho }) {
+    const d = document.createElement('div');
+    d.className = 'dialogo';
+    d.innerHTML = `<form class="ventana" style="${ancho ? 'max-width:' + ancho + 'px' : ''}" role="dialog" aria-modal="true"><h3>${esc(titulo)}</h3>${html}
+      <div class="error-txt"></div>
+      <div class="acciones" style="justify-content:flex-end"><button type="button" class="btn" data-cancelar>Cancelar</button>${boton ? `<button class="btn ${peligro ? 'peligro' : 'pri'}" type="submit">${esc(boton)}</button>` : ''}</div></form>`;
+    document.body.appendChild(d);
+    const f = d.querySelector('form');
+    const cerrar = () => d.remove();
+    d.querySelector('[data-cancelar]').onclick = cerrar;
+    d.addEventListener('click', e => { if (e.target === d) cerrar(); });
+    f.addEventListener('submit', async e => {
+      e.preventDefault(); const b = f.querySelector('[type=submit]'); if (b) b.disabled = true;
+      try { await ok(f); cerrar(); } catch (err) { f.querySelector('.error-txt').textContent = err.message; if (b) b.disabled = false; }
+    });
+    const primero = f.querySelector('input,select,textarea'); if (primero) primero.focus();
+    return { f, d, cerrar };
+  }
+
+  const opcionesPlan = sel => '<option value="">Sin plan</option>' + planesCache.filter(p => p.activo || p.id === sel).map(p =>
+    `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.nombre)} · ${pesos(p.precio)}${p.max_moviles ? ' · hasta ' + p.max_moviles + ' móviles' : ' · sin límite'}</option>`).join('');
+
+  function formCliente(x = {}) {
+    const nuevo = !x.id;
+    dialogo({
+      titulo: nuevo ? 'Nuevo cliente' : 'Editar ' + x.nombre, boton: nuevo ? 'Crear cliente' : 'Guardar', ancho: 620,
+      html: `
+        <div class="grilla">
+          <label class="campo">Nombre de la remisería * <input name="nombre" required value="${esc(x.nombre)}"></label>
+          <label class="campo">Identificador <input name="slug" value="${esc(x.slug)}" placeholder="Se arma solo con el nombre"></label>
+          <label class="campo">Titular <input name="titular" value="${esc(x.titular)}"></label>
+          <label class="campo">Teléfono <input name="telefono" value="${esc(x.telefono)}" inputmode="tel"></label>
+          <label class="campo">Email <input name="email" type="email" value="${esc(x.email)}"></label>
+          <label class="campo">CUIT <input name="cuit" value="${esc(x.cuit)}"></label>
+          <label class="campo">Ciudad <input name="ciudad" value="${esc(x.ciudad)}"></label>
+          <label class="campo">Plan <select name="plan_id">${opcionesPlan(x.plan_id)}</select></label>
+          <label class="campo">Precio especial por mes <input name="precio_especial" type="number" min="0" step="1" value="${x.precio_especial ?? ''}" placeholder="Vacío = precio del plan"></label>
+          <label class="campo">Prueba gratis hasta <input name="prueba_hasta" type="date" value="${esc(x.prueba_hasta || '')}" ${nuevo ? 'disabled title="Se calcula sola con los días de prueba de Configuración"' : ''}></label>
+        </div>
+        <details ${x.supabase_url ? 'open' : ''}><summary style="cursor:pointer;font-weight:600;margin:6px 0">Instalación de su sistema</summary>
+          <div class="grilla" style="margin-top:10px">
+            <label class="campo">URL de su Supabase <input name="supabase_url" value="${esc(x.supabase_url)}" placeholder="https://xxxx.supabase.co"></label>
+            <label class="campo">Clave anon de su Supabase <input name="supabase_anon" value="${esc(x.supabase_anon)}" placeholder="eyJ…"></label>
+            <label class="campo">Dirección donde usa el sistema <input name="dominio" value="${esc(x.dominio)}" placeholder="remiseria.tudominio.com"></label>
+          </div>
+        </details>
+        <label class="campo">Notas internas <textarea name="notas">${esc(x.notas)}</textarea></label>`,
+      ok: async f => {
+        const d = Object.fromEntries(new FormData(f).entries());
+        if (!nuevo) d.id = x.id; else delete d.prueba_hasta;
+        const r = await api('saas_cliente_guardar', { p_datos: d });
+        aviso(nuevo ? 'Cliente creado con ' + (r.prueba_hasta ? 'prueba hasta el ' + fecha(r.prueba_hasta) : 'prueba') + '.' : 'Cambios guardados.');
+        cerrarCapa(); render(); verCliente(r.id);
+      }
+    });
+  }
+
+  function formPago(x, despues) {
+    const precio = Number(x.precio || 0);
+    const { f } = dialogo({
+      titulo: 'Registrar pago · ' + x.nombre, boton: 'Registrar pago',
+      html: `
+        <div class="grilla">
+          <label class="campo">Meses que paga <input name="meses" type="number" min="1" max="24" value="1" required></label>
+          <label class="campo">Monto <input name="monto" type="number" min="1" step="1" value="${precio || ''}" required></label>
+          <label class="campo">Medio <select name="medio">${Object.entries(MEDIOS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+          <label class="campo">Fecha del pago <input name="fecha" type="date" value="${hoyISO()}"></label>
+        </div>
+        <label class="campo">Referencia (n.º de operación, comprobante) <input name="referencia"></label>
+        <label class="campo">Nota <input name="nota"></label>
+        <p class="suave" style="margin:0;font-size:13px">El servicio se extiende desde el vencimiento actual la cantidad de meses pagados.</p>`,
+      ok: async f => {
+        const d = Object.fromEntries(new FormData(f).entries()); d.cliente_id = x.id;
+        const r = await api('saas_pago_registrar', { p_datos: d });
+        aviso('Pago registrado. Pagado hasta el ' + fecha(r.pagado_hasta) + '.'); despues();
+      }
+    });
+    f.meses.oninput = () => { if (precio) f.monto.value = precio * (+f.meses.value || 1); };
+  }
+
+  async function sqlLicencia(x) {
+    try {
+      const sql = await api('saas_cliente_sql_licencia', { p_id: x.id, p_central_url: URL_CENTRAL, p_central_anon: KEY_CENTRAL });
+      const { d } = dialogo({
+        titulo: 'Conectar el sistema de ' + x.nombre, boton: null, ancho: 640,
+        html: `<ol class="suave" style="margin:0;padding-left:18px;line-height:1.6">
+            <li>En el proyecto de Supabase de la remisería, corré <b>supabase/rodar.sql</b> completo (instala el sistema).</li>
+            <li>Activá <b>pg_cron</b> y <b>pg_net</b> en <i>Database → Extensions</i>.</li>
+            <li>Pegá este SQL en su <i>SQL Editor</i> y tocá <b>Run</b>. Desde ese momento su sistema consulta la licencia cada 10 minutos.</li></ol>
+          <pre class="codigo" id="sql-lic">${esc(sql)}</pre>
+          <div class="acciones"><button type="button" class="btn pri" id="copiar">Copiar SQL</button>
+          <button type="button" class="btn peligro" id="nuevo-token">Generar clave nueva</button></div>
+          <p class="suave" style="margin:0;font-size:12px">Este SQL tiene la clave secreta del cliente: no lo publiques. Si se filtró, generá una clave nueva y volvé a correrlo en su Supabase.</p>`
+      });
+      d.querySelector('#copiar').onclick = async () => { try { await navigator.clipboard.writeText(sql); aviso('SQL copiado.'); } catch { aviso('No se pudo copiar: seleccionalo a mano.', true); } };
+      d.querySelector('#nuevo-token').onclick = async () => {
+        if (!confirm('La clave actual deja de funcionar: el sistema del cliente queda suspendido hasta que corras el SQL nuevo. ¿Seguir?')) return;
+        await api('saas_cliente_nuevo_token', { p_id: x.id }); d.remove(); sqlLicencia(x);
+      };
+    } catch (err) { aviso(err.message, true); }
+  }
+
+  // ---------- Pagos ----------
+  async function pagos(c) {
+    const ini = new Date(); ini.setDate(1);
+    const desde0 = ini.toISOString().slice(0, 10), hasta0 = hoyISO();
+    c.innerHTML = `
+      <div class="cabecera"><h2>Pagos</h2></div>
+      <div class="filtros"><label class="campo">Desde <input type="date" id="pd" value="${desde0}"></label><label class="campo">Hasta <input type="date" id="ph" value="${hasta0}"></label></div>
+      <div class="tarjetas"><div class="tarjeta"><div class="eti">Total cobrado en el período</div><div class="num" id="ptot">—</div></div><div class="tarjeta"><div class="eti">Cantidad de pagos</div><div class="num" id="pcant">—</div></div></div>
+      <div class="caja tabla"><table><thead><tr><th>Fecha</th><th>Cliente</th><th class="der">Monto</th><th>Meses</th><th>Cubre</th><th>Medio</th><th>Referencia</th></tr></thead><tbody id="tbp"></tbody></table></div>`;
+    const cargar = async () => {
+      const l = await api('saas_pagos', { p_desde: $('#pd').value || null, p_hasta: $('#ph').value || null });
+      const v = l.filter(p => !p.anulado);
+      $('#ptot').textContent = pesos(v.reduce((s, p) => s + Number(p.monto), 0)); $('#pcant').textContent = v.length;
+      $('#tbp').innerHTML = l.length ? l.map(p => `<tr class="clic" data-id="${p.cliente_id}" style="${p.anulado ? 'opacity:.5;text-decoration:line-through' : ''}">
+        <td>${fecha(p.fecha)}</td><td>${esc(p.cliente)}</td><td class="der">${pesos(p.monto)}</td><td>${p.meses}</td><td>${fecha(p.desde)} → ${fecha(p.hasta)}</td><td>${esc(MEDIOS[p.medio] || p.medio)}</td><td class="suave">${esc(p.referencia || '')}</td></tr>`).join('')
+        : '<tr><td colspan="7" class="vacio">No hay pagos en este período.</td></tr>';
+      $$('#tbp tr.clic').forEach(tr => tr.onclick = () => verCliente(+tr.dataset.id));
+    };
+    $('#pd').onchange = cargar; $('#ph').onchange = cargar; await cargar();
+  }
+
+  // ---------- Planes ----------
+  async function planes(c) {
+    planesCache = await api('saas_planes');
+    c.innerHTML = `
+      <div class="cabecera"><h2>Planes</h2><button class="btn pri" id="b-plan">+ Nuevo plan</button></div>
+      <div class="caja tabla"><table><thead><tr><th>Plan</th><th class="der">Precio por mes</th><th class="der">Móviles</th><th class="der">Clientes</th><th>Estado</th></tr></thead><tbody>
+        ${planesCache.map(p => `<tr class="clic" data-id="${p.id}"><td><b>${esc(p.nombre)}</b><div class="suave">${esc(p.descripcion || '')}</div></td><td class="der">${pesos(p.precio)}</td><td class="der">${p.max_moviles ?? 'Sin límite'}</td><td class="der">${p.clientes}</td><td>${p.activo ? chip('activo').replace('Activo', 'Visible') : chip('baja').replace('De baja', 'Oculto')}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="suave">Cambiar el precio de un plan cambia lo que pagan todos sus clientes desde el próximo pago (salvo los que tienen precio especial).</p>`;
+    $('#b-plan').onclick = () => formPlan();
+    $$('tr.clic', c).forEach(tr => tr.onclick = () => formPlan(planesCache.find(p => p.id === +tr.dataset.id)));
+  }
+
+  function formPlan(p = {}) {
+    dialogo({
+      titulo: p.id ? 'Editar plan ' + p.nombre : 'Nuevo plan',
+      html: `
+        <label class="campo">Nombre * <input name="nombre" required value="${esc(p.nombre)}"></label>
+        <div class="grilla">
+          <label class="campo">Precio por mes <input name="precio" type="number" min="0" step="1" value="${p.precio ?? ''}" required></label>
+          <label class="campo">Máximo de móviles <input name="max_moviles" type="number" min="1" value="${p.max_moviles ?? ''}" placeholder="Vacío = sin límite"></label>
+          <label class="campo">Orden <input name="orden" type="number" value="${p.orden ?? 0}"></label>
+        </div>
+        <label class="campo">Descripción <textarea name="descripcion">${esc(p.descripcion)}</textarea></label>
+        <label class="campo">ID del plan en Mercado Pago (opcional) <input name="mp_plan_id" value="${esc(p.mp_plan_id)}"></label>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="activo" style="width:auto" ${p.activo !== false ? 'checked' : ''}> Visible para clientes nuevos</label>`,
+      ok: async f => {
+        const d = Object.fromEntries(new FormData(f).entries()); d.activo = f.activo.checked; if (p.id) d.id = p.id;
+        await api('saas_plan_guardar', { p_datos: d }); aviso('Plan guardado.'); render();
+      }
+    });
+  }
+
+  // ---------- Configuración ----------
+  async function config(c) {
+    const cfg = await api('saas_config');
+    c.innerHTML = `
+      <div class="cabecera"><h2>Configuración</h2></div>
+      <form class="caja" id="f-cfg" style="display:grid;gap:12px;max-width:640px">
+        <div class="grilla">
+          <label class="campo">Días de prueba gratis <input name="dias_prueba" type="number" min="0" max="90" value="${esc(cfg.dias_prueba)}"></label>
+          <label class="campo">Días de gracia después del vencimiento <input name="dias_gracia" type="number" min="0" max="60" value="${esc(cfg.dias_gracia)}"></label>
+        </div>
+        <label class="campo">Texto de contacto (lo ven las remiserías vencidas o suspendidas) <textarea name="contacto">${esc(cfg.contacto)}</textarea></label>
+        <div><button class="btn pri">Guardar</button></div>
+      </form>
+      <div class="caja" style="max-width:640px">
+        <h3>Datos de esta central</h3>
+        <div class="linea"><span class="suave">URL</span><span style="word-break:break-all">${esc(URL_CENTRAL)}</span></div>
+        <p class="suave" style="margin:10px 0 0;font-size:13px">Las remiserías consultan su licencia a esta dirección. Si mudás la central a otro proyecto de Supabase, cargá <code>saasUrl</code> y <code>saasKey</code> en config.js y volvé a generar el SQL de cada cliente.</p>
+      </div>
+      <form class="caja" id="f-pass" style="display:grid;gap:12px;max-width:640px">
+        <h3>Cambiar mi contraseña</h3>
+        <div class="grilla">
+          <label class="campo">Actual <input name="actual" type="password" required autocomplete="current-password"></label>
+          <label class="campo">Nueva <input name="nueva" type="password" minlength="10" required autocomplete="new-password"></label>
+        </div>
+        <div><button class="btn">Cambiar contraseña</button></div>
+      </form>`;
+    $('#f-cfg').onsubmit = async e => {
+      e.preventDefault(); const f = e.target;
+      try {
+        await api('saas_config', { p_datos: { dias_prueba: +f.dias_prueba.value, dias_gracia: +f.dias_gracia.value, contacto: f.contacto.value.trim() } });
+        aviso('Configuración guardada.');
+      } catch (err) { aviso(err.message, true); }
+    };
+    $('#f-pass').onsubmit = async e => {
+      e.preventDefault(); const f = e.target;
+      try { await api('saas_cambiar_clave', { p_actual: f.actual.value, p_nueva: f.nueva.value }); f.reset(); aviso('Contraseña actualizada.'); }
+      catch (err) { aviso(err.message, true); }
+    };
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { const d = $$('.dialogo').pop(); if (d) d.remove(); else cerrarCapa(); } });
+
+  // ---------- arranque ----------
+  if (!URL_CENTRAL || !KEY_CENTRAL) { document.body.innerHTML = '<p style="padding:20px">Falta configurar config.js.</p>'; return; }
+  if (token) {
+    api('saas_resumen').then(() => iniciar()).catch(() => { token = null; sessionStorage.removeItem('saas_token'); mostrar('v-ingreso'); });
+  } else mostrar('v-ingreso');
+})();
+</script>
+</body>
+</html>

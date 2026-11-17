@@ -21,6 +21,7 @@
   const errorDeRpc = error => {
     const msg = error.message || 'Error';
     if (msg.includes('SESION_VENCIDA')) return new ErrorApi('Sesión vencida. Volvé a ingresar.', { status: 401 });
+    if (msg.includes('LICENCIA_SUSPENDIDA')) { licencia.revisar(true); return new ErrorApi('El servicio está suspendido momentáneamente.', { status: 403 }); }
     if (msg.startsWith('PELIGROSA:')) return new ErrorApi(msg.slice(10), { data: { peligrosa: true }, status: 409 });
     if (/Failed to fetch|NetworkError/i.test(msg)) return new ErrorApi(SIN_CONEXION, { status: 400 });
     return new ErrorApi(msg, { status: 400 });
@@ -63,5 +64,87 @@
     return obj;
   };
 
-  window.RODAR = { SB, listo, rpc, tiempoReal, normalizar, ErrorApi, funcionSupabase };
+  // ---- Licencia (cuando el sistema se vende a otras remiserías) ----
+  // Si el servicio está suspendido, tapa la página con el motivo. En el panel de la central muestra
+  // además un aviso cuando está vencido (días de gracia) o en período de prueba.
+  const licencia = {
+    revisada: false,
+    async revisar(forzar) {
+      if (!SB || (this.revisada && !forzar)) return;
+      this.revisada = true;
+      let l;
+      try { const r = await SB.rpc('r_licencia', {}); if (r.error) return; l = r.data; } catch { return; }
+      if (!l || l.estado === 'propia') return;
+      const listoDom = f => document.body ? f() : document.addEventListener('DOMContentLoaded', f);
+      if (l.estado === 'suspendido' || l.estado === 'baja') listoDom(() => this.tapar(l));
+      else if ((l.estado === 'moroso' || l.estado === 'prueba') && /panel/.test(location.pathname)) listoDom(() => this.franja(l));
+    },
+    tapar(l) {
+      if (document.getElementById('licencia-tapa')) return;
+      const d = document.createElement('div');
+      d.id = 'licencia-tapa'; d.setAttribute('role', 'alertdialog'); d.setAttribute('aria-modal', 'true');
+      d.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(242,245,246,.97);display:grid;place-items:center;padding:24px;font-family:system-ui,Arial,sans-serif';
+      const t = document.createElement('div');
+      t.style.cssText = 'max-width:440px;background:#fff;border-radius:14px;box-shadow:0 6px 30px rgba(0,0,0,.12);padding:28px;text-align:center;color:#1d2a2b';
+      const h = document.createElement('h2'); h.textContent = 'Servicio no disponible'; h.style.cssText = 'margin:0 0 10px;font-size:20px';
+      const p = document.createElement('p'); p.style.cssText = 'margin:0;color:#5e6f70;line-height:1.5';
+      p.textContent = /panel/.test(location.pathname) ? (l.mensaje || 'El servicio está suspendido.') : 'El servicio no está disponible en este momento. Probá más tarde.';
+      t.append(h, p); d.append(t); document.body.append(d);
+    },
+    franja(l) {
+      if (document.getElementById('licencia-franja') || !l.mensaje) return;
+      const d = document.createElement('div');
+      d.id = 'licencia-franja'; d.setAttribute('role', 'status');
+      const moroso = l.estado === 'moroso';
+      d.style.cssText = 'position:sticky;top:0;z-index:1000;padding:8px 14px;font-size:13px;text-align:center;font-family:system-ui,Arial,sans-serif;'
+        + (moroso ? 'background:#fdf3d6;color:#7a5800;border-bottom:1px solid #f0dc9a' : 'background:#e6eefc;color:#1f4fa8;border-bottom:1px solid #c9d8f5');
+      d.textContent = l.mensaje;
+      const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'Cerrar aviso');
+      x.style.cssText = 'margin-left:10px;border:0;background:none;cursor:pointer;color:inherit;font-size:14px';
+      x.onclick = () => d.remove(); d.append(x);
+      document.body.prepend(d);
+    },
+  };
+  licencia.revisar();
+
+  // ---- Marca de cada remisería (config.js → CLIENTES[dominio].marca) ----
+  // Cambia el nombre "Remises TOQUE!" y el logo por los del cliente en todas las páginas, también en
+  // lo que se va dibujando después (pantallas del panel, comprobantes, avisos).
+  const marca = CFG.marca;
+  if (marca && marca.nombre && marca.nombre.indexOf('TOQUE!') < 0) {
+    const RE = /Remis(?:es)? TOQUE!|TOQUE!/g;
+    const cambiarTexto = t => t.replace(RE, marca.nombre);
+    const logo = src => {
+      if (!src) return null;
+      if (/logo-blanco\.png/.test(src)) return marca.logoBlanco || marca.logo || null;
+      if (/(^|\/)logo\.png/.test(src)) return marca.logo || null;
+      return null;
+    };
+    const tratar = raiz => {
+      tratar.uno(raiz);
+      if (raiz.nodeType !== 1) return;
+      const w = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+      let n; while ((n = w.nextNode())) tratar.uno(n);
+    };
+    tratar.uno = n => {
+      if (n.nodeType === 3) { if (n.nodeValue.indexOf('TOQUE!') >= 0) n.nodeValue = cambiarTexto(n.nodeValue); return; }
+      if (n.nodeType !== 1) return;
+      if (n.tagName === 'IMG') { const x = logo(n.getAttribute('src')); if (x && n.getAttribute('src') !== x) n.src = x; }
+      for (const at of ['alt', 'title', 'placeholder', 'aria-label']) { const v = n.getAttribute(at); if (v && v.indexOf('TOQUE!') >= 0) n.setAttribute(at, cambiarTexto(v)); }
+    };
+    const aplicar = () => {
+      document.title = cambiarTexto(document.title);
+      if (marca.color) document.documentElement.style.setProperty('--pri', marca.color);
+      tratar(document.body);
+      new MutationObserver(ms => ms.forEach(m => {
+        if (m.type === 'characterData') { tratar.uno(m.target); return; }
+        m.addedNodes.forEach(tratar);
+      })).observe(document.body, { childList: true, subtree: true, characterData: true });
+      new MutationObserver(() => { if (document.title.indexOf('TOQUE!') >= 0) document.title = cambiarTexto(document.title); })
+        .observe(document.querySelector('title') || document.head, { childList: true, subtree: true, characterData: true });
+    };
+    if (document.body) aplicar(); else document.addEventListener('DOMContentLoaded', aplicar);
+  }
+
+  window.RODAR = { SB, listo, rpc, tiempoReal, normalizar, ErrorApi, funcionSupabase, licencia };
 })();
