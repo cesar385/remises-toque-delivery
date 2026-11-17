@@ -89,7 +89,15 @@
       const h = document.createElement('h2'); h.textContent = 'Servicio no disponible'; h.style.cssText = 'margin:0 0 10px;font-size:20px';
       const p = document.createElement('p'); p.style.cssText = 'margin:0;color:#5e6f70;line-height:1.5';
       p.textContent = /panel/.test(location.pathname) ? (l.mensaje || 'El servicio está suspendido.') : 'El servicio no está disponible en este momento. Probá más tarde.';
-      t.append(h, p); d.append(t); document.body.append(d);
+      t.append(h, p);
+      if (l.pago_url && /panel/.test(location.pathname)) t.append(this.botonPago(l.pago_url, 'margin-top:16px'));
+      d.append(t); document.body.append(d);
+    },
+    botonPago(url, estilo) {
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Pagar con Mercado Pago';
+      a.style.cssText = 'display:inline-block;background:#009ee3;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;text-decoration:none;' + (estilo || '');
+      return a;
     },
     franja(l) {
       if (document.getElementById('licencia-franja') || !l.mensaje) return;
@@ -99,6 +107,7 @@
       d.style.cssText = 'position:sticky;top:0;z-index:1000;padding:8px 14px;font-size:13px;text-align:center;font-family:system-ui,Arial,sans-serif;'
         + (moroso ? 'background:#fdf3d6;color:#7a5800;border-bottom:1px solid #f0dc9a' : 'background:#e6eefc;color:#1f4fa8;border-bottom:1px solid #c9d8f5');
       d.textContent = l.mensaje;
+      if (l.pago_url) { d.append(' '); d.append(this.botonPago(l.pago_url, 'margin-left:8px;padding:4px 10px;font-size:12px')); }
       const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'Cerrar aviso');
       x.style.cssText = 'margin-left:10px;border:0;background:none;cursor:pointer;color:inherit;font-size:14px';
       x.onclick = () => d.remove(); d.append(x);

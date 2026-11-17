@@ -66,7 +66,11 @@ create table if not exists saas.clientes (
   supabase_anon text,                    -- clave anon de ese proyecto (pública)
   dominio text,                          -- dirección donde usa el sistema
   token text not null unique default encode(extensions.gen_random_bytes(24), 'hex'),
-  mp_preapproval_id text,                -- suscripción de Mercado Pago (paso 4)
+  mp_preapproval_id text,                -- suscripción de Mercado Pago (débito automático)
+  mp_email text,                         -- email de la cuenta de Mercado Pago que paga
+  mp_estado text,                        -- pending / authorized / paused / cancelled
+  mp_link text,                          -- link para suscribirse
+  mp_actualizado timestamptz,
   ultima_conexion timestamptz,
   moviles_en_uso int,
   notas text,
@@ -101,6 +105,13 @@ create index if not exists eventos_cliente_idx on saas.eventos(cliente_id, fecha
 create index if not exists pagos_cliente_idx on saas.pagos(cliente_id, fecha desc);
 create index if not exists clientes_plan_idx on saas.clientes(plan_id);
 create index if not exists sesiones_admin_idx on saas.sesiones(admin_id);
+create index if not exists clientes_mp_idx on saas.clientes(mp_preapproval_id);
+create unique index if not exists pagos_mp_ref_uidx on saas.pagos(referencia) where medio = 'mercadopago' and referencia is not null;
+-- columnas agregadas después (para instalaciones anteriores)
+alter table saas.clientes add column if not exists mp_email text;
+alter table saas.clientes add column if not exists mp_estado text;
+alter table saas.clientes add column if not exists mp_link text;
+alter table saas.clientes add column if not exists mp_actualizado timestamptz;
 
 alter table saas.config   enable row level security;
 alter table saas.admins   enable row level security;
@@ -303,7 +314,8 @@ begin
     supabase_url = nullif(rtrim(trim(p_datos->>'supabase_url'), '/'),''),
     supabase_anon = nullif(trim(p_datos->>'supabase_anon'),''),
     dominio = nullif(trim(p_datos->>'dominio'),''),
-    notas = nullif(trim(p_datos->>'notas'),'')
+    notas = nullif(trim(p_datos->>'notas'),''),
+    mp_email = case when p_datos ? 'mp_email' then nullif(lower(trim(p_datos->>'mp_email')),'') else mp_email end
   where id = v_id returning * into c;
   perform saas.log(c.id, t, c.nombre, a.usuario);
   return saas.cliente_json(c);
@@ -364,21 +376,18 @@ begin
     c.nombre, rtrim(p_central_url, '/'), p_central_anon, c.slug, c.token);
 end $$;
 
--- Pagos: registra un pago y extiende "pagado hasta" la cantidad de meses pagados.
--- Datos: cliente_id, monto, meses, medio, referencia, nota, fecha
-create or replace function public.saas_pago_registrar(p_token text, p_datos jsonb) returns jsonb
-language plpgsql security definer set search_path = saas, pg_temp as $$
-declare a saas.admins; c saas.clientes; v_meses int := coalesce(nullif(p_datos->>'meses','')::int, 1);
-  v_desde date; v_hasta date; v_monto numeric;
+-- Pagos: registra un pago y extiende "pagado hasta" la cantidad de meses pagados (lo usan el panel y Mercado Pago).
+-- El período arranca donde termina lo ya pagado. Si estaba en los días de gracia, se cobra desde el
+-- vencimiento (no quedan días gratis); si estaba suspendido o es el primer pago, desde hoy o desde el
+-- fin de la prueba.
+create or replace function saas.pago_interno(p_cliente bigint, p_monto numeric, p_meses int, p_medio text,
+  p_ref text, p_nota text, p_fecha date, p_quien text) returns saas.clientes language plpgsql
+set search_path = saas, pg_temp as $$
+declare c saas.clientes; v_desde date; v_hasta date; v_meses int := coalesce(p_meses, 1);
 begin
-  a := saas.admin(p_token);
-  select * into c from saas.clientes where id = (p_datos->>'cliente_id')::bigint for update;
+  select * into c from saas.clientes where id = p_cliente for update;
   if not found then raise exception 'No existe ese cliente.'; end if;
-  v_monto := coalesce(nullif(p_datos->>'monto','')::numeric, saas.precio(c) * v_meses);
-  if v_monto <= 0 then raise exception 'El monto tiene que ser mayor a cero.'; end if;
-  -- El período arranca donde termina lo ya pagado. Si estaba en los días de gracia, se cobra desde el
-  -- vencimiento (no quedan días gratis); si estaba suspendido o es el primer pago, desde hoy o desde el
-  -- fin de la prueba.
+  if coalesce(p_monto, 0) <= 0 then raise exception 'El monto tiene que ser mayor a cero.'; end if;
   if c.pagado_hasta is not null and c.pagado_hasta + coalesce((saas.cfg('dias_gracia') #>> '{}')::int, 7) >= saas.hoy() then
     v_desde := c.pagado_hasta + 1;
   else
@@ -386,11 +395,24 @@ begin
   end if;
   v_hasta := (v_desde + make_interval(months => v_meses))::date - 1;
   insert into saas.pagos(cliente_id, fecha, meses, monto, medio, referencia, nota, desde, hasta, registrado_por)
-  values (c.id, coalesce(nullif(p_datos->>'fecha','')::date, saas.hoy()), v_meses, v_monto,
-          coalesce(nullif(p_datos->>'medio',''), 'transferencia'), nullif(trim(p_datos->>'referencia'),''),
-          nullif(trim(p_datos->>'nota'),''), v_desde, v_hasta, a.usuario);
+  values (c.id, coalesce(p_fecha, saas.hoy()), v_meses, p_monto, coalesce(nullif(p_medio,''), 'transferencia'),
+          nullif(trim(p_ref),''), nullif(trim(p_nota),''), v_desde, v_hasta, p_quien);
   update saas.clientes set pagado_hasta = v_hasta where id = c.id returning * into c;
-  perform saas.log(c.id, 'pago', format('$ %s · %s mes(es) · hasta %s', v_monto, v_meses, to_char(v_hasta, 'DD/MM/YYYY')), a.usuario);
+  perform saas.log(c.id, 'pago', format('$ %s · %s mes(es) · hasta %s%s', p_monto, v_meses, to_char(v_hasta, 'DD/MM/YYYY'),
+    case when p_medio = 'mercadopago' then ' · Mercado Pago' else '' end), p_quien);
+  return c;
+end $$;
+
+-- Datos: cliente_id, monto, meses, medio, referencia, nota, fecha
+create or replace function public.saas_pago_registrar(p_token text, p_datos jsonb) returns jsonb
+language plpgsql security definer set search_path = saas, pg_temp as $$
+declare a saas.admins; c saas.clientes; v_meses int := coalesce(nullif(p_datos->>'meses','')::int, 1);
+begin
+  a := saas.admin(p_token);
+  select * into c from saas.clientes where id = (p_datos->>'cliente_id')::bigint;
+  if not found then raise exception 'No existe ese cliente.'; end if;
+  c := saas.pago_interno(c.id, coalesce(nullif(p_datos->>'monto','')::numeric, saas.precio(c) * v_meses), v_meses,
+         p_datos->>'medio', p_datos->>'referencia', p_datos->>'nota', nullif(p_datos->>'fecha','')::date, a.usuario);
   return saas.cliente_json(c);
 end $$;
 
@@ -485,6 +507,7 @@ begin
     'estado', e,
     'plan', pl.nombre,
     'max_moviles', pl.max_moviles,
+    'pago_url', case when e in ('prueba','moroso','suspendido') and coalesce(c.mp_estado,'') <> 'authorized' then c.mp_link end,
     'vence', vence,
     'suspende', case when e in ('moroso') then vence + coalesce((saas.cfg('dias_gracia') #>> '{}')::int, 7) end,
     'mensaje', case e
@@ -498,6 +521,66 @@ begin
       else null end);
 end $$;
 
+-- =====================================================================
+-- Mercado Pago: débito automático mensual (función de Supabase saas-mp)
+-- Solo las llama esa función con la clave de servicio; no se pueden llamar desde las páginas.
+-- =====================================================================
+create or replace function public.saas_mp_datos(p_token text, p_id bigint) returns jsonb
+language plpgsql security definer set search_path = saas, pg_temp as $$
+declare a saas.admins; c saas.clientes;
+begin
+  a := saas.admin(p_token);
+  select * into c from saas.clientes where id = p_id;
+  if not found then raise exception 'No existe ese cliente.'; end if;
+  if c.baja then raise exception 'El cliente está dado de baja.'; end if;
+  if coalesce(c.mp_email, c.email) is null then raise exception 'Cargá el email de Mercado Pago del cliente (Editar datos).'; end if;
+  if saas.precio(c) <= 0 then raise exception 'El cliente no tiene plan ni precio.'; end if;
+  return jsonb_build_object('id', c.id, 'nombre', c.nombre, 'slug', c.slug, 'email', coalesce(c.mp_email, c.email),
+    'precio', saas.precio(c), 'plan', (select nombre from saas.planes where id = c.plan_id),
+    'inicio', case when greatest(c.pagado_hasta, c.prueba_hasta) >= saas.hoy() then greatest(c.pagado_hasta, c.prueba_hasta) + 1 end,
+    'preapproval', c.mp_preapproval_id, 'admin', a.usuario);
+end $$;
+
+create or replace function public.saas_mp_guardar(p_id bigint, p_preapproval text, p_link text, p_estado text, p_admin text default null) returns jsonb
+language plpgsql security definer set search_path = saas, pg_temp as $$
+declare c saas.clientes;
+begin
+  update saas.clientes set mp_preapproval_id = coalesce(p_preapproval, mp_preapproval_id), mp_link = coalesce(p_link, mp_link),
+    mp_estado = coalesce(p_estado, mp_estado), mp_actualizado = now()
+  where id = p_id returning * into c;
+  perform saas.log(c.id, 'mercadopago', format('Suscripción %s', coalesce(p_estado, '')), coalesce(p_admin, 'mercadopago'));
+  return saas.cliente_json(c);
+end $$;
+
+-- Cambio de estado de la suscripción (authorized, paused, cancelled, pending)
+create or replace function public.saas_mp_estado(p_preapproval text, p_estado text, p_slug text default null) returns jsonb
+language plpgsql security definer set search_path = saas, pg_temp as $$
+declare c saas.clientes;
+begin
+  select * into c from saas.clientes where mp_preapproval_id = p_preapproval or (p_slug is not null and slug = p_slug)
+  order by (mp_preapproval_id = p_preapproval) desc limit 1;
+  if not found then return '{"ok":false,"motivo":"cliente no encontrado"}'; end if;
+  if c.mp_estado is distinct from p_estado or c.mp_preapproval_id is distinct from p_preapproval then
+    update saas.clientes set mp_estado = p_estado, mp_preapproval_id = p_preapproval, mp_actualizado = now() where id = c.id;
+    perform saas.log(c.id, 'mercadopago', 'Suscripción ' || p_estado, 'mercadopago');
+  end if;
+  return '{"ok":true}';
+end $$;
+
+-- Pago aprobado de una suscripción: registra un mes. No se duplica (la referencia es el id del pago).
+create or replace function public.saas_mp_pago(p_preapproval text, p_slug text, p_pago text, p_monto numeric, p_fecha date) returns jsonb
+language plpgsql security definer set search_path = saas, pg_temp as $$
+declare c saas.clientes;
+begin
+  if exists (select 1 from saas.pagos where medio = 'mercadopago' and referencia = p_pago) then return '{"ok":true,"ya":true}'; end if;
+  select * into c from saas.clientes
+  where (p_preapproval is not null and mp_preapproval_id = p_preapproval) or (p_slug is not null and slug = p_slug)
+  order by (mp_preapproval_id = p_preapproval) desc nulls last limit 1;
+  if not found then return '{"ok":false,"motivo":"cliente no encontrado"}'; end if;
+  c := saas.pago_interno(c.id, p_monto, 1, 'mercadopago', p_pago, 'Débito automático', p_fecha, 'mercadopago');
+  return jsonb_build_object('ok', true, 'cliente', c.nombre, 'pagado_hasta', c.pagado_hasta);
+end $$;
+
 -- ---------- permisos ----------
 revoke all on all functions in schema saas from public, anon, authenticated;
 do $$
@@ -505,8 +588,12 @@ declare f text;
 begin
   for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public' and p.proname like 'saas\_%' loop
-    execute format('revoke all on function %s from public', f);
-    execute format('grant execute on function %s to anon, authenticated', f);
+    execute format('revoke all on function %s from public, anon, authenticated', f);
+    if f like 'saas\_mp\_%' then
+      execute format('grant execute on function %s to service_role', f);   -- solo la función saas-mp
+    else
+      execute format('grant execute on function %s to anon, authenticated', f);
+    end if;
   end loop;
 end $$;
 

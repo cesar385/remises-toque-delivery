@@ -42,6 +42,7 @@ main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
 .btn.peligro{color:var(--rojo);border-color:#f0c4c4}
 .btn.peligro:hover{background:var(--rojo-claro)}
 .btn.chico{padding:5px 10px;font-size:13px}
+a.btn{text-decoration:none;color:inherit;display:inline-block}
 .btn:disabled{opacity:.55;cursor:default}
 label.campo{display:grid;gap:5px;font-weight:500;color:var(--suave);font-size:13px}
 input,select,textarea{border:1px solid var(--borde);border-radius:8px;padding:9px 11px;background:#fff;width:100%;font-size:14px}
@@ -154,8 +155,23 @@ pre.codigo{background:#14212b;color:#d9f2e0;border-radius:8px;padding:12px;font-
   const fechaHora = d => d ? new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
   const hoyISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
   const ESTADOS = { activo: 'Activo', prueba: 'En prueba', moroso: 'Vencido (gracia)', suspendido: 'Suspendido', baja: 'De baja' };
+  // Número para wa.me: con código de país de Argentina (54 9) si no lo tiene
+  const waNum = t => { let d = String(t || '').replace(/\D/g, '').replace(/^0+/, ''); if (!d) return ''; return d.startsWith('54') ? d : '549' + d; };
   const chip = e => `<span class="chip e-${esc(e)}">${esc(ESTADOS[e] || e)}</span>`;
   const MEDIOS = { mercadopago: 'Mercado Pago', transferencia: 'Transferencia', efectivo: 'Efectivo', otro: 'Otro' };
+  const MP_ESTADOS = { authorized: ['Débito activo', 'activo'], pending: ['Esperando que se suscriba', 'prueba'], paused: ['Pausado', 'moroso'], cancelled: ['Cancelado', 'baja'] };
+  const mpChip = e => e ? `<span class="chip e-${(MP_ESTADOS[e] || [, 'baja'])[1]}">${esc((MP_ESTADOS[e] || [e])[0])}</span>` : '<span class="suave">Sin configurar</span>';
+
+  // Función de Supabase que habla con Mercado Pago (los secretos quedan en Supabase, nunca en la página)
+  async function funcionMp(cuerpo) {
+    let r;
+    try {
+      r = await fetch(URL_CENTRAL + '/functions/v1/saas-mp', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: KEY_CENTRAL, Authorization: 'Bearer ' + KEY_CENTRAL }, body: JSON.stringify({ ...cuerpo, token }) });
+    } catch { throw new Error('Sin conexión. Revisá internet.'); }
+    let j = {}; try { j = await r.json(); } catch { }
+    if (!r.ok || j.error) throw new Error(j.error || 'No se pudo conectar con Mercado Pago.');
+    return j.cliente;
+  }
 
   let token = sessionStorage.getItem('saas_token');
   let planesCache = [];
@@ -313,9 +329,21 @@ pre.codigo{background:#14212b;color:#d9f2e0;border-radius:8px;padding:12px;font-
           <div class="linea"><span class="suave">Última conexión</span><span>${x.supabase_url ? fechaHora(x.ultima_conexion) : 'Todavía no conectaste su sistema'}</span></div>
         </div>
         <div class="caja">
+          <h3>Cobro automático con Mercado Pago</h3>
+          <div class="linea"><span class="suave">Estado</span><span>${mpChip(x.mp_estado)}</span></div>
+          <div class="linea"><span class="suave">Cuenta que paga</span><span>${esc(x.mp_email || x.email || 'Falta el email')}</span></div>
+          ${x.mp_link && x.mp_estado === 'pending' ? `<div class="linea"><span class="suave">Link para suscribirse</span><span style="word-break:break-all;text-align:right"><a href="${esc(x.mp_link)}" target="_blank" rel="noopener">Abrir</a></span></div>` : ''}
+          <p class="suave" style="margin:8px 0 10px;font-size:13px">La remisería abre el link una vez y autoriza el débito mensual de ${pesos(x.precio)}. Cada cobro aprobado se registra solo y extiende el servicio un mes.</p>
+          <div class="acciones">
+            <button class="btn ${x.mp_estado === 'authorized' ? '' : 'pri'}" id="a-mp">${x.mp_preapproval_id ? 'Generar link nuevo' : 'Generar link de suscripción'}</button>
+            ${x.mp_link && x.mp_estado === 'pending' ? `<button class="btn" id="a-mp-copiar">Copiar link</button><a class="btn" id="a-mp-wa" target="_blank" rel="noopener" href="https://wa.me/${waNum(x.telefono)}?text=${encodeURIComponent('Hola! Este es el link para activar el pago mensual del sistema con Mercado Pago: ' + x.mp_link)}">Enviar por WhatsApp</a>` : ''}
+            ${x.mp_preapproval_id && x.mp_estado !== 'cancelled' ? '<button class="btn peligro" id="a-mp-cancelar">Cancelar débito</button>' : ''}
+          </div>
+        </div>
+        <div class="caja">
           <h3>Contacto</h3>
           <div class="linea"><span class="suave">Titular</span><span>${esc(x.titular || '—')}</span></div>
-          <div class="linea"><span class="suave">Teléfono</span><span>${x.telefono ? `<a href="https://wa.me/${esc(String(x.telefono).replace(/\D/g, ''))}" target="_blank" rel="noopener">${esc(x.telefono)}</a>` : '—'}</span></div>
+          <div class="linea"><span class="suave">Teléfono</span><span>${x.telefono ? `<a href="https://wa.me/${waNum(x.telefono)}" target="_blank" rel="noopener">${esc(x.telefono)}</a>` : '—'}</span></div>
           <div class="linea"><span class="suave">Email</span><span>${x.email ? `<a href="mailto:${esc(x.email)}">${esc(x.email)}</a>` : '—'}</span></div>
           <div class="linea"><span class="suave">CUIT</span><span>${esc(x.cuit || '—')}</span></div>
           <div class="linea"><span class="suave">Ciudad</span><span>${esc(x.ciudad || '—')}</span></div>
@@ -340,6 +368,19 @@ pre.codigo{background:#14212b;color:#d9f2e0;border-radius:8px;padding:12px;font-
     $('#a-pago').onclick = () => formPago(x, recargar);
     $('#a-editar').onclick = () => formCliente(x);
     $('#a-sql').onclick = () => sqlLicencia(x);
+    $('#a-mp').onclick = () => dialogo({
+      titulo: 'Link de suscripción · ' + x.nombre, boton: 'Generar link',
+      html: `<p class="suave" style="margin:0">Se crea una suscripción mensual de <b>${pesos(x.precio)}</b> para la cuenta <b>${esc(x.mp_email || x.email || '(falta el email)')}</b>.
+        ${x.mp_preapproval_id ? ' La suscripción anterior se cancela para que no se cobre dos veces.' : ''}
+        Si está en prueba o tiene meses pagos, el primer débito es cuando terminan.</p>
+        <p class="suave" style="margin:0;font-size:13px">Mercado Pago solo acepta que pague la cuenta con ese email.</p>`,
+      ok: async () => { await funcionMp({ accion: 'suscripcion', cliente_id: id }); aviso('Link creado. Enviáselo a la remisería.'); recargar(); }
+    });
+    if ($('#a-mp-copiar')) $('#a-mp-copiar').onclick = async () => { try { await navigator.clipboard.writeText(x.mp_link); aviso('Link copiado.'); } catch { aviso('No se pudo copiar.', true); } };
+    if ($('#a-mp-cancelar')) $('#a-mp-cancelar').onclick = () => dialogo({
+      titulo: 'Cancelar débito automático', html: '<p class="suave" style="margin:0">Mercado Pago deja de cobrarle a la remisería. El servicio sigue hasta la fecha ya pagada.</p>', boton: 'Cancelar débito', peligro: true,
+      ok: async () => { await funcionMp({ accion: 'cancelar', cliente_id: id }); aviso('Débito cancelado.'); recargar(); }
+    });
     if ($('#a-suspender')) $('#a-suspender').onclick = () => dialogo({
       titulo: 'Suspender ' + x.nombre,
       html: '<p class="suave" style="margin:0">El sistema de la remisería deja de funcionar en los próximos 10 minutos y muestra el motivo. Podés reactivarlo cuando quieras.</p><label class="campo">Motivo (lo ve la remisería) <input name="motivo" placeholder="Ej.: falta de pago de octubre"></label>',
@@ -392,6 +433,7 @@ pre.codigo{background:#14212b;color:#d9f2e0;border-radius:8px;padding:12px;font-
           <label class="campo">Titular <input name="titular" value="${esc(x.titular)}"></label>
           <label class="campo">Teléfono <input name="telefono" value="${esc(x.telefono)}" inputmode="tel"></label>
           <label class="campo">Email <input name="email" type="email" value="${esc(x.email)}"></label>
+          <label class="campo">Email de su cuenta de Mercado Pago <input name="mp_email" type="email" value="${esc(x.mp_email)}" placeholder="Si es distinto del email"></label>
           <label class="campo">CUIT <input name="cuit" value="${esc(x.cuit)}"></label>
           <label class="campo">Ciudad <input name="ciudad" value="${esc(x.ciudad)}"></label>
           <label class="campo">Plan <select name="plan_id">${opcionesPlan(x.plan_id)}</select></label>
