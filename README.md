@@ -14,6 +14,7 @@ Incluye tres aplicaciones:
 | `conductor.html` | App de conductores (se usa desde el celular) |
 | `pasajero.html` | Pedido web de pasajeros con seguimiento del viaje |
 | `ingresar.html` | Portal con los tres ingresos (operadores, conductores y pasajeros). Cada perfil tiene su propia pantalla de ingreso |
+| `superadmin.html` | Central de clientes: las remiserías a las que les vendés el sistema, planes, pagos y suspensiones (ver *Vender el sistema a otras remiserías*) |
 
 ---
 
@@ -112,6 +113,45 @@ Las páginas públicas (`index`, `nosotros`, `terminos`, `ayuda`) cargan solo `j
 - **Pie legal** (`js/pie-legal.js`): datos de la empresa, enlaces legales, enlace a la Ventanilla Única Federal y aviso de cookies con dos opciones del mismo peso. Los videos de terceros se cargan solo si se aceptan.
 - **Accesibilidad** (`js/accesibilidad.js`): etiquetas unidas a cada campo, "Saltar al contenido" y foco visible. Colores ajustados a contraste AA.
 - **Registro de pasajeros:** casilla "Soy mayor de 18 años" y aceptación de términos y privacidad (sin casillas premarcadas).
+
+## Vender el sistema a otras remiserías
+
+Cada remisería cliente tiene **su propio proyecto de Supabase** (sus datos quedan totalmente separados) y usa este mismo código. Vos controlás todo desde la **central de clientes**: `superadmin.html`.
+
+### Cómo funciona
+
+- **`supabase/central.sql`** crea la central (esquema `saas`): clientes, planes, pagos e historial. Se instala una sola vez, en el proyecto donde está tu panel de superadministrador (hoy, el mismo de Remises TOQUE!).
+- **`sql/67_licencia.sql`** (ya incluido en `supabase/rodar.sql`) va en cada remisería. Cada 10 minutos su base le pregunta a la central el estado de la suscripción:
+
+| Estado | Qué pasa en el sistema de la remisería |
+|---|---|
+| En prueba | Funciona normal. El panel muestra hasta cuándo dura la prueba. |
+| Activo | Funciona normal. |
+| Vencido (gracia) | Funciona, y el panel muestra un aviso con la fecha en que se suspende. |
+| Suspendido / De baja | La página y las apps dejan de funcionar y muestran el motivo. Los pasajeros ven solo "servicio no disponible". |
+
+- El **tope de móviles** del plan se controla en la base: no se pueden cargar más móviles que los que permite el plan.
+- Si una base no tiene licencia cargada (como Remises TOQUE!), no se controla nada.
+- El estado se calcula solo con las fechas: al registrar un pago se extiende "pagado hasta" y la remisería vuelve a funcionar en hasta 10 minutos. Los días de prueba y de gracia se cambian en *Configuración*.
+
+### Dar de alta una remisería nueva
+
+1. En `superadmin.html` tocá **Nuevo cliente**, cargá sus datos y el plan. Arranca con los días de prueba gratis.
+2. Creá un proyecto nuevo de Supabase para la remisería (región São Paulo) y corré `supabase/rodar.sql` completo en su *SQL Editor*. Activá **pg_cron** y **pg_net** (*Database → Extensions*) y volvé a correr `rodar.sql`.
+3. En la ficha del cliente tocá **Conectar su sistema**, copiá el SQL y corrélo en el *SQL Editor* de **su** proyecto. Desde ahí consulta su licencia.
+4. Cargá en la ficha la URL y la clave anon de su Supabase (*Editar datos → Instalación de su sistema*).
+5. En `config.js`, agregalo en `CLIENTES` con la dirección donde va a usar el sistema y su marca:
+   ```js
+   'remiseriasol.tudominio.com': {
+     supabaseUrl: 'https://abcd1234.supabase.co',
+     supabaseKey: 'eyJ…clave anon de la remisería…',
+     marca: { nombre: 'Remisería Sol', logo: 'img/clientes/sol.png', logoBlanco: 'img/clientes/sol-blanco.png', color: '#0b6e4f' },
+   },
+   ```
+   Con `marca`, todas las páginas muestran el nombre, el logo y el color de la remisería en lugar de los de Remises TOQUE!.
+6. Entrá a su dirección con **admin / admin123**, cambiá la contraseña y seguí los pasos de *Antes de operar de verdad* de arriba.
+
+> **Importante:** GitHub Pages no permite usarse para vender software como servicio. Antes de cobrarle a la primera remisería, mudá la página a un hosting que lo permita (Firebase Hosting, Cloudflare Pages o Netlify) y pasá Supabase al plan Pro: en el plan gratis los proyectos se pausan tras una semana sin uso y hay un máximo de 2.
 
 ## Integraciones
 
